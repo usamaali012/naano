@@ -251,7 +251,8 @@ function writeLog(filePath, state, cfg, newEntries) {
 /* ------------------------------------------------------------------- state */
 
 function stateDir() {
-  return path.join(HERE, ".state");
+  // overridable so tests never touch the real sidecar
+  return process.env.CAPTURE_STATE_DIR || path.join(HERE, ".state");
 }
 
 function loadState(sessionId) {
@@ -271,12 +272,27 @@ function loadState(sessionId) {
   }
 }
 
-// Recover counts from an existing .md if the sidecar state was lost. Only
-// column-0 entry markers count as real (the format example in a pasted prompt
-// is indented, so it is ignored).
+// Rebuild state from an existing .md if the sidecar was lost, so a wiped
+// state dir can never corrupt a log. Counts come from column-0 entry markers
+// (the indented format example in a pasted prompt is ignored); times, models
+// and the filename stamp come from the frontmatter that is already there.
 function reseedFromLog(state, filePath) {
   if (state.prompts || state.responses || !fs.existsSync(filePath)) return state;
   const cur = fs.readFileSync(filePath, "utf8");
+
+  const fmMatch = cur.match(/^---\n([\s\S]*?)\n---\n/);
+  const fm = fmMatch ? fmMatch[1] : "";
+  const fmVal = (key) => {
+    const m = fm.match(new RegExp(`^${key}:\\s*(.+)$`, "m"));
+    return m ? m[1].trim() : null;
+  };
+  if (!state.first_prompt_time) state.first_prompt_time = fmVal("first_prompt_time");
+  if (!state.last_prompt_time) state.last_prompt_time = fmVal("last_prompt_time");
+  const fmModels = fmVal("model");
+  if (fmModels && !state.models.length) {
+    state.models = fmModels.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+
   const idx = cur.indexOf(SENTINEL);
   const body = idx >= 0 ? cur.slice(idx + SENTINEL.length) : "";
   state.prompts = (body.match(/^\[LOG_ENTRY type=PROMPT /gm) || []).length;
