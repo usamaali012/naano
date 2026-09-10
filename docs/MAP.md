@@ -73,7 +73,22 @@ apps/
                            Returns MarketplaceCreator rows with ICP fit vs the
                            campaign. The marketplace Shortlist tab and the
                            campaign Shortlist tab (3.5) both read GET here.
-      bookings/           Empty, wired stub module. No routes yet.
+      bookings/           Real, guarded routes. POST /bookings (COMPANY,
+                           from the signed-in company's active campaign via
+                           CampaignsService.getActiveForCompany — price
+                           derived server-side from the creator's
+                           postCostCents/bundle5PriceCents, 409 on a
+                           duplicate non-DECLINED booking for the same
+                           creator+campaign). GET /bookings/received
+                           (CREATOR, own profile only, enriched with
+                           campaign/company name). GET /bookings/sent
+                           (COMPANY, own company, optional ?campaignId).
+                           PATCH /bookings/:id/status (CREATOR,
+                           INVITED->ACCEPTED|DECLINED). First feature
+                           endpoints behind JwtAuthGuard+RolesGuard+@Roles;
+                           ownership resolved server-side from the JWT
+                           subject, never from a client-supplied id.
+                           mappers.ts: toBooking/toBookingReceived.
       tracking/           GET /r/:slug -> record ClickEvent -> 302. The spine.
                            Fully working, verified end to end.
                            dev-tracked-links.controller.ts adds a dev-only
@@ -88,8 +103,12 @@ apps/
                            must be up. From Git-Bash prefix MSYS_NO_PATHCONV=1.
       shots.mjs            `npm run shots --workspace=apps/web` — the full
                            marketplace suite (grid, both modal tabs, booking
-                           rail, error state). Wipes .screenshots/ first, prints
-                           mtimes. Run it to finish any UI change.
+                           rail, creator home + booking requests, error
+                           state). Wipes .screenshots/ first, prints mtimes.
+                           Run it to finish any UI change. Deliberately does
+                           not create a booking (that mutation is not
+                           idempotent against the persistent local dev DB —
+                           see docs/PLAN.md's 2026-09-10 Discovered entry).
     tailwind.config.js    Maps Tailwind utilities onto the CSS custom properties
                            in src/index.css via var(). No raw hex/px in configs
                            or components.
@@ -105,19 +124,37 @@ apps/
                            selected by VITE_API_MODE. client.ts is the interface:
                            login, getMe, listCreators, getCreator,
                            getActiveCampaign, listShortlist / addToShortlist /
-                           removeFromShortlist. http.ts maps every list param
+                           removeFromShortlist, createBooking /
+                           listBookingsReceived / listBookingsSent /
+                           updateBookingStatus. http.ts maps every list param
                            (filter params wired, not yet surfaced in UI) and
-                           exports setApiToken (Bearer header for authed calls).
-                           fixtures.ts mirrors all of it (in-memory shortlist).
+                           exports setApiToken (Bearer header for authed calls);
+                           request() throws errors.ts's ApiError (carries the
+                           HTTP status) so callers can special-case a status
+                           (e.g. 409 already-booked) instead of one generic
+                           failure message. fixtures.ts mirrors all of it
+                           (in-memory shortlist + bookings; FIXTURE_ME is
+                           always the brand, so the creator-side booking
+                           methods have no real fixture context yet).
         stores/           Zustand stores, one per domain. authStore.ts:
                            {token, me}, persist -> localStorage naano.auth;
                            signIn does a real login + /me, signOut clears it.
                            creatorsStore.ts: grid page/sort/q/tab state.
                            shortlistStore.ts: {campaignId, ids, status} —
                            hydrates from the API, optimistic writes, no
-                           localStorage. uiStore.ts: unused pattern example.
+                           localStorage. bookingsStore.ts: {campaignId,
+                           byCreatorId, status} — same hydrate pattern as
+                           shortlistStore, maps creator -> booking status for
+                           the active campaign so the marketplace card can
+                           show "already booked" without a new screen;
+                           recordBooking() updates it immediately on a
+                           successful create. uiStore.ts: unused pattern
+                           example.
         format.ts         Money/number/percent + verticalLabel helpers.
                            Render-boundary only; formatCpm uses @naano/shared.
+        bookingStatus.ts  BookingStatus -> StatusPill tone/label, shared by
+                           CreatorCard, BookingRail's confirmation state, and
+                           CreatorHomePage's booking requests list.
       routes/             EntryPage (public, "/") — two real one-click sign-ins
                            (brand/creator) against seeded accounts, then routes
                            into /app. AppShell = the 72px icon rail (DESIGN
@@ -125,7 +162,9 @@ apps/
                            redirects signed-out /app to /. App.tsx's AppIndex
                            picks the surface by role: CreatorsListPage (brand)
                            or CreatorHomePage (creator — their own profile,
-                           "this is how brands see you", from GET /creators/:id).
+                           "this is how brands see you", from GET /creators/:id,
+                           plus a "Booking requests" section reading
+                           GET /bookings/received with real Accept/Decline).
       components/
         ui/               Token-only primitives: Button, Card, Input, Select,
                            Checkbox, Badge, StatusPill, Table (+ THead/TBody/TR/
@@ -139,15 +178,21 @@ apps/
                            with counts, search, sort-by, section header — "Best
                            match first" / "All N creators, ordered by…", true at
                            any catalogue size). CreatorCard (checkbox, network
-                           badge, sector-fit badge, star, Book, 4-metric strip,
-                           View profile). CreatorGrid
-                           (3/2/1 cols). CreatorsPagination (Prev/Next + range).
-                           CreatorProfileModal = two-column shell (tabbed content
-                           + persistent BookingRail aside), from GET /creators/:id.
-                           modal/ has OverviewTab, AudienceTab, BookingRail,
-                           ReachSparkline (inline-SVG), audienceSegments.ts
-                           (dimension-filter helper). Content tab is 2.12.
-                           icons.tsx (NetworkBadge, StarIcon). No filter panel yet.
+                           badge, sector-fit badge, booking StatusPill when one
+                           exists for the active campaign, star, Book, 4-metric
+                           strip, View profile). CreatorGrid (3/2/1 cols, threads
+                           bookingStatusById through). CreatorsPagination
+                           (Prev/Next + range). CreatorProfileModal = two-column
+                           shell (tabbed content + persistent BookingRail aside),
+                           from GET /creators/:id. modal/ has OverviewTab,
+                           AudienceTab, BookingRail (real submit: package radio
+                           + deliverable input -> POST /bookings; renders one of
+                           the form / a booked confirmation / an already-booked
+                           notice / a retryable error, see bookingStatus.ts and
+                           lib/api/errors.ts), ReachSparkline (inline-SVG),
+                           audienceSegments.ts (dimension-filter helper).
+                           Content tab is 2.12. icons.tsx (NetworkBadge,
+                           StarIcon). No filter panel yet.
         campaign/         Empty. Brief form, campaign list, status pills land
                            with the campaign flow.
         dashboard/        Empty. Metric tiles, charts land with the dashboard.
@@ -178,8 +223,9 @@ docs/
 - New marketplace filter → `apps/api/src/creators/` + `components/marketplace/`
 - New dashboard metric → `apps/api/src/analytics/` then a tile in
   `components/dashboard/`
-- Booking status change → `apps/api/src/bookings/` state machine, and the pill
-  component in `components/campaign/`
+- Booking status change → `apps/api/src/bookings/bookings.service.ts`
+  (`updateStatus`, INVITED-only guard), and `lib/bookingStatus.ts` for the
+  pill tone/label
 - Shortlist behaviour → `apps/api/src/shortlist/` + `lib/stores/shortlistStore.ts`
 - "Active campaign" logic → `apps/api/src/campaigns/campaigns.service.ts`
 - Sign-in / session logic → `apps/api/src/auth/` + `lib/stores/authStore.ts`

@@ -3,6 +3,7 @@ import type { MarketplaceCreator } from "@naano/shared";
 import { api } from "../lib/api";
 import { useCreatorsStore } from "../lib/stores/creatorsStore";
 import { useShortlistStore } from "../lib/stores/shortlistStore";
+import { useBookingsStore } from "../lib/stores/bookingsStore";
 import { MarketplaceHeader } from "../components/marketplace/MarketplaceHeader";
 import { CreatorGrid } from "../components/marketplace/CreatorGrid";
 import { CreatorsPagination } from "../components/marketplace/CreatorsPagination";
@@ -20,6 +21,9 @@ export function CreatorsListPage(): JSX.Element {
   const addToShortlist = useShortlistStore((state) => state.add);
   const shortlistSet = useMemo(() => new Set(shortlistIds), [shortlistIds]);
 
+  const bookingStatusById = useBookingsStore((state) => state.byCreatorId);
+  const hydrateBookings = useBookingsStore((state) => state.hydrate);
+
   const [creators, setCreators] = useState<MarketplaceCreator[]>([]);
   const [allTotal, setAllTotal] = useState(0);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
@@ -29,7 +33,8 @@ export function CreatorsListPage(): JSX.Element {
 
   useEffect(() => {
     void hydrateShortlist();
-  }, [hydrateShortlist]);
+    void hydrateBookings();
+  }, [hydrateShortlist, hydrateBookings]);
 
   // Debounce the search box so typing does not fire a request per keystroke.
   const [queryInput, setQueryInput] = useState(q);
@@ -68,6 +73,7 @@ export function CreatorsListPage(): JSX.Element {
 
   function retry(): void {
     void hydrateShortlist();
+    void hydrateBookings();
     setReloadKey((key) => key + 1);
   }
 
@@ -164,6 +170,7 @@ export function CreatorsListPage(): JSX.Element {
                 creators={displayed}
                 selectedIds={selectedIds}
                 shortlistIds={shortlistSet}
+                bookingStatusById={bookingStatusById}
                 onToggleSelect={toggleSelect}
                 onToggleShortlist={toggleShortlist}
                 onOpen={setOpenCreatorId}

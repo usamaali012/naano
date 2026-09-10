@@ -268,3 +268,54 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   stand-in until Phase 4 builds the actual creator side. `/app` redirects
   signed-out visitors to `/`. `AppShell` gained a top bar (identity + Sign
   out) so the login is visible, not just functional.
+- 2026-09-10 — Booking loop built end to end (slice 2.13, both sides — an
+  explicit ask that widened the original rail-only scope). Four routes in
+  `bookings/` (was an empty stub): `POST /bookings` (COMPANY), `GET
+  /bookings/received` (CREATOR, own profile), `GET /bookings/sent` (COMPANY,
+  own company, optional `?campaignId`), `PATCH /bookings/:id/status`
+  (CREATOR, INVITED→ACCEPTED|DECLINED). All behind `JwtAuthGuard` +
+  `RolesGuard` + `@Roles` — the first feature endpoints to be; every prior
+  route (creators/campaigns/shortlist) is still unauthenticated. Ownership is
+  enforced by resolving the caller's own `companyId`/`creatorProfileId` from
+  the JWT subject via a Prisma lookup (same pattern as `auth.service.me()`)
+  rather than trusting any id the client sends; `received` and the status
+  update never accept a creatorProfileId from the client at all, so there is
+  no ownership check to get wrong. `agreedPriceCents` is derived server-side
+  from the creator's own `postCostCents`/`bundle5PriceCents` by which package
+  the client selected — the client never sends a cents figure, so the price
+  can't be tampered with in transit. Added `CampaignsService
+  .getActiveForCompany(companyId)` alongside the existing `getActive()`,
+  which is global (most recent LIVE across *all* companies) and was about to
+  be reused incorrectly for "the signed-in company's active campaign" — it
+  stays as-is for the marketplace/shortlist, which still have no campaign
+  switcher. The schema has no unique constraint stopping two bookings for the
+  same creator+campaign, so `create()` 409s on a second non-DECLINED booking
+  rather than silently duplicating. Hand-verified end to end against the
+  running API before committing: logged in as Ledgerly, booked a creator,
+  logged in as that creator, listed/accepted the booking, and confirmed the
+  role/ownership/re-accept guards all reject correctly (403/403/404/409/401).
+  Committed in two parts: API + shared types + web api layer first (once
+  verified working), UI second.
+- 2026-09-10 — Booking rail, card, and creator side. `BookingRail` gained a
+  deliverable `Input` (defaults keyed off the selected package, editable), a
+  real submit, and three post-submit states: booked (StatusPill + agreed
+  price + deliverable, replacing the form rather than resetting it),
+  conflict (plain "already booked" message, no form, no dead retry button —
+  a 409 will never succeed on retry so one isn't offered), and a generic
+  error (in-voice message + "Try again", which does make sense to retry).
+  `http.ts`'s `request()` now throws a small `ApiError` carrying the HTTP
+  status so the rail can tell these apart. Also softened the rail's "How
+  booking works" step 3, which claimed the post goes live and payment
+  releases on accept — neither is real yet (TrackedLink is 4.3, payout is
+  4.4) — to "you and the creator coordinate the post and payment directly."
+  New `bookingsStore` (mirrors `shortlistStore`'s hydrate pattern) maps
+  creator → booking status for the active campaign so `CreatorCard` can show
+  a status pill next to the sector-fit badge — chosen over building the
+  Collaborations table (4.2) now, since that is a materially bigger slice
+  (table, status tabs, campaign filter) and the badge is the cheaper way to
+  satisfy "the brand can see a booking after making one" without a new
+  screen. The Book button's existing behavior (open the profile modal, rail
+  always visible alongside it) needed no changes — it was already the single
+  path in and stays that way. `CreatorHomePage` gained a "Booking requests"
+  section (all of the creator's bookings, Accept/Decline shown only on
+  INVITED rows, empty state in-voice) — the creator-side half of the loop.

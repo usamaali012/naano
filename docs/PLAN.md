@@ -156,14 +156,28 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   Files: `apps/web/src/components/marketplace/modal/ContentTab.tsx`,
   `apps/web/src/components/marketplace/modal/PostCarousel.tsx`.
 
-- [ ] **2.13 Booking rail**
+- [x] **2.13 Booking rail** — done 2026-09-10.
   Scope: "Book this creator", single-post vs bundle-of-5 radio with prices,
   typical reach / estimated CPM / posts analyzed, "How pricing is calculated"
   expander showing `postCost ÷ medianViews × 1000`, CTA "Collaborate with
-  <first name>", "Secure booking · Creator approves first". CTA creates a
-  `Booking` (initiatedBy BRAND) against the active campaign.
-  Files: `apps/web/src/components/marketplace/modal/BookingRail.tsx`,
-  `apps/api/src/bookings/*`, `apps/web/src/lib/api/*`.
+  <first name>". CTA creates a `Booking` (initiatedBy BRAND) against the
+  active campaign. Grew to cover the full loop end to end (both sides, not
+  just the rail) per an explicit ask: real bookings API, creator accept/
+  decline, and brand-side visibility.
+  Files: `apps/api/src/bookings/*` (controller/service/dto/mappers, was an
+  empty stub), `apps/api/src/campaigns/campaigns.service.ts`
+  (`getActiveForCompany`), `packages/shared/src/api.ts`,
+  `apps/web/src/lib/api/*` (+ new `errors.ts`),
+  `apps/web/src/lib/stores/bookingsStore.ts` (new),
+  `apps/web/src/lib/bookingStatus.ts` (new),
+  `apps/web/src/components/marketplace/modal/BookingRail.tsx`,
+  `apps/web/src/components/marketplace/{CreatorCard,CreatorGrid}.tsx`,
+  `apps/web/src/routes/{CreatorsListPage,CreatorHomePage}.tsx`,
+  `apps/web/scripts/shots.mjs`.
+  Notes: see the two 2026-09-10 DECISIONS.md entries for the endpoint list,
+  the company-scoped active-campaign fix, the server-side price derivation,
+  the duplicate-booking guard, and why brand-side visibility is a card badge
+  rather than a new Collaborations screen (that's 4.2).
 
 ---
 
@@ -306,6 +320,37 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-10 — Booking loop (2.13, done end to end, both sides). For the
+  next session:
+  - **`bookings/` is no longer a stub.** Four routes, all role- and
+    ownership-guarded: `POST /bookings` (COMPANY), `GET /bookings/received`
+    (CREATOR, own profile only), `GET /bookings/sent` (COMPANY, own company,
+    optional `?campaignId`), `PATCH /bookings/:id/status` (CREATOR,
+    INVITED→ACCEPTED|DECLINED only). See DECISIONS.md for the full rationale.
+  - **`CampaignsService.getActive()` is still global** (most recent LIVE
+    across all companies) — only the new `getActiveForCompany(companyId)`
+    is company-scoped, and only bookings use it. The marketplace/shortlist
+    still deliberately have no campaign switcher and still call the global
+    one; don't conflate the two when 3.1 lands real campaign CRUD.
+  - **Card badge, not a Collaborations screen, for brand-side visibility.**
+    `bookingsStore` mirrors `shortlistStore`'s hydrate pattern. When 4.2
+    (Collaborations table) lands, it's additive, not a replacement — the
+    card badge is cheap and stays useful on its own.
+  - **`shots.mjs` deliberately does not exercise booking creation.** Unlike
+    shortlist toggles, a booking POST is not idempotent against the
+    persistent local dev DB (the app-level duplicate guard would 409 on
+    every rerun after the first), so baking it into the canonical suite
+    would make it non-deterministic. The rail's default/idle state (radios
+    + deliverable input) is captured via the existing `modal-rail-bundle`
+    shot instead; the create→accept loop was hand-verified against the
+    running API (see DECISIONS.md).
+  - **`CreatorHomePage`'s "Booking requests" section** lists all of the
+    signed-in creator's bookings (any status), with Accept/Decline shown
+    only on INVITED rows. The seed's demo creator (Emma Berg, index 0)
+    happened to have no INVITED booking at screenshot time, so
+    `creator-booking-requests.png` shows the populated list without the
+    action buttons visible — the accept/decline transition itself was
+    verified via the API, not caught in a screenshot.
 - 2026-09-11 — Third pass: seed cost fix, subtitle fix, and the `/` demo entry
   (slice 6.2, pulled forward — see its PLAN entry above). For the next session:
   - **Real auth now exists end to end.** `GET /auth/me` (JWT-guarded) added

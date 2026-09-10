@@ -40,9 +40,9 @@ async function settleImages(page) {
   await page.waitForTimeout(400); // let onError fallbacks re-render
 }
 
-async function shot(page, name) {
+async function shot(page, name, { fullPage = true } = {}) {
   await settleImages(page);
-  await page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: true });
+  await page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage });
 }
 
 async function signIn(page, side) {
@@ -91,6 +91,11 @@ async function signIn(page, side) {
   await signIn(page, "creator");
   await page.waitForTimeout(1200);
   await shot(page, "creator-home");
+
+  const requests = page.getByRole("heading", { name: "Booking requests" });
+  await requests.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await shot(page, "creator-booking-requests", { fullPage: false });
   await context.close();
 }
 
