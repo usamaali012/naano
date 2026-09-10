@@ -1,4 +1,5 @@
-import type { BookingStatus, MarketplaceCreator } from "@naano/shared";
+import type { MarketplaceCreator } from "@naano/shared";
+import type { CreatorBookingInfo } from "../../lib/stores/bookingsStore";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -22,7 +23,7 @@ interface CreatorCardProps {
   onToggleShortlist: (id: string) => void;
   onOpen: (id: string) => void;
   /** A booking already exists for this creator against the active campaign. */
-  bookingStatus?: BookingStatus;
+  booking?: CreatorBookingInfo;
 }
 
 interface Metric {
@@ -37,7 +38,7 @@ export function CreatorCard({
   shortlisted,
   onToggleShortlist,
   onOpen,
-  bookingStatus,
+  booking,
 }: CreatorCardProps): JSX.Element {
   // Order is fixed by RECON §4: followers, median views, CPM, post cost.
   const metrics: Metric[] = [
@@ -62,11 +63,16 @@ export function CreatorCard({
           {creator.sectorFitPct !== null && (
             <Badge>{creator.sectorFitPct}% sector fit</Badge>
           )}
-          {bookingStatus && (
+          {booking && (
             <StatusPill
-              tone={bookingStatusTone(bookingStatus)}
-              label={bookingStatusLabel(bookingStatus)}
+              tone={bookingStatusTone(booking.status)}
+              label={bookingStatusLabel(booking.status)}
             />
+          )}
+          {booking?.clickCount !== null && booking?.clickCount !== undefined && (
+            <span className="tabular-nums text-label text-text-muted">
+              {booking.clickCount} clicks
+            </span>
           )}
           <button
             type="button"

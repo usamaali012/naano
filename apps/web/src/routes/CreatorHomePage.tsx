@@ -8,6 +8,7 @@ import { SegmentedBar } from "../components/ui/SegmentedBar";
 import { StatusPill } from "../components/ui/StatusPill";
 import { segmentsFor } from "../components/marketplace/modal/audienceSegments";
 import { bookingStatusLabel, bookingStatusTone } from "../lib/bookingStatus";
+import { trackedLinkUrl } from "../lib/trackedLink";
 import {
   formatCents,
   formatCompactNumber,
@@ -119,20 +120,20 @@ export function CreatorHomePage(): JSX.Element {
       </div>
 
       <section className="flex flex-col gap-s4 rounded-card border border-border bg-surface p-s6">
-        <h2 className="text-card-title text-text">Booking requests</h2>
+        <h2 className="text-card-title text-text">Your bookings</h2>
 
         {bookingsStatus === "loading" && (
-          <p className="text-body text-text-muted">Loading booking requests…</p>
+          <p className="text-body text-text-muted">Loading your bookings…</p>
         )}
         {bookingsStatus === "error" && (
           <p className="text-body text-text-muted">
-            Could not load your booking requests. Reload the page to try again.
+            Could not load your bookings. Reload the page to try again.
           </p>
         )}
         {bookingsStatus === "ready" && bookings.length === 0 && (
           <p className="text-body text-text-muted">
-            No booking requests yet. Brands will reach out here when they want
-            to collaborate with you.
+            No bookings yet. Brands will reach out here when they want to
+            collaborate with you.
           </p>
         )}
         {bookingsStatus === "ready" && bookings.length > 0 && (
@@ -157,6 +158,9 @@ export function CreatorHomePage(): JSX.Element {
                   <p className="tabular-nums text-label text-text-muted">
                     {formatCents(booking.agreedPriceCents)}
                   </p>
+                  {booking.trackedLinkSlug && (
+                    <TrackedLinkRow slug={booking.trackedLinkSlug} />
+                  )}
                 </div>
                 {booking.status === "INVITED" && (
                   <div className="flex gap-s2">
@@ -266,6 +270,39 @@ export function CreatorHomePage(): JSX.Element {
             ))}
           </ul>
         </section>
+      </div>
+    </div>
+  );
+}
+
+// The creator's own CTA link for this booking. Copying it is the whole point
+// of the row -- every click on it counts toward the brand's campaign.
+function TrackedLinkRow({ slug }: { slug: string }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  const url = trackedLinkUrl(slug);
+
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard access can be denied; the link is still visible to select.
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-s1 border-t border-border pt-s2">
+      <p className="text-label text-text-muted">
+        Your tracked link — share it, every click is counted here.
+      </p>
+      <div className="flex items-center gap-s2">
+        <code className="flex-1 truncate rounded-control border border-border bg-bg px-s3 py-s2 text-label text-text">
+          {url}
+        </code>
+        <Button size="sm" variant="secondary" onClick={() => void copy()}>
+          {copied ? "Copied" : "Copy"}
+        </Button>
       </div>
     </div>
   );

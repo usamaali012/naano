@@ -85,6 +85,23 @@ async function signIn(page, side) {
   await context.close();
 }
 
+// --- ensure the demo creator (Emma Berg) has a pending invite ---------------
+// So creator-booking-requests.png shows an INVITED row with Accept/Decline
+// visible. Seed's random status assignment already pairs Emma with every
+// campaign her one demo brand (Ledgerly) has, all non-INVITED -- so a normal
+// POST /bookings from the UI would always 409. dev/bookings/ensure-invited
+// is a no-op if Emma already has an INVITED booking (any campaign), so
+// reruns stay stable.
+{
+  const emmaRes = await fetch(`${API}/creators?q=${encodeURIComponent("Emma Berg")}&pageSize=1`);
+  const emma = (await emmaRes.json()).items[0];
+  await fetch(`${API}/dev/bookings/ensure-invited`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ creatorProfileId: emma.id }),
+  });
+}
+
 // --- creator home ---------------------------------------------------------
 {
   const { context, page } = await newContext();
@@ -92,7 +109,7 @@ async function signIn(page, side) {
   await page.waitForTimeout(1200);
   await shot(page, "creator-home");
 
-  const requests = page.getByRole("heading", { name: "Booking requests" });
+  const requests = page.getByRole("heading", { name: "Your bookings" });
   await requests.scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
   await shot(page, "creator-booking-requests", { fullPage: false });

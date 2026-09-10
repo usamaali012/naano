@@ -81,7 +81,7 @@ export function BookingRail({ creator }: BookingRailProps): JSX.Element {
         package: pkg,
         deliverable,
       });
-      recordBooking(creator.id, created.status);
+      recordBooking(creator.id, created);
       setBooking(created);
       setPhase("booked");
     } catch (err) {

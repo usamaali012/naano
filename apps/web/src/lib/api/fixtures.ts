@@ -340,6 +340,8 @@ export const fixturesClient: ApiClient = {
       deliverable: body.deliverable,
       deadline: null,
       createdAt: new Date().toISOString(),
+      trackedLinkSlug: null,
+      clickCount: null,
     };
     fixtureBookings = [booking, ...fixtureBookings];
     return booking;
@@ -373,6 +375,10 @@ export const fixturesClient: ApiClient = {
       throw new ApiError(409, `This booking is already ${booking.status.toLowerCase()}`);
     }
     booking.status = status;
+    if (status === "ACCEPTED") {
+      booking.trackedLinkSlug = `fixture-${booking.id}`;
+      booking.clickCount = 0;
+    }
     return booking;
   },
 };

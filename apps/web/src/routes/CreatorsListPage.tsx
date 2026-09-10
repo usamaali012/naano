@@ -21,7 +21,7 @@ export function CreatorsListPage(): JSX.Element {
   const addToShortlist = useShortlistStore((state) => state.add);
   const shortlistSet = useMemo(() => new Set(shortlistIds), [shortlistIds]);
 
-  const bookingStatusById = useBookingsStore((state) => state.byCreatorId);
+  const bookingById = useBookingsStore((state) => state.byCreatorId);
   const hydrateBookings = useBookingsStore((state) => state.hydrate);
 
   const [creators, setCreators] = useState<MarketplaceCreator[]>([]);
@@ -170,7 +170,7 @@ export function CreatorsListPage(): JSX.Element {
                 creators={displayed}
                 selectedIds={selectedIds}
                 shortlistIds={shortlistSet}
-                bookingStatusById={bookingStatusById}
+                bookingById={bookingById}
                 onToggleSelect={toggleSelect}
                 onToggleShortlist={toggleShortlist}
                 onOpen={setOpenCreatorId}

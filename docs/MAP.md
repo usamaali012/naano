@@ -84,13 +84,28 @@ apps/
                            campaign/company name). GET /bookings/sent
                            (COMPANY, own company, optional ?campaignId).
                            PATCH /bookings/:id/status (CREATOR,
-                           INVITED->ACCEPTED|DECLINED). First feature
-                           endpoints behind JwtAuthGuard+RolesGuard+@Roles;
-                           ownership resolved server-side from the JWT
-                           subject, never from a client-supplied id.
-                           mappers.ts: toBooking/toBookingReceived.
+                           INVITED->ACCEPTED|DECLINED — accepting mints the
+                           booking's TrackedLink in the same $transaction,
+                           destinationUrl from the campaign, never the
+                           client). First feature endpoints behind
+                           JwtAuthGuard+RolesGuard+@Roles; ownership resolved
+                           server-side from the JWT subject, never from a
+                           client-supplied id. Every booking read selects
+                           trackedLink: { slug, _count: { clickEvents } }
+                           (TRACKED_LINK_SELECT) so the wire Booking always
+                           carries trackedLinkSlug/clickCount (null until a
+                           link exists). mappers.ts: toBooking/
+                           toBookingReceived. dev-bookings.controller.ts adds
+                           a dev-only POST /dev/bookings/ensure-invited
+                           (NonProductionGuard) that guarantees a creator has
+                           one INVITED booking, for the screenshot suite —
+                           see docs/PLAN.md's 2026-09-11 Discovered entry for
+                           why it exists (seed can leave a creator with no
+                           campaign left to be freshly invited into).
       tracking/           GET /r/:slug -> record ClickEvent -> 302. The spine.
-                           Fully working, verified end to end.
+                           Fully working, verified end to end. slug.ts:
+                           generateTrackedLinkSlug() (9 random bytes,
+                           base64url), used by bookings.service.ts on accept.
                            dev-tracked-links.controller.ts adds a dev-only
                            GET /dev/tracked-links (slug/campaign/creator/dest),
                            guarded off in production.
@@ -103,12 +118,21 @@ apps/
                            must be up. From Git-Bash prefix MSYS_NO_PATHCONV=1.
       shots.mjs            `npm run shots --workspace=apps/web` — the full
                            marketplace suite (grid, both modal tabs, booking
-                           rail, creator home + booking requests, error
-                           state). Wipes .screenshots/ first, prints mtimes.
-                           Run it to finish any UI change. Deliberately does
-                           not create a booking (that mutation is not
+                           rail, creator home + bookings, error state). Wipes
+                           .screenshots/ first, prints mtimes. Run it to
+                           finish any UI change. Before the creator-home
+                           shots it calls the dev-only POST
+                           /dev/bookings/ensure-invited directly (no browser)
+                           so creator-booking-requests.png always has an
+                           INVITED row with Accept/Decline visible — see
+                           docs/PLAN.md's 2026-09-11 Discovered entry for why
+                           a normal booking-creation UI flow can't guarantee
+                           that. Still does not drive a real booking
+                           creation through the UI (that mutation is not
                            idempotent against the persistent local dev DB —
-                           see docs/PLAN.md's 2026-09-10 Discovered entry).
+                           see docs/PLAN.md's 2026-09-10 Discovered entry);
+                           the rail's idle state is covered by
+                           modal-rail-bundle instead.
     tailwind.config.js    Maps Tailwind utilities onto the CSS custom properties
                            in src/index.css via var(). No raw hex/px in configs
                            or components.
@@ -143,18 +167,22 @@ apps/
                            shortlistStore.ts: {campaignId, ids, status} —
                            hydrates from the API, optimistic writes, no
                            localStorage. bookingsStore.ts: {campaignId,
-                           byCreatorId, status} — same hydrate pattern as
-                           shortlistStore, maps creator -> booking status for
-                           the active campaign so the marketplace card can
-                           show "already booked" without a new screen;
-                           recordBooking() updates it immediately on a
-                           successful create. uiStore.ts: unused pattern
-                           example.
+                           byCreatorId, status} — byCreatorId values are
+                           CreatorBookingInfo ({status, clickCount}), same
+                           hydrate pattern as shortlistStore, maps creator ->
+                           booking info for the active campaign so the
+                           marketplace card can show "already booked" (and,
+                           once accepted, its click count) without a new
+                           screen; recordBooking() takes the full Booking and
+                           updates the map immediately on a successful
+                           create. uiStore.ts: unused pattern example.
         format.ts         Money/number/percent + verticalLabel helpers.
                            Render-boundary only; formatCpm uses @naano/shared.
         bookingStatus.ts  BookingStatus -> StatusPill tone/label, shared by
                            CreatorCard, BookingRail's confirmation state, and
-                           CreatorHomePage's booking requests list.
+                           CreatorHomePage's bookings list.
+        trackedLink.ts    trackedLinkUrl(slug) -> the public GET /r/:slug URL
+                           (VITE_API_URL + /r/ + slug), for display and copy.
       routes/             EntryPage (public, "/") — two real one-click sign-ins
                            (brand/creator) against seeded accounts, then routes
                            into /app. AppShell = the 72px icon rail (DESIGN
@@ -163,8 +191,10 @@ apps/
                            picks the surface by role: CreatorsListPage (brand)
                            or CreatorHomePage (creator — their own profile,
                            "this is how brands see you", from GET /creators/:id,
-                           plus a "Booking requests" section reading
-                           GET /bookings/received with real Accept/Decline).
+                           plus a "Your bookings" section reading
+                           GET /bookings/received with real Accept/Decline and,
+                           per booking with a trackedLinkSlug, a copy-to-
+                           clipboard tracked-link row (TrackedLinkRow)).
       components/
         ui/               Token-only primitives: Button, Card, Input, Select,
                            Checkbox, Badge, StatusPill, Table (+ THead/TBody/TR/
@@ -178,10 +208,12 @@ apps/
                            with counts, search, sort-by, section header — "Best
                            match first" / "All N creators, ordered by…", true at
                            any catalogue size). CreatorCard (checkbox, network
-                           badge, sector-fit badge, booking StatusPill when one
-                           exists for the active campaign, star, Book, 4-metric
-                           strip, View profile). CreatorGrid (3/2/1 cols, threads
-                           bookingStatusById through). CreatorsPagination
+                           badge, sector-fit badge, booking StatusPill + "N
+                           clicks" once a booking exists for the active
+                           campaign and has a tracked link, star, Book,
+                           4-metric strip, View profile). CreatorGrid (3/2/1
+                           cols, threads bookingById — Record<id,
+                           CreatorBookingInfo> — through). CreatorsPagination
                            (Prev/Next + range). CreatorProfileModal = two-column
                            shell (tabbed content + persistent BookingRail aside),
                            from GET /creators/:id. modal/ has OverviewTab,

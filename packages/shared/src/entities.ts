@@ -112,6 +112,10 @@ export interface Booking {
   deliverable: string;
   deadline: string | null;
   createdAt: string;
+  /** Set once the booking is accepted, when the TrackedLink is issued. */
+  trackedLinkSlug: string | null;
+  /** Clicks recorded against the tracked link, or null before one exists. */
+  clickCount: number | null;
 }
 
 export interface Post {

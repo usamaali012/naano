@@ -236,11 +236,31 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   Files: `apps/web/src/routes/CollaborationsPage.tsx`,
   `apps/web/src/components/campaign/CollaborationsTable.tsx`.
 
-- [ ] **4.3 Accept issues a TrackedLink**
+- [x] **4.3 Accept issues a TrackedLink** — done 2026-09-11.
   Scope: accepting a booking mints a `TrackedLink` (slug + resolved
   destinationUrl); link surfaced to the creator.
   Files: `apps/api/src/bookings/bookings.service.ts`,
-  `apps/api/src/tracking/*`.
+  `apps/api/src/bookings/mappers.ts`, `apps/api/src/bookings/dto/*`,
+  `apps/api/src/tracking/slug.ts` (new), `packages/shared/src/entities.ts`,
+  `apps/web/src/lib/trackedLink.ts` (new),
+  `apps/web/src/lib/stores/bookingsStore.ts`,
+  `apps/web/src/components/marketplace/{CreatorCard,CreatorGrid}.tsx`,
+  `apps/web/src/components/marketplace/modal/BookingRail.tsx`,
+  `apps/web/src/routes/CreatorHomePage.tsx`, `apps/web/src/lib/api/fixtures.ts`.
+  Notes: `updateStatus` mints the link in the same `$transaction` as the
+  ACCEPTED write (slug = 12-char base64url, 72 bits, `tracking/slug.ts`);
+  `destinationUrl` copies from the booking's own campaign, never from client
+  input. `Booking` gained `trackedLinkSlug`/`clickCount` (null until a link
+  exists) — cheapest way to carry this without a new type, since
+  `BookingReceived`/brand `listSent` both already return `Booking`. Creator
+  side: each booking card with a link shows it plus a working copy button
+  (`CreatorHomePage`'s new `TrackedLinkRow`). Brand side: `CreatorCard` shows
+  "N clicks" next to the existing booking-status pill — the cheapest surface,
+  no new page, per an explicit ask. Verified end to end against the running
+  API (see the 2026-09-11 DECISIONS.md entry for the actual numbers).
+  Discovered a real blocker while wiring the screenshot fix below: see that
+  DECISIONS.md entry for the `dev/bookings/ensure-invited` addition it
+  required.
 
 - [ ] **4.4 Earnings view**
   Scope: creator-side list of bookings with amounts and payout status.
@@ -320,6 +340,39 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-11 — TrackedLink on accept (4.3) + two screenshot-suite fixes. For
+  the next session:
+  - **Emma Berg (the demo creator) is structurally unbookable by Ledgerly
+    (the demo brand) for a fresh INVITED row.** Seed already pairs her with
+    every campaign Ledgerly has (LIVE Fintech Trust → PAID, completed Summer
+    Payouts → PAID), and `POST /bookings` 409s on any non-DECLINED booking
+    for the same creator+campaign. A real "brand books Emma" UI flow can
+    never produce an INVITED row for her, no matter how many times you
+    retry. Added a dev-only `POST /dev/bookings/ensure-invited` (guarded by
+    `NonProductionGuard`, same pattern as `/dev/tracked-links`) that no-ops
+    if the creator already has an INVITED booking, else picks a campaign
+    they have zero relationship with yet and creates one there — it does
+    **not** reuse `create()`'s campaign resolution, specifically to avoid
+    landing a second booking in a campaign they're already in. `shots.mjs`
+    calls it before the creator-home shots. If Phase 4.1/4.2 add a real
+    "invite a creator" UI test path, prefer that over this endpoint where
+    possible; this exists because no such path exists yet.
+  - **`CreatorHomePage`'s booking section is now "Your bookings"**, not
+    "Booking requests" — it lists every status (Paid/Live/Declined
+    included), which "requests" never accurately described. Accept/Decline
+    still only render on INVITED rows.
+  - **`Booking` (shared type) gained `trackedLinkSlug` and `clickCount`**
+    (both `| null`). Every booking read (`create`, `listReceived`,
+    `listSent`, `updateStatus`) now selects `trackedLink: { slug, _count:
+    { clickEvents } }` — see `TRACKED_LINK_SELECT` in
+    `bookings.service.ts`. `bookingsStore`'s `byCreatorId` values are now
+    `{ status, clickCount }` (was a bare `BookingStatus`) — anything reading
+    it needs the `.status` accessor now.
+  - **Seed already had TrackedLinks + real ClickEvent counts on the
+    ACCEPTED+ seeded bookings** (`TRACKED_LINK_STATUSES` in `seed.ts`
+    predates this slice) — this slice only had to wire `updateStatus` to do
+    the same thing live, and to surface both sides in the UI. No seed change
+    was needed for the core feature.
 - 2026-09-10 — Booking loop (2.13, done end to end, both sides). For the
   next session:
   - **`bookings/` is no longer a stub.** Four routes, all role- and

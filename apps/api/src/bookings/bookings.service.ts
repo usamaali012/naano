@@ -6,10 +6,16 @@ import {
 import type { Booking, BookingReceived, Paginated } from "@naano/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { CampaignsService } from "../campaigns/campaigns.service";
+import { generateTrackedLinkSlug } from "../tracking/slug";
 import { CreateBookingDto } from "./dto/create-booking.dto";
 import { toBooking, toBookingReceived } from "./mappers";
 
 const DEFAULT_PAGE_SIZE = 20;
+
+/** Every booking read that surfaces trackedLinkSlug/clickCount needs this. */
+const TRACKED_LINK_SELECT = {
+  select: { slug: true, _count: { select: { clickEvents: true } } },
+} as const;
 
 @Injectable()
 export class BookingsService {
@@ -83,6 +89,57 @@ export class BookingsService {
     return toBooking(booking);
   }
 
+  /**
+   * Dev-only. Guarantees the given creator has at least one INVITED booking,
+   * so the demo/screenshot flow can show Accept/Decline without depending on
+   * which status seed's random assignment happened to give them. A no-op if
+   * one already exists. Otherwise picks a campaign the creator has no
+   * non-declined booking against yet (never reusing one, unlike `create()`'s
+   * real flow, this doesn't take a campaign from the client) so it never
+   * produces a second booking in the same campaign.
+   */
+  async ensureInvitedForDev(creatorProfileId: string): Promise<Booking> {
+    const existing = await this.prisma.booking.findFirst({
+      where: { creatorProfileId, status: "INVITED" },
+    });
+    if (existing) return toBooking(existing);
+
+    const creator = await this.prisma.creatorProfile.findUnique({
+      where: { id: creatorProfileId },
+    });
+    if (!creator) {
+      throw new NotFoundException(`No creator profile "${creatorProfileId}"`);
+    }
+
+    const bookedCampaignIds = (
+      await this.prisma.booking.findMany({
+        where: { creatorProfileId, status: { not: "DECLINED" } },
+        select: { campaignId: true },
+      })
+    ).map((b) => b.campaignId);
+
+    const campaign = await this.prisma.campaign.findFirst({
+      where: { id: { notIn: bookedCampaignIds } },
+    });
+    if (!campaign) {
+      throw new ConflictException(
+        `${creator.displayName} already has a booking against every campaign`,
+      );
+    }
+
+    const booking = await this.prisma.booking.create({
+      data: {
+        campaignId: campaign.id,
+        creatorProfileId,
+        agreedPriceCents: creator.postCostCents,
+        deliverable: "1 sponsored LinkedIn post with tracked CTA link",
+        status: "INVITED",
+        initiatedBy: "BRAND",
+      },
+    });
+    return toBooking(booking);
+  }
+
   /** Creator-only: bookings addressed to the signed-in creator's own profile. */
   async listReceived(
     userId: string,
@@ -97,7 +154,10 @@ export class BookingsService {
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: { campaign: { include: { company: true } } },
+        include: {
+          campaign: { include: { company: true } },
+          trackedLink: TRACKED_LINK_SELECT,
+        },
       }),
       this.prisma.booking.count({ where: { creatorProfileId } }),
     ]);
@@ -128,6 +188,7 @@ export class BookingsService {
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        include: { trackedLink: TRACKED_LINK_SELECT },
       }),
       this.prisma.booking.count({ where }),
     ]);
@@ -138,7 +199,10 @@ export class BookingsService {
   /**
    * Creator-only: accept or decline a booking addressed to them. 404s (not
    * 403) when the booking belongs to someone else, so a creator can't probe
-   * for the existence of another creator's bookings.
+   * for the existence of another creator's bookings. Accepting issues the
+   * booking's TrackedLink in the same transaction — a booking is never left
+   * accepted without a link, or vice versa. destinationUrl comes from the
+   * campaign, never from client input.
    */
   async updateStatus(
     userId: string,
@@ -147,7 +211,10 @@ export class BookingsService {
   ): Promise<Booking> {
     const creatorProfileId = await this.creatorProfileIdForUser(userId);
 
-    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { campaign: true },
+    });
     if (!booking || booking.creatorProfileId !== creatorProfileId) {
       throw new NotFoundException(`No booking "${bookingId}"`);
     }
@@ -157,10 +224,22 @@ export class BookingsService {
       );
     }
 
-    const updated = await this.prisma.booking.update({
-      where: { id: bookingId },
-      data: { status },
-    });
-    return toBooking(updated);
+    if (status === "DECLINED") {
+      const updated = await this.prisma.booking.update({
+        where: { id: bookingId },
+        data: { status },
+      });
+      return toBooking(updated);
+    }
+
+    const slug = generateTrackedLinkSlug();
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.booking.update({ where: { id: bookingId }, data: { status } }),
+      this.prisma.trackedLink.create({
+        data: { bookingId, slug, destinationUrl: booking.campaign.destinationUrl },
+      }),
+    ]);
+
+    return toBooking({ ...updated, trackedLink: { slug, _count: { clickEvents: 0 } } });
   }
 }

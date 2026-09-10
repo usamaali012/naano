@@ -268,6 +268,48 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   stand-in until Phase 4 builds the actual creator side. `/app` redirects
   signed-out visitors to `/`. `AppShell` gained a top bar (identity + Sign
   out) so the login is visible, not just functional.
+- 2026-09-11 — Accept issues a TrackedLink (slice 4.3). `BookingsService
+  .updateStatus` mints the `TrackedLink` in the same `$transaction` as the
+  ACCEPTED write when status is ACCEPTED (DECLINED short-circuits before the
+  transaction, unchanged otherwise) — `destinationUrl` is copied from the
+  booking's own campaign, never accepted from the client. Slug is
+  `generateTrackedLinkSlug()` (`tracking/slug.ts`): 9 random bytes,
+  base64url, 72 bits — no retry-on-collision logic, the odds don't justify
+  it. Shared `Booking` type gained `trackedLinkSlug: string | null` and
+  `clickCount: number | null`, populated wherever a booking is read
+  (`create`/`listReceived`/`listSent`/`updateStatus`) via a
+  `trackedLink: { select: { slug, _count: { clickEvents } } }` include
+  (`TRACKED_LINK_SELECT` in `bookings.service.ts`) — chosen over a
+  separate response type so `BookingReceived` and the brand's `listSent`
+  both get it for free. Creator side: `CreatorHomePage` shows the full
+  `/r/:slug` URL (`lib/trackedLink.ts` builds it from `VITE_API_URL`) with a
+  working copy button per booking that has one. Brand side: `CreatorCard`
+  shows "N clicks" next to the existing booking-status pill once a booking
+  has a link — the cheapest surface per an explicit ask, no new
+  Collaborations-style page. Verified end to end against the running API:
+  created a booking (Ledgerly → Rafael Krause), accepted it as Rafael,
+  hit `/r/<slug>` three times (each a real 302 to the campaign's
+  `destinationUrl`), and confirmed both `GET /bookings/sent` (brand) and
+  `GET /bookings/received` (creator) read back `clickCount: 3`. `fixtures.ts`
+  keeps the hedge: `createBooking` sets both new fields null, and
+  `updateBookingStatus` mints a fixture slug + `clickCount: 0` on accept.
+- 2026-09-11 — `POST /dev/bookings/ensure-invited` added (dev-only,
+  `NonProductionGuard`, same pattern as the existing `/dev/tracked-links`).
+  Discovered while fixing the screenshot suite: seed already pairs the demo
+  creator (Emma Berg) with a non-declined booking against **every** campaign
+  the demo brand (Ledgerly) has, so a real `POST /bookings` booking-Emma flow
+  always 409s — there is no way, through the real UI, to ever give her a
+  fresh INVITED row. The endpoint no-ops if the creator already has an
+  INVITED booking anywhere, else finds a campaign they have zero
+  relationship with yet and creates one there (deliberately not reusing
+  `create()`'s "signed-in company's active campaign" resolution, so it never
+  lands a second booking in a campaign the creator's already in).
+  `shots.mjs` calls it before shooting `creator-booking-requests.png`, so
+  that shot always has an INVITED row with Accept/Decline visible, and reran
+  it stays idempotent (later runs find the existing INVITED booking and
+  no-op). Also fixed while in these files: `CreatorHomePage`'s booking
+  section heading changed from "Booking requests" (inaccurate — it lists
+  every status, including Paid/Live/Declined) to "Your bookings".
 - 2026-09-10 — Booking loop built end to end (slice 2.13, both sides — an
   explicit ask that widened the original rail-only scope). Four routes in
   `bookings/` (was an empty stub): `POST /bookings` (COMPANY), `GET
