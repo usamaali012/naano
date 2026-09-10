@@ -122,6 +122,7 @@ model CreatorProfile {
   bookings         Booking[]
   audienceSegments AudienceSegment[]
   posts            CreatorPost[]
+  shortlistItems   ShortlistItem[]
 
   @@index([vertical])
   @@index([country])
@@ -184,11 +185,28 @@ model Campaign {
   endDate        DateTime?
   createdAt      DateTime       @default(now())
 
-  bookings Booking[]
-  icps     Icp[]
+  bookings       Booking[]
+  icps           Icp[]
+  shortlistItems ShortlistItem[]
 
   @@index([companyId])
   @@index([status])
+}
+
+// A creator saved to a campaign's shortlist. Campaign-scoped, not brand-scoped:
+// the marketplace Shortlist tab and the campaign Shortlist tab read the same
+// rows for the campaign in context.
+model ShortlistItem {
+  id               String         @id @default(cuid())
+  campaignId       String
+  campaign         Campaign       @relation(fields: [campaignId], references: [id])
+  creatorProfileId String
+  creatorProfile   CreatorProfile @relation(fields: [creatorProfileId], references: [id])
+  createdAt        DateTime       @default(now())
+
+  @@unique([campaignId, creatorProfileId])
+  @@index([campaignId])
+  @@index([creatorProfileId])
 }
 
 // The ICP cards extracted during brand onboarding. A campaign carries up to

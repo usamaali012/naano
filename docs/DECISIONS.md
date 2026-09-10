@@ -164,9 +164,34 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   tsc's NodeNext CJS interop (`__exportStar` / `Object.defineProperty` getters),
   so importing `cpmCents` into the web bundle failed. The API keeps consuming
   `dist`. First real cross-app use of the shared CPM helper.
-- 2026-09-11 — Shortlist is client-only: `shortlistStore` (zustand `persist` →
-  localStorage `naano.shortlist`). No backend `Shortlist` model this slice; the
-  campaign-scoped shortlist (3.5) can revisit. Book and View profile both open
+- 2026-09-11 — Shortlist started client-only: `shortlistStore` (zustand
+  `persist` → localStorage `naano.shortlist`). Book and View profile both open
   a thin real `CreatorProfileModal` (backed by `GET /creators/:id`) so no card
-  control is a dead button; the full tabbed modal + booking rail stay in
-  2.9–2.13. `AppShell` rebuilt as the DESIGN §layout 72px icon rail.
+  control is a dead button. `AppShell` rebuilt as the DESIGN §layout 72px icon
+  rail.
+- 2026-09-11 — Shortlist moved server-side and **campaign-scoped**. New
+  `ShortlistItem` model (`@@unique([campaignId, creatorProfileId])`); routes
+  `GET|POST /campaigns/:id/shortlist` (POST idempotent via upsert), `DELETE
+  /.../:creatorId` (no-op if absent). New `CampaignsService.getActive()` (most
+  recent LIVE, else most recent of any status) is the one place "the active
+  campaign" is resolved — `CreatorsService` delegates to it for the no-campaign
+  ranking path, and `GET /campaigns/active` exposes it so the web keys the
+  shortlist to the same campaign without a campaign switcher. Chosen over a
+  brand-scoped shortlist because the marketplace and the campaign Shortlist tab
+  (3.5) must show the same rows. `shortlistStore` hydrates from the API on
+  marketplace mount and writes optimistically (reverts on failure). No
+  localStorage. `creators/mappers.ts` extracted so `ShortlistService` and
+  `CreatorsService` share `toMarketplaceCreator`.
+- 2026-09-11 — `prisma migrate reset` is local-only from here (CLAUDE.md); once
+  a remote DB exists, forward migrations only. The `campaign_shortlist`
+  migration is additive and applied without a reset — the reset that followed
+  was purely to reseed shortlist rows.
+- 2026-09-11 — Creator modal (2.9–2.11) is a two-column shell:
+  `CreatorProfileModal` (header + tabs) beside a persistent `BookingRail`
+  `<aside>`. `BookingRail` shows the single / bundle-of-5 radio (drives the
+  estimated CPM live), typical reach, posts analysed, the literal CPM formula,
+  and a "how booking works" summary — no "Collaborate" CTA and no `Booking`
+  write yet (2.13). Content tab is 2.12, so the modal ships with two tabs, not
+  three, rather than a placeholder tab. New `ui/Disclosure` primitive (styled
+  `<details>` + chevron) replaces raw `<details>` markers. `ReachSparkline` is
+  hand-rolled inline SVG — no charting dependency added.

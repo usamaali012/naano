@@ -99,46 +99,53 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   followers / median views / CPM / post cost. "View profile" is a plain link,
   no trailing arrow (DESIGN). Book and View profile both open the profile modal.
 
-- [x] **2.8 Shortlist** — done 2026-09-11.
+- [x] **2.8 Shortlist** — done 2026-09-11, moved to the API 2026-09-11.
   Scope: shortlist store, star toggle persists, Shortlist tab shows saved
   creators with count, empty state names the marketplace.
   Files: `apps/web/src/lib/stores/shortlistStore.ts`,
-  `apps/web/src/components/marketplace/*`, `apps/web/src/lib/api/*`.
-  Notes: `shortlistStore` is zustand + `persist` (localStorage key
-  `naano.shortlist`), no new dep. Star toggles on card and in the modal; a
-  multi-select bar over the grid bulk-adds selected creators. The Shortlist tab
-  fetches the catalogue at pageSize 100 and filters client-side (seed is 40).
-  The campaign-scoped shortlist (3.5) is a separate surface.
+  `apps/web/src/components/marketplace/*`, `apps/web/src/lib/api/*`,
+  `apps/api/src/shortlist/*`, `apps/api/src/campaigns/*`.
+  Notes: now server-backed and **campaign-scoped**, not localStorage. New
+  `ShortlistItem` model (unique per campaign+creator). Routes:
+  `GET|POST /campaigns/:id/shortlist`, `DELETE /.../:creatorId` (idempotent).
+  `GET /campaigns/active` resolves the campaign the marketplace is ranked for
+  (most recent LIVE, else most recent) — the shortlist keys to it. Store hydrates
+  from the API and writes optimistically. The campaign Shortlist tab (3.5) reads
+  the same rows. Star on card + modal; grid multi-select bulk-adds. Seed adds 13
+  entries across three campaigns.
 
-- [~] **2.9 Creator modal shell**
+- [~] **2.9 Creator modal shell** — 2 of 3 tabs + rail done 2026-09-11.
   Scope: modal primitive in use — header (avatar, name, "AI · Marketing ·
   LinkedIn creator", star, close), three tabs, persistent booking rail column.
   Opens from both "Book" and "View profile". Shadow allowed here (DESIGN §depth).
-  Files: `apps/web/src/components/marketplace/CreatorModal.tsx`,
-  `apps/web/src/routes/CreatorsListPage.tsx`.
-  Started 2026-09-11: `CreatorProfileModal.tsx` exists and opens from both Book
-  and View profile, backed by `GET /creators/:id` — header (initials, name,
-  role line, star, close), the four metrics, job-title + seniority segmented
-  bars with the real "estimated from N engagers" caption, single/bundle pricing
-  with the literal CPM formula, latest post + engagement row. Built so nothing
-  on the card is a dead button. Remaining for 2.9: the three-tab structure and
-  the persistent booking-rail column — evolve this file, don't restart. The
-  booking CTA + `Booking` write land with 2.13.
+  Files: `apps/web/src/components/marketplace/CreatorProfileModal.tsx`,
+  `apps/web/src/components/marketplace/modal/*`, `apps/web/src/components/ui/Disclosure.tsx`.
+  Done: two-column layout (tabbed content + persistent `BookingRail` aside),
+  header with role line / star / close, Overview + Audience tabs. `BookingRail`
+  has the single / bundle-of-5 radio (drives estimated CPM), typical reach,
+  posts analysed, the literal "how pricing is calculated" formula, and a
+  "how booking works" summary. Remaining for 2.9: the **Content tab** (that is
+  slice 2.12) and the "Collaborate with <name>" CTA + `Booking` write (slice
+  2.13). Modal role line avoids middle dots per DESIGN.
 
-- [ ] **2.10 Modal — Overview tab**
+- [x] **2.10 Modal — Overview tab** — done 2026-09-11.
   Scope: blurb, two check chips (% in observed audience, typical reach), audience
   snapshot (job title + seniority segmented bars, "Estimated from N recent public
   engagers" caption backed by `observedEngagerCount`), reach sparkline + one
   recent post card, professional-profile accordion.
   Files: `apps/web/src/components/marketplace/modal/OverviewTab.tsx`,
-  `apps/web/src/components/ui/SegmentedBar.tsx`,
-  `apps/web/src/components/marketplace/modal/ReachSparkline.tsx`.
+  `apps/web/src/components/marketplace/modal/ReachSparkline.tsx`,
+  `apps/web/src/components/marketplace/modal/audienceSegments.ts`.
+  Notes: `ReachSparkline` is a token-only inline SVG (no chart dep). Recent-post
+  card collapses newlines for the 3-line clamp, expands on "See full post".
 
-- [ ] **2.11 Modal — Audience tab**
+- [x] **2.11 Modal — Audience tab** — done 2026-09-11.
   Scope: four dimension cards (job title, seniority, industry, geography), each a
   stacked bar with four labelled percentages summing to 100. Caption backed by
   `observedEngagerCount`. "See the full audience · N signals" expander.
   Files: `apps/web/src/components/marketplace/modal/AudienceTab.tsx`.
+  Notes: uses the shared `SegmentedBar` primitive and the new `Disclosure`
+  primitive (native `<details>` with the browser marker swapped for a chevron).
 
 - [ ] **2.12 Modal — Content tab**
   Scope: content signals column (topic chips, latest post date, posts observed in
@@ -287,6 +294,30 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-11 — Shortlist moved to the API (campaign-scoped) + modal slices
+  2.9(partial)/2.10/2.11. For the next session:
+  - **Shortlist is server state now.** `ShortlistItem` model, `GET /campaigns/active`
+    + `GET|POST|DELETE /campaigns/:id/shortlist`. `CampaignsService.getActive()`
+    is the single source for "the active campaign" — `CreatorsService` now
+    delegates to it (CreatorsModule imports CampaignsModule). `shortlistStore`
+    holds `{campaignId, ids, status}`, hydrates once from
+    `CreatorsListPage` mount, writes optimistically. localStorage/`persist` is
+    gone.
+  - **API mappers.** `apps/api/src/creators/mappers.ts` now owns
+    `toCreatorProfile` / `toMarketplaceCreator`, shared by CreatorsService and
+    ShortlistService.
+  - **Modal.** `CreatorProfileModal` is the two-column shell (tabbed content +
+    persistent `BookingRail`). Only Overview + Audience tabs exist — **Content
+    tab is slice 2.12**, add it as a third `Tabs` item + `modal/ContentTab.tsx`.
+    The "Collaborate with <name>" CTA and the `Booking` write are **2.13**; the
+    rail deliberately has no CTA yet. `modal/audienceSegments.ts` has the
+    dimension-filter helper both tabs use.
+  - **New primitive.** `components/ui/Disclosure.tsx` (styled `<details>` with a
+    chevron) — use it for any new accordion instead of a raw `<details>`.
+  - **prisma reset** is still fine locally (no remote DB), but the new CLAUDE.md
+    rule: once a remote exists it's forward-migrations-only. The
+    `campaign_shortlist` migration is additive (applied without a reset); the
+    reset afterwards was only to reseed shortlist rows.
 - 2026-09-11 — Slices 2.4, 2.7, 2.8 done + 2.9 started; `Campaign.targetVertical`
   added ahead of the card so the ICP fit badge shows a real number. Key points
   for the next session:

@@ -9,25 +9,26 @@ import { CreatorsPagination } from "../components/marketplace/CreatorsPagination
 import { CreatorProfileModal } from "../components/marketplace/CreatorProfileModal";
 import { Button } from "../components/ui/Button";
 
-// The shortlist tab filters the full catalogue client-side, so fetch as much of
-// it as the list endpoint allows in one page (pageSize is capped at 100). The
-// seed catalogue is ~40 rows, well inside that.
-const SHORTLIST_FETCH_SIZE = 100;
-
 export function CreatorsListPage(): JSX.Element {
   const { page, pageSize, sort, q, tab, setPage, setSort, setQuery, setTab } =
     useCreatorsStore();
 
   const shortlistIds = useShortlistStore((state) => state.ids);
+  const shortlistCampaignId = useShortlistStore((state) => state.campaignId);
+  const hydrateShortlist = useShortlistStore((state) => state.hydrate);
   const toggleShortlist = useShortlistStore((state) => state.toggle);
   const addToShortlist = useShortlistStore((state) => state.add);
   const shortlistSet = useMemo(() => new Set(shortlistIds), [shortlistIds]);
 
   const [creators, setCreators] = useState<MarketplaceCreator[]>([]);
-  const [total, setTotal] = useState(0);
+  const [allTotal, setAllTotal] = useState(0);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [openCreatorId, setOpenCreatorId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void hydrateShortlist();
+  }, [hydrateShortlist]);
 
   // Debounce the search box so typing does not fire a request per keystroke.
   const [queryInput, setQueryInput] = useState(q);
@@ -41,17 +42,18 @@ export function CreatorsListPage(): JSX.Element {
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
-    api
-      .listCreators({
-        page: onShortlistTab ? 1 : page,
-        pageSize: onShortlistTab ? SHORTLIST_FETCH_SIZE : pageSize,
-        sort,
-        q: q || undefined,
-      })
+
+    const request = onShortlistTab
+      ? shortlistCampaignId
+        ? api.listShortlist(shortlistCampaignId, { pageSize: 100 })
+        : Promise.resolve({ items: [], total: 0, page: 1, pageSize: 100 })
+      : api.listCreators({ page, pageSize, sort, q: q || undefined });
+
+    request
       .then((result) => {
         if (cancelled) return;
         setCreators(result.items);
-        setTotal(result.total);
+        if (!onShortlistTab) setAllTotal(result.total);
         setStatus("ready");
       })
       .catch(() => {
@@ -61,8 +63,9 @@ export function CreatorsListPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [onShortlistTab, page, pageSize, sort, q]);
+  }, [onShortlistTab, shortlistCampaignId, page, pageSize, sort, q]);
 
+  // On the shortlist tab, drop rows the moment they are un-starred (optimistic).
   const displayed = onShortlistTab
     ? creators.filter((creator) => shortlistSet.has(creator.id))
     : creators;
@@ -77,14 +80,14 @@ export function CreatorsListPage(): JSX.Element {
   }
 
   function shortlistSelected(): void {
-    addToShortlist([...selectedIds]);
+    void addToShortlist([...selectedIds]);
     setSelectedIds(new Set());
   }
 
   return (
     <div className="flex flex-col gap-s6">
       <MarketplaceHeader
-        totalCount={total}
+        totalCount={allTotal}
         shortlistCount={shortlistIds.length}
         tab={tab}
         onTabChange={(next) => {
@@ -150,7 +153,7 @@ export function CreatorsListPage(): JSX.Element {
                 <CreatorsPagination
                   page={page}
                   pageSize={pageSize}
-                  total={total}
+                  total={allTotal}
                   onPageChange={setPage}
                 />
               )}

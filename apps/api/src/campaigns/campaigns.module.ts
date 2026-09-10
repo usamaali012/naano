@@ -1,6 +1,12 @@
 import { Module } from "@nestjs/common";
+import { CampaignsController } from "./campaigns.controller";
+import { CampaignsService } from "./campaigns.service";
 
-// Empty, wired stub. CRUD, brief, and status transitions land once the brief
-// defines the campaign flow. See docs/MAP.md.
-@Module({})
+// Only the "active campaign" lookup for now — the marketplace and the shortlist
+// both need it. Full CRUD, brief, and status transitions land with slice 3.1.
+@Module({
+  controllers: [CampaignsController],
+  providers: [CampaignsService],
+  exports: [CampaignsService],
+})
 export class CampaignsModule {}

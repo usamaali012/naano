@@ -2,7 +2,7 @@
 // per-endpoint request/response contracts shared by the API and the web client.
 
 import type { AudienceSegment, CreatorPost, CreatorProfile } from "./entities";
-import type { Vertical } from "./enums";
+import type { CampaignStatus, Vertical } from "./enums";
 
 export interface Paginated<T> {
   items: T[];
@@ -68,4 +68,23 @@ export interface MarketplaceCreator extends CreatorProfile {
 export interface CreatorProfileDetail extends CreatorProfile {
   audienceSegments: AudienceSegment[];
   posts: CreatorPost[];
+}
+
+// --- Campaigns / shortlist ---------------------------------------------------
+
+/**
+ * GET /campaigns/active — the campaign the marketplace is ranked for and the
+ * shortlist is keyed to. The most recent live campaign, or the most recent
+ * campaign of any status if none are live.
+ */
+export interface CampaignSummary {
+  id: string;
+  name: string;
+  status: CampaignStatus;
+  targetVertical: Vertical;
+}
+
+/** Body of POST /campaigns/:campaignId/shortlist. */
+export interface AddToShortlistBody {
+  creatorProfileId: string;
 }

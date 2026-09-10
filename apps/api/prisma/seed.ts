@@ -950,6 +950,28 @@ async function main(): Promise<void> {
   }
   await prisma.clickEvent.createMany({ data: clickEventData });
 
+  // --- Shortlist --------------------------------------------------------------
+  // A campaign-scoped shortlist so the marketplace Shortlist tab has content.
+  // Favour creators whose vertical matches the campaign's target, so the saved
+  // set looks like a considered pick rather than a random grab.
+  const shortlistData: { campaignId: string; creatorProfileId: string }[] = [];
+  const shortlistPlan: [string, Vertical, number][] = [
+    [fintechCampaign.id, Vertical.FINTECH, 6],
+    [devtoolsCampaign.id, Vertical.DEVTOOLS, 4],
+    [draftCampaign.id, Vertical.REVOPS, 3],
+  ];
+  for (const [campaignId, preferVertical, count] of shortlistPlan) {
+    const ranked = [...creatorRows].sort((a, b) => {
+      const aMatch = a.vertical === preferVertical ? 0 : 1;
+      const bMatch = b.vertical === preferVertical ? 0 : 1;
+      return aMatch - bMatch || a.index - b.index;
+    });
+    for (const creator of ranked.slice(0, count)) {
+      shortlistData.push({ campaignId, creatorProfileId: creator.profileId });
+    }
+  }
+  await prisma.shortlistItem.createMany({ data: shortlistData });
+
   console.log(
     [
       `Seeded:`,
@@ -962,6 +984,7 @@ async function main(): Promise<void> {
       `${engagerTotal.toLocaleString("en-US")} engaged profiles`,
       `${impressionTotal.toLocaleString("en-US")} total impressions`,
       `${clickEventData.length} click events`,
+      `${shortlistData.length} shortlist entries`,
     ].join(" · "),
   );
 }

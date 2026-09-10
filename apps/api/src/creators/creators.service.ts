@@ -8,7 +8,6 @@ import type {
 import type {
   AudienceSegment,
   CreatorPost,
-  CreatorProfile,
   CreatorProfileDetail,
   CreatorSort,
   ListCreatorsParams,
@@ -17,7 +16,9 @@ import type {
 } from "@naano/shared";
 import { cpmEur } from "@naano/shared";
 import { PrismaService } from "../prisma/prisma.service";
+import { CampaignsService } from "../campaigns/campaigns.service";
 import { bestMatchOrder } from "./ranking";
+import { toCreatorProfile, toMarketplaceCreator } from "./mappers";
 import { scoreAudienceFit, type AudienceFitCampaign } from "./audience-fit";
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -33,28 +34,6 @@ function range(min?: number, max?: number): Prisma.IntFilter | undefined {
   if (min != null) filter.gte = min;
   if (max != null) filter.lte = max;
   return filter;
-}
-
-function toCreatorProfile(row: PrismaCreatorProfile): CreatorProfile {
-  return {
-    id: row.id,
-    userId: row.userId,
-    displayName: row.displayName,
-    headline: row.headline,
-    avatarUrl: row.avatarUrl,
-    vertical: row.vertical,
-    network: row.network,
-    followerCount: row.followerCount,
-    country: row.country,
-    language: row.language,
-    postCostCents: row.postCostCents,
-    bundle5PriceCents: row.bundle5PriceCents,
-    medianViews: row.medianViews,
-    observedEngagerCount: row.observedEngagerCount,
-    postsAnalyzed: row.postsAnalyzed,
-    engagementRate: row.engagementRate,
-    createdAt: row.createdAt.toISOString(),
-  };
 }
 
 function toAudienceSegment(row: PrismaAudienceSegment): AudienceSegment {
@@ -96,7 +75,10 @@ const COLUMN_SORTS: Record<
 
 @Injectable()
 export class CreatorsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly campaigns: CampaignsService,
+  ) {}
 
   async list(params: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>> {
     const page = params.page ?? 1;
@@ -168,20 +150,17 @@ export class CreatorsService {
 
     const total = rows.length;
     const start = (page - 1) * pageSize;
-    const items: MarketplaceCreator[] = rows
+    const items = rows
       .slice(start, start + pageSize)
-      .map((row) => ({
-        ...toCreatorProfile(row),
-        icpFitPct: fitById?.get(row.id) ?? null,
-      }));
+      .map((row) => toMarketplaceCreator(row, fitById?.get(row.id) ?? null));
 
     return { items, total, page, pageSize };
   }
 
   /**
    * The buyer vertical the marketplace ranks against. An explicit `campaignId`
-   * must exist (404 otherwise); with none supplied, fall back to the most
-   * recent live campaign, and to null when the brand has no campaigns yet.
+   * must exist (404 otherwise); with none supplied, use the active campaign,
+   * and null when the brand has no campaigns yet.
    */
   private async resolveTargetVertical(
     campaignId?: string,
@@ -196,11 +175,7 @@ export class CreatorsService {
       }
       return campaign.targetVertical;
     }
-    const active = await this.prisma.campaign.findFirst({
-      where: { status: "LIVE" },
-      orderBy: { createdAt: "desc" },
-      select: { targetVertical: true },
-    });
+    const active = await this.campaigns.getActive();
     return active?.targetVertical ?? null;
   }
 

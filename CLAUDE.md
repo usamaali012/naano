@@ -61,3 +61,6 @@ components.
   more than adding it.
 - Seed data must be realistic. Use the figures in `docs/PRODUCT.md`, not
   lorem ipsum. A demo with believable numbers reads as finished.
+- `prisma migrate reset` runs against local development databases only, never
+  against anything else. Once a remote (staging/prod) database exists, changes
+  to it are forward migrations only — no reset, no dropping data.

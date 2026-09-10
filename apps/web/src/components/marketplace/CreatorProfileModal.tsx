@@ -1,17 +1,13 @@
 import { useEffect, useState } from "react";
-import type { AudienceDimension, CreatorProfileDetail } from "@naano/shared";
-import { cpmCents } from "@naano/shared";
+import type { CreatorProfileDetail } from "@naano/shared";
 import { Modal } from "../ui/Modal";
-import { Badge } from "../ui/Badge";
-import { SegmentedBar } from "../ui/SegmentedBar";
+import { Tabs } from "../ui/Tabs";
 import { StarIcon } from "./icons";
+import { OverviewTab } from "./modal/OverviewTab";
+import { AudienceTab } from "./modal/AudienceTab";
+import { BookingRail } from "./modal/BookingRail";
 import { api } from "../../lib/api";
-import {
-  formatCents,
-  formatCompactNumber,
-  formatCpm,
-  verticalLabel,
-} from "../../lib/format";
+import { verticalLabel } from "../../lib/format";
 
 interface CreatorProfileModalProps {
   creatorId: string | null;
@@ -20,18 +16,14 @@ interface CreatorProfileModalProps {
   onToggleShortlist: (id: string) => void;
 }
 
+type ModalTab = "overview" | "audience";
+
 function initials(name: string): string {
   return name
     .split(/\s+/)
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
-}
-
-function segments(detail: CreatorProfileDetail, dimension: AudienceDimension) {
-  return detail.audienceSegments
-    .filter((segment) => segment.dimension === dimension)
-    .map((segment) => ({ label: segment.label, percentage: segment.percentage }));
 }
 
 export function CreatorProfileModal({
@@ -42,12 +34,14 @@ export function CreatorProfileModal({
 }: CreatorProfileModalProps): JSX.Element {
   const [detail, setDetail] = useState<CreatorProfileDetail | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [tab, setTab] = useState<ModalTab>("overview");
 
   useEffect(() => {
     if (!creatorId) return;
     let cancelled = false;
     setStatus("loading");
     setDetail(null);
+    setTab("overview");
     api
       .getCreator(creatorId)
       .then((result) => {
@@ -63,27 +57,29 @@ export function CreatorProfileModal({
     };
   }, [creatorId]);
 
-  const latestPost = detail?.posts[0];
-  const cpm = detail ? cpmCents(detail.postCostCents, detail.medianViews) : 0;
+  const roleLine = detail
+    ? `${verticalLabel(detail.vertical)} creator on ${
+        detail.network === "LINKEDIN" ? "LinkedIn" : "X"
+      }`
+    : "";
 
   return (
-    <Modal open={creatorId !== null} onClose={onClose} labelledBy="creator-profile-name">
-      <div className="flex items-start justify-between gap-s4 border-b border-border p-s6">
+    <Modal
+      open={creatorId !== null}
+      onClose={onClose}
+      labelledBy="creator-profile-name"
+      className="flex max-h-[calc(100vh-3rem)] !max-w-[1080px] flex-col overflow-hidden"
+    >
+      <header className="flex shrink-0 items-start justify-between gap-s4 border-b border-border p-s6">
         <div className="flex items-center gap-s4">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-card-title text-primary">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary-soft text-card-title text-primary">
             {detail ? initials(detail.displayName) : "—"}
           </span>
           <div>
             <h2 id="creator-profile-name" className="text-section-title text-text">
               {detail?.displayName ?? "Loading profile"}
             </h2>
-            <p className="text-label text-text-muted">
-              {detail
-                ? `${verticalLabel(detail.vertical)} creator on ${
-                    detail.network === "LINKEDIN" ? "LinkedIn" : "X"
-                  }`
-                : ""}
-            </p>
+            <p className="text-label text-text-muted">{roleLine}</p>
           </div>
         </div>
         <div className="flex items-center gap-s2">
@@ -116,7 +112,7 @@ export function CreatorProfileModal({
             </svg>
           </button>
         </div>
-      </div>
+      </header>
 
       {status === "loading" && (
         <p className="p-s6 text-body text-text-muted">Loading profile…</p>
@@ -128,100 +124,30 @@ export function CreatorProfileModal({
       )}
 
       {status === "ready" && detail && (
-        <div className="flex flex-col gap-s6 p-s6">
-          <div className="flex items-center justify-between gap-s3">
-            <p className="text-body text-text-muted">
-              Review this creator&rsquo;s audience and recent content before booking.
-            </p>
-            {/* ICP fit is a marketplace-list value; the detail endpoint does not
-                carry it, so it is not shown here. */}
+        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="shrink-0 px-s6">
+              <Tabs
+                value={tab}
+                onChange={(value) => setTab(value as ModalTab)}
+                items={[
+                  { value: "overview", label: "Overview" },
+                  { value: "audience", label: "Audience" },
+                ]}
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto p-s6">
+              {tab === "overview" ? (
+                <OverviewTab creator={detail} />
+              ) : (
+                <AudienceTab creator={detail} />
+              )}
+            </div>
           </div>
 
-          <dl className="grid grid-cols-2 gap-s4 sm:grid-cols-4">
-            {[
-              ["Followers", formatCompactNumber(detail.followerCount)],
-              ["Median views", formatCompactNumber(detail.medianViews)],
-              ["CPM", formatCpm(detail.postCostCents, detail.medianViews)],
-              ["Post cost", formatCents(detail.postCostCents)],
-            ].map(([label, value]) => (
-              <div key={label} className="flex flex-col gap-s1">
-                <dd className="text-metric tabular-nums text-text">{value}</dd>
-                <dt className="text-label text-text-muted">{label}</dt>
-              </div>
-            ))}
-          </dl>
-
-          <section className="flex flex-col gap-s4">
-            <div className="flex items-baseline justify-between gap-s3">
-              <h3 className="text-card-title text-text">Audience snapshot</h3>
-              <span className="text-label text-text-muted">
-                Estimated from {detail.observedEngagerCount} recent public engagers
-              </span>
-            </div>
-            <div className="grid gap-s6 sm:grid-cols-2">
-              <div className="flex flex-col gap-s3">
-                <span className="text-label text-text-muted">Job title</span>
-                <SegmentedBar segments={segments(detail, "JOB_TITLE")} />
-              </div>
-              <div className="flex flex-col gap-s3">
-                <span className="text-label text-text-muted">Seniority</span>
-                <SegmentedBar segments={segments(detail, "SENIORITY")} />
-              </div>
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-s3">
-            <h3 className="text-card-title text-text">Pricing</h3>
-            <div className="flex flex-wrap gap-s3">
-              <div className="rounded-control border border-border px-s4 py-s3">
-                <div className="text-metric tabular-nums text-text">
-                  {formatCents(detail.postCostCents)}
-                </div>
-                <div className="text-label text-text-muted">Single post</div>
-              </div>
-              <div className="rounded-control border border-border px-s4 py-s3">
-                <div className="text-metric tabular-nums text-text">
-                  {formatCents(detail.bundle5PriceCents)}
-                </div>
-                <div className="text-label text-text-muted">Bundle of 5</div>
-              </div>
-            </div>
-            {cpm > 0 && (
-              <p className="text-label text-text-muted">
-                How CPM is calculated: {formatCents(detail.postCostCents)} ÷{" "}
-                {formatCompactNumber(detail.medianViews)} median views × 1,000 ={" "}
-                {formatCents(cpm)}.
-              </p>
-            )}
-          </section>
-
-          {latestPost && (
-            <section className="flex flex-col gap-s3">
-              <div className="flex items-baseline justify-between gap-s3">
-                <h3 className="text-card-title text-text">Latest post</h3>
-                <a
-                  href={latestPost.externalUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-label font-medium text-primary"
-                >
-                  Open original
-                </a>
-              </div>
-              <p className="whitespace-pre-line text-body text-text">
-                {latestPost.content}
-              </p>
-              <div className="flex flex-wrap gap-s4 text-label tabular-nums text-text-muted">
-                <span>{formatCompactNumber(latestPost.views)} views</span>
-                <span>{formatCompactNumber(latestPost.reactions)} reactions</span>
-                <span>{formatCompactNumber(latestPost.comments)} comments</span>
-                <span>{formatCompactNumber(latestPost.reposts)} reposts</span>
-              </div>
-              <p className="text-label text-text-muted">
-                {detail.postsAnalyzed} recent posts analysed for these signals.
-              </p>
-            </section>
-          )}
+          <aside className="shrink-0 overflow-y-auto border-t border-border bg-bg p-s6 lg:w-[320px] lg:border-l lg:border-t-0">
+            <BookingRail creator={detail} />
+          </aside>
         </div>
       )}
     </Modal>

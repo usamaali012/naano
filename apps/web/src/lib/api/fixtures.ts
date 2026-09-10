@@ -1,12 +1,34 @@
 import type {
   AudienceSegment,
+  CampaignSummary,
   CreatorPost,
   CreatorProfileDetail,
   ListCreatorsParams,
   MarketplaceCreator,
+  PageParams,
   Paginated,
 } from "@naano/shared";
 import type { ApiClient } from "./client";
+
+const FIXTURE_CAMPAIGN: CampaignSummary = {
+  id: "fixture-campaign-1",
+  name: "Fintech Trust Campaign",
+  status: "LIVE",
+  targetVertical: "FINTECH",
+};
+
+// Per-campaign shortlist, in memory for the session.
+const fixtureShortlist = new Map<string, Set<string>>([
+  ["fixture-campaign-1", new Set(["fixture-3"])],
+]);
+function shortlistSet(campaignId: string): Set<string> {
+  let set = fixtureShortlist.get(campaignId);
+  if (!set) {
+    set = new Set();
+    fixtureShortlist.set(campaignId, set);
+  }
+  return set;
+}
 
 // Static stand-in for the API — the hedge in CLAUDE.md. Same shape as the live
 // payload so swapping VITE_API_MODE is the only change. Figures follow the
@@ -224,5 +246,43 @@ export const fixturesClient: ApiClient = {
     detail.audienceSegments = segmentsFor(detail);
     detail.posts = postsFor(detail);
     return detail;
+  },
+
+  async getActiveCampaign(): Promise<CampaignSummary> {
+    return FIXTURE_CAMPAIGN;
+  },
+
+  async listShortlist(
+    campaignId: string,
+    params?: PageParams,
+  ): Promise<Paginated<MarketplaceCreator>> {
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
+    const ids = shortlistSet(campaignId);
+    const rows = FIXTURE_CREATORS.filter((c) => ids.has(c.id));
+    const start = (page - 1) * pageSize;
+    return {
+      items: rows.slice(start, start + pageSize),
+      total: rows.length,
+      page,
+      pageSize,
+    };
+  },
+
+  async addToShortlist(
+    campaignId: string,
+    creatorProfileId: string,
+  ): Promise<MarketplaceCreator> {
+    const creator = FIXTURE_CREATORS.find((c) => c.id === creatorProfileId);
+    if (!creator) throw new Error(`fixture creator ${creatorProfileId} not found`);
+    shortlistSet(campaignId).add(creatorProfileId);
+    return creator;
+  },
+
+  async removeFromShortlist(
+    campaignId: string,
+    creatorProfileId: string,
+  ): Promise<void> {
+    shortlistSet(campaignId).delete(creatorProfileId);
   },
 };
