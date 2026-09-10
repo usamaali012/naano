@@ -7,3 +7,6 @@ build/
 *.log
 .DS_Store
 apps/web/.vite/
+
+# capture hook bookkeeping (derived state; the logs themselves are in .agent-logs/ and ARE committed)
+.claude/hooks/.state/
