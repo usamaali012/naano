@@ -6,17 +6,19 @@
 # args (Railway passes service variables as build args). If VITE_API_URL ever
 # changes, this image MUST be rebuilt — a restart/redeploy keeps the old baked-in
 # value. See docs/DECISIONS.md, Session B.
+#
+# Single stage, install-after-source (same fix as apps/api/Dockerfile): the
+# @naano/shared workspace symlink is position/content-dependent on npm ci
+# running with the real source already in place, not just its package.json.
 
 FROM node:20-alpine AS build
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
-COPY apps/web/package.json apps/web/package.json
-COPY packages/shared/package.json packages/shared/package.json
-RUN npm ci
-COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
+COPY packages/shared ./packages/shared
+RUN npm ci
 RUN npm run build --workspace=packages/shared
 
 ARG VITE_API_URL
