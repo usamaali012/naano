@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm -v)",
+      "Bash(npx -v)",
+      "Bash(cd \"/c/Usama Personal/projects/naano\" && mkdir -p apps/api/prisma apps/api/src/prisma apps/api/src/auth apps/api/src/creators apps/api/src/campaigns apps/api/src/bookings apps/api/src/tracking apps/api/src/analytics apps/web/src/lib/api apps/web/src/lib/stores apps/web/src/routes apps/web/src/components/ui apps/web/src/components/marketplace apps/web/src/components/campaign apps/web/src/components/dashboard apps/web/public packages/shared/src && find . -maxdepth 4 -not -path '*/node_modules/*' -not -path '*/.git/*' -type d | sort)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/capture.mjs\" prompt"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/capture.mjs\" stop"
+          }
+        ]
+      }
+    ]
+  }
+}

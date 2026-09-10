@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  COMPANY
+  CREATOR
+  ADMIN
+}
+
+enum Vertical {
+  SALES
+  REVOPS
+  DEVTOOLS
+  HR_TECH
+  PRODUCT
+  MARKETING_OPS
+  FINTECH
+  VERTICAL_SAAS
+}
+
+enum CampaignStatus {
+  DRAFT
+  LIVE
+  COMPLETED
+}
+
+enum BookingStatus {
+  INVITED
+  ACCEPTED
+  DECLINED
+  DRAFT_READY
+  SCHEDULED
+  LIVE
+  PAID
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      Role
+  createdAt DateTime @default(now())
+
+  company        Company?
+  creatorProfile CreatorProfile?
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  name      String
+  website   String?
+  logoUrl   String?
+  createdAt DateTime @default(now())
+
+  campaigns Campaign[]
+}
+
+model CreatorProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id])
+  displayName        String
+  headline           String
+  avatarUrl          String?
+  vertical           Vertical
+  followerCount      Int
+  country            String
+  language            String
+  pricePerPostCents  Int
+  avgImpressions     Int
+  engagementRate     Float
+  createdAt          DateTime @default(now())
+
+  bookings Booking[]
+
+  @@index([vertical])
+  @@index([country])
+}
+
+model Campaign {
+  id              String         @id @default(cuid())
+  companyId       String
+  company         Company        @relation(fields: [companyId], references: [id])
+  name            String
+  objective       String
+  brief           String
+  keyMessages     String
+  guidelines      String
+  destinationUrl  String
+  budgetCents     Int
+  status          CampaignStatus @default(DRAFT)
+  startDate       DateTime?
+  endDate         DateTime?
+  createdAt       DateTime       @default(now())
+
+  bookings Booking[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model Booking {
+  id                String        @id @default(cuid())
+  campaignId        String
+  campaign          Campaign      @relation(fields: [campaignId], references: [id])
+  creatorProfileId  String
+  creatorProfile    CreatorProfile @relation(fields: [creatorProfileId], references: [id])
+  agreedPriceCents  Int
+  status            BookingStatus @default(INVITED)
+  deliverable       String
+  deadline          DateTime?
+  createdAt         DateTime      @default(now())
+
+  post        Post?
+  trackedLink TrackedLink?
+  payout      Payout?
+
+  @@index([campaignId])
+  @@index([creatorProfileId])
+  @@index([status])
+}
+
+model Post {
+  id            String    @id @default(cuid())
+  bookingId     String    @unique
+  booking       Booking   @relation(fields: [bookingId], references: [id])
+  linkedinUrl   String?
+  content       String
+  publishedAt   DateTime?
+  impressions   Int       @default(0)
+}
+
+model TrackedLink {
+  id              String   @id @default(cuid())
+  bookingId       String   @unique
+  booking         Booking  @relation(fields: [bookingId], references: [id])
+  slug            String   @unique
+  destinationUrl  String
+  createdAt       DateTime @default(now())
+
+  clickEvents ClickEvent[]
+
+  @@index([slug])
+}
+
+model ClickEvent {
+  id             String      @id @default(cuid())
+  trackedLinkId  String
+  trackedLink    TrackedLink @relation(fields: [trackedLinkId], references: [id])
+  createdAt      DateTime    @default(now())
+  referrer       String?
+  userAgent      String?
+  ipHash         String
+  isLead         Boolean     @default(false)
+
+  @@index([trackedLinkId])
+  @@index([createdAt])
+}
+
+model Payout {
+  id          String       @id @default(cuid())
+  bookingId   String       @unique
+  booking     Booking      @relation(fields: [bookingId], references: [id])
+  amountCents Int
+  status      PayoutStatus @default(PENDING)
+  paidAt      DateTime?
+
+  @@index([status])
+}

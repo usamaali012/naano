@@ -1,0 +1,7 @@
+{
+  "author": "usamaalichi",
+  "project": "naano-rebuild",
+  "tool": "claude-code",
+  "default_model": "claude-sonnet-5",
+  "_note": "author should be your GitHub handle. Best guess from your email local-part; correct it if wrong."
+}
