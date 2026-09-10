@@ -1,7 +1,10 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
 
 // A native <details> with the default marker replaced by a chevron that rotates
 // on open. Motion is the accordion response the design rules allow. Token-only.
+// `open` is tracked in state so a parent re-render (e.g. changing a price
+// radio) never snaps it shut and the body always reflects current props.
 interface DisclosureProps {
   summary: ReactNode;
   children: ReactNode;
@@ -15,9 +18,11 @@ export function Disclosure({
   defaultOpen = false,
   className = "",
 }: DisclosureProps): JSX.Element {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <details
-      open={defaultOpen}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
       className={`group [&_summary::-webkit-details-marker]:hidden ${className}`}
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-s3 text-card-title text-text">

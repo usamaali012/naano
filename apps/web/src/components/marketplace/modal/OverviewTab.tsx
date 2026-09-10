@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import type { CreatorProfileDetail } from "@naano/shared";
+import { Avatar } from "../../ui/Avatar";
 import { SegmentedBar } from "../../ui/SegmentedBar";
 import { Disclosure } from "../../ui/Disclosure";
 import { ReachSparkline } from "./ReachSparkline";
@@ -13,14 +14,6 @@ import {
 
 interface OverviewTabProps {
   creator: CreatorProfileDetail;
-}
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
 }
 
 function CheckChip({ children }: { children: ReactNode }): JSX.Element {
@@ -95,9 +88,12 @@ export function OverviewTab({ creator }: OverviewTabProps): JSX.Element {
           {recentPost && (
             <div className="flex flex-col gap-s3 rounded-card border border-border p-s4">
               <div className="flex items-center gap-s3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-label text-primary">
-                  {initials(creator.displayName)}
-                </span>
+                <Avatar
+                  src={creator.avatarUrl}
+                  name={creator.displayName}
+                  className="h-9 w-9"
+                  initialsClassName="text-label"
+                />
                 <div className="min-w-0">
                   <p className="text-body font-medium text-text">
                     {creator.displayName}

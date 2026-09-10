@@ -23,6 +23,7 @@ export function CreatorsListPage(): JSX.Element {
   const [creators, setCreators] = useState<MarketplaceCreator[]>([]);
   const [allTotal, setAllTotal] = useState(0);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [reloadKey, setReloadKey] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [openCreatorId, setOpenCreatorId] = useState<string | null>(null);
 
@@ -63,7 +64,12 @@ export function CreatorsListPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [onShortlistTab, shortlistCampaignId, page, pageSize, sort, q]);
+  }, [onShortlistTab, shortlistCampaignId, page, pageSize, sort, q, reloadKey]);
+
+  function retry(): void {
+    void hydrateShortlist();
+    setReloadKey((key) => key + 1);
+  }
 
   // On the shortlist tab, drop rows the moment they are un-starred (optimistic).
   const displayed = onShortlistTab
@@ -101,12 +107,25 @@ export function CreatorsListPage(): JSX.Element {
       />
 
       {status === "loading" && (
-        <p className="text-body text-text-muted">Loading creators…</p>
+        <div className="rounded-card border border-border bg-surface p-s8 text-body text-text-muted">
+          Loading creators…
+        </div>
       )}
       {status === "error" && (
-        <p className="text-body text-warn">
-          Could not load creators. Check that the API is running.
-        </p>
+        <div className="flex flex-col items-start gap-s3 rounded-card border border-border bg-surface p-s8">
+          <div className="flex flex-col gap-s1">
+            <p className="text-card-title text-text">
+              The marketplace didn&rsquo;t load
+            </p>
+            <p className="text-body text-text-muted">
+              That is usually a brief drop in the connection. Try again in a
+              moment.
+            </p>
+          </div>
+          <Button size="sm" onClick={retry}>
+            Try again
+          </Button>
+        </div>
       )}
 
       {status === "ready" && (

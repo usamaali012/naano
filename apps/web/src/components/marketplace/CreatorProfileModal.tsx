@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CreatorProfileDetail } from "@naano/shared";
+import { Avatar } from "../ui/Avatar";
 import { Modal } from "../ui/Modal";
 import { Tabs } from "../ui/Tabs";
 import { StarIcon } from "./icons";
@@ -17,14 +18,6 @@ interface CreatorProfileModalProps {
 }
 
 type ModalTab = "overview" | "audience";
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-}
 
 export function CreatorProfileModal({
   creatorId,
@@ -72,9 +65,11 @@ export function CreatorProfileModal({
     >
       <header className="flex shrink-0 items-start justify-between gap-s4 border-b border-border p-s6">
         <div className="flex items-center gap-s4">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary-soft text-card-title text-primary">
-            {detail ? initials(detail.displayName) : "—"}
-          </span>
+          <Avatar
+            src={detail?.avatarUrl ?? null}
+            name={detail?.displayName ?? "—"}
+            className="h-12 w-12"
+          />
           <div>
             <h2 id="creator-profile-name" className="text-section-title text-text">
               {detail?.displayName ?? "Loading profile"}

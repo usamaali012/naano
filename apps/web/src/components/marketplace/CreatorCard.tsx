@@ -1,4 +1,5 @@
 import type { MarketplaceCreator } from "@naano/shared";
+import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -18,14 +19,6 @@ interface CreatorCardProps {
   shortlisted: boolean;
   onToggleShortlist: (id: string) => void;
   onOpen: (id: string) => void;
-}
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
 }
 
 interface Metric {
@@ -83,9 +76,11 @@ export function CreatorCard({
 
       <div className="flex flex-1 flex-col gap-s4 border-t border-border px-s4 pb-s4 pt-s4">
         <div className="flex items-center gap-s3">
-          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary-soft text-card-title text-primary">
-            {initials(creator.displayName)}
-          </span>
+          <Avatar
+            src={creator.avatarUrl}
+            name={creator.displayName}
+            className="h-14 w-14"
+          />
           <div>
             <h3 className="text-card-title text-text">{creator.displayName}</h3>
             <p className="mt-s1 text-label text-text-muted">

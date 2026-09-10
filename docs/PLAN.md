@@ -94,10 +94,11 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   `apps/web/src/lib/format.ts`.
   Notes: carries the ICP fit badge (real per-(creator, campaign) %, top row next
   to Book). The RECON "cloud-image header band" was dropped — no asset, and a
-  flat colour block read as a placeholder against the anti-slop rules; the
-  avatar is a soft-tint initials circle instead. Metric order is exactly
-  followers / median views / CPM / post cost. "View profile" is a plain link,
-  no trailing arrow (DESIGN). Book and View profile both open the profile modal.
+  flat colour block read as a placeholder against the anti-slop rules. The
+  avatar is a real photo (`ui/Avatar`, seeded `avatarUrl`); initials are the
+  fallback for a failed image load. Metric order is exactly followers / median
+  views / CPM / post cost. "View profile" is a plain link, no trailing arrow
+  (DESIGN). Book and View profile both open the profile modal.
 
 - [x] **2.8 Shortlist** — done 2026-09-11, moved to the API 2026-09-11.
   Scope: shortlist store, star toggle persists, Shortlist tab shows saved
@@ -294,6 +295,26 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-11 — Screenshot-review fixes (no new slices):
+  - **Avatars are photos.** Seed sets `avatarUrl` on every creator —
+    `randomuser.me/api/portraits/{gender}/{n}.jpg`, portrait number stepped by a
+    value coprime with 100 (40 distinct), gender from `FEMININE_NAMES`. New
+    `components/ui/Avatar.tsx` renders it in the card, modal header, and the
+    recent-post card, with the initials block as the **fallback** (image load
+    failure), not the default. Fixtures got 6 URLs too.
+  - **One modal only.** `CreatorProfileModal` is the sole modal component
+    (tabbed shell + rail); no separate old component exists — the earlier
+    single-column "Pricing / Latest post" layout was the same file before
+    1b43ef2, replaced in place. Nothing reaches an old layout.
+  - **Marketplace loading/error states** are framed panels in the shell now, not
+    bare text: error is "The marketplace didn't load" + a **Try again** button
+    (bumps a `reloadKey` + re-hydrates the shortlist). `/app` index is the only
+    route; there is no `/app/creators`.
+  - **BookingRail pricing is provably consistent.** `Disclosure` is now
+    controlled (`useState` + `onToggle`) so a price-radio re-render can't snap
+    it shut. The rail shows a "Selected €X (N post[s])" row, and the bundle
+    formula spells out the ÷5 step, so radio + selected price + estimated CPM +
+    formula always reconcile.
 - 2026-09-11 — Shortlist moved to the API (campaign-scoped) + modal slices
   2.9(partial)/2.10/2.11. For the next session:
   - **Shortlist is server state now.** `ShortlistItem` model, `GET /campaigns/active`

@@ -195,3 +195,21 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   three, rather than a placeholder tab. New `ui/Disclosure` primitive (styled
   `<details>` + chevron) replaces raw `<details>` markers. `ReachSparkline` is
   hand-rolled inline SVG — no charting dependency added.
+- 2026-09-11 — Creator avatars are real photos, not initials. Seed writes
+  `avatarUrl` = `randomuser.me/api/portraits/{gender}/{n}.jpg` (static JPEG CDN,
+  no API call): portrait number `(index*7+13) % 100` gives 40 distinct photos,
+  gender from a `FEMININE_NAMES` set so the face matches the name. Chosen over
+  pravatar (`?u=`) for a static CDN and guaranteed no repeats across the 40.
+  New `ui/Avatar` renders `<img>` with `onError` -> an initials block; initials
+  are the fallback, never the default. The creator profile row now gets an
+  explicit `id` in seed so it's stable within a run.
+- 2026-09-11 — `Disclosure` is controlled (`useState` + `onToggle`), not
+  `open={defaultOpen}`. An uncontrolled `<details>` inside a component that
+  re-renders on unrelated state (the booking-rail price radio) could snap shut;
+  controlling `open` keeps it and guarantees the body re-renders with current
+  props. `BookingRail` also adds a "Selected €X (N posts)" row and spells out
+  the bundle ÷5 step, so radio + price + estimated CPM + formula visibly agree.
+- 2026-09-11 — Marketplace `loading` / `error` states are framed panels inside
+  the shell, not bare `<p>`. Error copy is in-product voice ("The marketplace
+  didn't load"), no mention of the API, with a "Try again" action that bumps a
+  `reloadKey` (in the fetch effect deps) and re-hydrates the shortlist.

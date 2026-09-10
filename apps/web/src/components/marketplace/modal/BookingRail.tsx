@@ -22,10 +22,14 @@ type Package = "single" | "bundle";
 export function BookingRail({ creator }: BookingRailProps): JSX.Element {
   const [pkg, setPkg] = useState<Package>("single");
 
-  const perPostCents =
-    pkg === "single"
-      ? creator.postCostCents
-      : Math.round(creator.bundle5PriceCents / 5);
+  const isBundle = pkg === "bundle";
+  const packageCents = isBundle
+    ? creator.bundle5PriceCents
+    : creator.postCostCents;
+  // CPM is always per single post, so the bundle divides its price by five.
+  const perPostCents = isBundle
+    ? Math.round(creator.bundle5PriceCents / 5)
+    : creator.postCostCents;
   const cpm = cpmCents(perPostCents, creator.medianViews);
 
   const options: Array<{ id: Package; label: string; priceCents: number }> = [
@@ -75,6 +79,15 @@ export function BookingRail({ creator }: BookingRailProps): JSX.Element {
 
       <dl className="flex flex-col gap-s2 border-t border-border pt-s4 text-body">
         <div className="flex items-center justify-between">
+          <dt className="text-text-muted">Selected</dt>
+          <dd className="tabular-nums text-text">
+            {formatCents(packageCents)}{" "}
+            <span className="text-text-muted">
+              ({isBundle ? "5 posts" : "1 post"})
+            </span>
+          </dd>
+        </div>
+        <div className="flex items-center justify-between">
           <dt className="text-text-muted">Typical reach</dt>
           <dd className="tabular-nums text-text">
             {formatCompactNumber(creator.medianViews)}
@@ -101,11 +114,20 @@ export function BookingRail({ creator }: BookingRailProps): JSX.Element {
               </span>
             }
           >
-            <p className="tabular-nums text-body text-text-muted">
-              {formatCents(perPostCents)} ÷{" "}
-              {formatCompactNumber(creator.medianViews)} median views × 1,000 ={" "}
-              {formatCents(cpm)} per 1,000 views.
-            </p>
+            <div className="flex flex-col gap-s2 tabular-nums text-body text-text-muted">
+              {isBundle && (
+                <p>
+                  Bundle of 5 is {formatCents(packageCents)}, so{" "}
+                  {formatCents(packageCents)} ÷ 5 = {formatCents(perPostCents)}{" "}
+                  per post.
+                </p>
+              )}
+              <p>
+                {formatCents(perPostCents)} per post ÷{" "}
+                {formatCompactNumber(creator.medianViews)} median views × 1,000 ={" "}
+                {formatCents(cpm)} per 1,000 views.
+              </p>
+            </div>
           </Disclosure>
         </div>
       )}

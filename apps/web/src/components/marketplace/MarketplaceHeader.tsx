@@ -80,7 +80,7 @@ export function MarketplaceHeader({
 
       <div className="flex flex-col gap-s1">
         <h2 className="text-section-title text-text">{sectionTitle}</h2>
-        {rankedView && (
+        {rankedView && totalCount > 0 && (
           <p className="text-label text-text-muted">
             The {totalCount} strongest profiles according to your sector and
             performance signals.

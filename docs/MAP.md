@@ -20,7 +20,9 @@ apps/
                            ShortlistItem = a creator saved to a campaign
                            (unique per campaign+creator). CPM is never a column.
       seed.ts             Realistic seed data. Figures + volume/calibration
-                           targets come from docs/RECON.md §10-12
+                           targets come from docs/RECON.md §10-12. Sets an
+                           explicit creator id + a randomuser.me photo avatarUrl
+                           on every creator, and 13 ShortlistItem rows.
     src/
       main.ts
       app.module.ts
@@ -109,8 +111,9 @@ apps/
         ui/               Token-only primitives: Button, Card, Input, Select,
                            Checkbox, Badge, StatusPill, Table (+ THead/TBody/TR/
                            TH/TD), Tabs, Modal, SegmentedBar, Disclosure
-                           (styled <details> + chevron). None hardcode a colour,
-                           radius or spacing value.
+                           (styled <details> + chevron, controlled), Avatar
+                           (photo <img> with an initials fallback on load
+                           failure). None hardcode a colour, radius or spacing.
         marketplace/      MarketplaceHeader (title/explainer, All+Shortlist tabs
                            with counts, search, sort-by, section header).
                            CreatorCard (checkbox, network badge, ICP fit badge,

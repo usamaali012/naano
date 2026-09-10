@@ -145,6 +145,12 @@ const FIRST_NAMES = [
   "Laura", "Marco", "Nora", "Sven", "Julia", "Jonas", "Elin", "Rafael", "Ines", "Erik",
   "Zoe", "Adam", "Lena", "Victor", "Maya", "Karl", "Alicia", "Sam", "Ruby", "Otto",
 ];
+// So the seeded portrait roughly matches the name. Names not listed use "men".
+const FEMININE_NAMES = new Set([
+  "Emma", "Olivia", "Ava", "Sophie", "Isabella", "Mia", "Charlotte", "Amelia",
+  "Freya", "Clara", "Laura", "Nora", "Julia", "Elin", "Ines", "Zoe", "Lena",
+  "Maya", "Alicia", "Ruby",
+]);
 const LAST_NAMES = [
   "Berg", "Novak", "Fischer", "Rossi", "Dubois", "Andersen", "Silva", "Kowalski",
   "Meyer", "Lund", "Garcia", "Weber", "Larsen", "Moreau", "Conti", "Schmidt",
@@ -268,7 +274,21 @@ function tierIndexFromRoll(roll: number): number {
 const CLAMP_COST_MIN_EUR = 20;
 const CLAMP_COST_MAX_EUR = 1_500;
 
+// Deterministic photo avatar, so a creator always gets the same face and the
+// 40-strong set reads as varied real people rather than initials. randomuser.me
+// serves static portrait JPEGs (100 per gender). The portrait number steps by a
+// value coprime with 100 so all 40 creators get a distinct photo; gender tracks
+// the first name. The web falls back to an initials block only when the image
+// fails to load.
+function avatarUrlFor(firstName: string, index: number): string {
+  const gender = FEMININE_NAMES.has(firstName) ? "women" : "men";
+  const num = (index * 7 + 13) % 100;
+  return `https://randomuser.me/api/portraits/${gender}/${num}.jpg`;
+}
+
 interface CreatorSeed {
+  profileId: string;
+  avatarUrl: string;
   displayName: string;
   email: string;
   vertical: Vertical;
@@ -290,6 +310,7 @@ function buildCreator(index: number): CreatorSeed {
   const first = nth(FIRST_NAMES, index);
   const last = nth(LAST_NAMES, index % LAST_NAMES.length);
   const displayName = `${first} ${last}`;
+  const profileId = randomBytes(12).toString("hex");
   const vertical = nth(VERTICALS, index % VERTICALS.length);
   const rankWithinVertical = Math.floor(index / VERTICALS.length);
   const country = pick(COUNTRIES);
@@ -325,6 +346,8 @@ function buildCreator(index: number): CreatorSeed {
   const crossPosts = netRoll >= 0.15 && netRoll < 0.35;
 
   return {
+    profileId,
+    avatarUrl: avatarUrlFor(first, index),
     displayName,
     email: `${first.toLowerCase()}.${last.toLowerCase()}${index}@creators.naano.dev`,
     vertical,
@@ -567,6 +590,8 @@ async function main(): Promise<void> {
         role: "CREATOR",
         creatorProfile: {
           create: {
+            id: c.profileId,
+            avatarUrl: c.avatarUrl,
             displayName: c.displayName,
             headline: c.headline,
             vertical: c.vertical,
