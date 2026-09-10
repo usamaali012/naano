@@ -151,10 +151,16 @@ const FEMININE_NAMES = new Set([
   "Freya", "Clara", "Laura", "Nora", "Julia", "Elin", "Ines", "Zoe", "Lena",
   "Maya", "Alicia", "Ruby",
 ]);
+// 44 distinct surnames — one per creator (the seed indexes this directly, no
+// wraparound), plus a small margin. Surname does not affect the avatar; that is
+// keyed on the first name (FEMININE_NAMES) and the creator index.
 const LAST_NAMES = [
   "Berg", "Novak", "Fischer", "Rossi", "Dubois", "Andersen", "Silva", "Kowalski",
   "Meyer", "Lund", "Garcia", "Weber", "Larsen", "Moreau", "Conti", "Schmidt",
   "Costa", "Nilsson", "Keller", "Haas", "Petit", "Romano", "Becker", "Sorensen",
+  "Bianchi", "Laurent", "Halvorsen", "Krause", "Jensen", "Marchetti", "Fontaine",
+  "Bauer", "Eriksson", "Neumann", "Ferrari", "Lindqvist", "Vogel", "Chevalier",
+  "Holm", "Richter", "Aalto", "Sundqvist", "Moretti", "Wagner",
 ];
 
 const VERTICAL_HEADLINES: Record<Vertical, string[]> = {
@@ -293,7 +299,6 @@ interface CreatorSeed {
   email: string;
   vertical: Vertical;
   network: Network;
-  crossPosts: boolean;
   followerCount: number;
   medianViews: number;
   postCostCents: number;
@@ -308,7 +313,7 @@ interface CreatorSeed {
 
 function buildCreator(index: number): CreatorSeed {
   const first = nth(FIRST_NAMES, index);
-  const last = nth(LAST_NAMES, index % LAST_NAMES.length);
+  const last = nth(LAST_NAMES, index);
   const displayName = `${first} ${last}`;
   const profileId = randomBytes(12).toString("hex");
   const vertical = nth(VERTICALS, index % VERTICALS.length);
@@ -339,11 +344,10 @@ function buildCreator(index: number): CreatorSeed {
   const [engMin, engMax] = nth(ENGAGER_RANGE, tierIndex);
   const observedEngagerCount = messy(randomInt(engMin, engMax), 0.04);
 
-  // network: ~15% are primarily on X; a further ~20% of the rest also post on
-  // the other network (crossPosts). Most creators are LinkedIn-only.
-  const netRoll = Math.random();
-  const network = netRoll < 0.15 ? Network.X : Network.LINKEDIN;
-  const crossPosts = netRoll >= 0.15 && netRoll < 0.35;
+  // naano is a LinkedIn creator marketplace (docs/RECON.md) — every creator
+  // and every post is on LinkedIn. The Network enum keeps X for the schema, but
+  // the seed never produces it.
+  const network = Network.LINKEDIN;
 
   return {
     profileId,
@@ -352,7 +356,6 @@ function buildCreator(index: number): CreatorSeed {
     email: `${first.toLowerCase()}.${last.toLowerCase()}${index}@creators.naano.dev`,
     vertical,
     network,
-    crossPosts,
     followerCount,
     medianViews,
     postCostCents,
@@ -635,16 +638,12 @@ async function main(): Promise<void> {
     const postDays = shuffled([2, 6, 11, 18, 27, 33]).slice(0, 5).sort((a, b) => a - b);
     const shapeOrder = shuffled([0, 1, 2, 3, 4, 5, 6]);
     for (let p = 0; p < 5; p++) {
-      const onOther = c.crossPosts && p % 2 === 1;
-      const net = onOther ? (c.network === Network.LINKEDIN ? Network.X : Network.LINKEDIN) : c.network;
+      const net = c.network; // LinkedIn only
       const views = messy(c.medianViews * randomFloat(0.55, 1.7), 0.04);
       const reactions = messy(views * randomFloat(0.015, 0.05), 0.08);
       const activityId = randomInt(1_000_000_000, 9_999_999_999);
       const handle = c.displayName.toLowerCase().replace(/[^a-z]+/g, "");
-      const externalUrl =
-        net === Network.LINKEDIN
-          ? `https://www.linkedin.com/posts/${handle}-activity-${activityId}`
-          : `https://x.com/${handle}/status/${activityId}`;
+      const externalUrl = `https://www.linkedin.com/posts/${handle}-activity-${activityId}`;
       await prisma.creatorPost.create({
         data: {
           creatorProfileId: profile.id,

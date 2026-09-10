@@ -33,7 +33,7 @@ function shortlistSet(campaignId: string): Set<string> {
 // Static stand-in for the API — the hedge in CLAUDE.md. Same shape as the live
 // payload so swapping VITE_API_MODE is the only change. Figures follow the
 // calibration in docs/RECON.md §10: median views 20-100% of followers, CPM in
-// the EUR 10-30 band, bundle of five ~3.3x a single post. `icpFitPct` stands in
+// the EUR 10-30 band, bundle of five ~3.3x a single post. `sectorFitPct` stands in
 // for a marketplace ranked against a fintech-leaning campaign.
 const FIXTURE_CREATORS: MarketplaceCreator[] = [
   {
@@ -54,7 +54,7 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 22,
     engagementRate: 0.041,
     createdAt: "2026-08-01T09:00:00.000Z",
-    icpFitPct: 38,
+    sectorFitPct: 38,
   },
   {
     id: "fixture-2",
@@ -74,7 +74,7 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 19,
     engagementRate: 0.035,
     createdAt: "2026-08-03T09:00:00.000Z",
-    icpFitPct: 32,
+    sectorFitPct: 32,
   },
   {
     id: "fixture-3",
@@ -94,7 +94,7 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 17,
     engagementRate: 0.028,
     createdAt: "2026-08-05T09:00:00.000Z",
-    icpFitPct: 100,
+    sectorFitPct: 100,
   },
   {
     id: "fixture-4",
@@ -114,7 +114,7 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 24,
     engagementRate: 0.052,
     createdAt: "2026-08-07T09:00:00.000Z",
-    icpFitPct: 22,
+    sectorFitPct: 22,
   },
   {
     id: "fixture-5",
@@ -134,7 +134,7 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 20,
     engagementRate: 0.038,
     createdAt: "2026-08-09T09:00:00.000Z",
-    icpFitPct: 32,
+    sectorFitPct: 32,
   },
   {
     id: "fixture-6",
@@ -154,7 +154,7 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 21,
     engagementRate: 0.044,
     createdAt: "2026-08-11T09:00:00.000Z",
-    icpFitPct: 32,
+    sectorFitPct: 32,
   },
 ];
 
@@ -163,7 +163,7 @@ const SORTERS: Record<
   (a: MarketplaceCreator, b: MarketplaceCreator) => number
 > = {
   best_match: (a, b) =>
-    (b.icpFitPct ?? 0) - (a.icpFitPct ?? 0) ||
+    (b.sectorFitPct ?? 0) - (a.sectorFitPct ?? 0) ||
     a.postCostCents / a.medianViews - b.postCostCents / b.medianViews,
   price_asc: (a, b) => a.postCostCents - b.postCostCents,
   followers_desc: (a, b) => b.followerCount - a.followerCount,
@@ -237,7 +237,7 @@ export const fixturesClient: ApiClient = {
   async getCreator(id: string): Promise<CreatorProfileDetail> {
     const creator = FIXTURE_CREATORS.find((c) => c.id === id);
     if (!creator) throw new Error(`fixture creator ${id} not found`);
-    const { icpFitPct: _icpFitPct, ...profile } = creator;
+    const { sectorFitPct: _sectorFitPct, ...profile } = creator;
     const detail: CreatorProfileDetail = {
       ...profile,
       audienceSegments: [],

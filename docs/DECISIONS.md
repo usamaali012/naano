@@ -213,3 +213,21 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   the shell, not bare `<p>`. Error copy is in-product voice ("The marketplace
   didn't load"), no mention of the API, with a "Try again" action that bumps a
   `reloadKey` (in the fetch effect deps) and re-hydrates the shortlist.
+- 2026-09-11 — The card fit badge is **"N% sector fit"**, and the wire field is
+  `sectorFitPct` (renamed from `icpFitPct` across `@naano/shared`, the API,
+  `mappers.ts`, and the web). It measures `creator.vertical ===
+  campaign.targetVertical` — the creator's own sector match with the campaign,
+  not their audience mix — which the old "ICP fit" label implied and
+  contradicted the Audience tab. `audience-fit.ts` scoring is unchanged; only
+  names and copy moved.
+- 2026-09-11 — naano is LinkedIn-only (RECON). Seed forces every creator and
+  every post to `Network.LINKEDIN`; the `crossPosts` mechanic is removed. The
+  `Network` enum keeps `X` and `NetworkBadge` still renders it — the seed just
+  never produces non-LinkedIn rows.
+- 2026-09-11 — `LAST_NAMES` widened to 44 and indexed directly (no modulo), so
+  all 40 creators get a distinct surname. Avatar gender stays keyed on the
+  first name.
+- 2026-09-11 — `apps/web/scripts/shots.mjs` (`npm run shots`) is the canonical
+  screenshot suite: wipes `.screenshots/`, reshoots grid + both modal tabs +
+  booking rail + error state, prints mtimes. Regenerating all of it is part of
+  finishing a UI task.

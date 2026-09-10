@@ -54,8 +54,8 @@ export function CreatorCard({
           <NetworkBadge network={creator.network} />
         </div>
         <div className="flex items-center gap-s2">
-          {creator.icpFitPct !== null && (
-            <Badge>{creator.icpFitPct}% ICP fit</Badge>
+          {creator.sectorFitPct !== null && (
+            <Badge>{creator.sectorFitPct}% sector fit</Badge>
           )}
           <button
             type="button"

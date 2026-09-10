@@ -34,10 +34,10 @@ export type CreatorSort =
  * regardless of `maxCpmEur`.
  *
  * `q` is a free-text match over name and headline. `campaignId` names the
- * campaign the list is ranked for: it fills in `icpFitPct` on every row and
+ * campaign the list is ranked for: it fills in `sectorFitPct` on every row and
  * feeds sector fit into `best_match`. Omitted, the API ranks against the most
  * recent live campaign ("Ranked for your company", RECON §4); when no campaign
- * exists at all, `icpFitPct` is null and `best_match` is performance-only.
+ * exists at all, `sectorFitPct` is null and `best_match` is performance-only.
  */
 export interface ListCreatorsParams extends PageParams {
   vertical?: Vertical[];
@@ -56,12 +56,14 @@ export interface ListCreatorsParams extends PageParams {
 }
 
 /**
- * A creator row as the marketplace grid renders it: the profile plus its ICP
- * fit against the ranking campaign. `icpFitPct` is 0..100, or null when no
- * campaign is in context. Never stored — computed per request.
+ * A creator row as the marketplace grid renders it: the profile plus its
+ * sector fit against the ranking campaign — how well the creator's own vertical
+ * matches the campaign's target, not anything about their audience.
+ * `sectorFitPct` is 0..100, or null when no campaign is in context. Never
+ * stored — computed per request.
  */
 export interface MarketplaceCreator extends CreatorProfile {
-  icpFitPct: number | null;
+  sectorFitPct: number | null;
 }
 
 /** GET /creators/:id — the profile plus everything the creator modal renders. */

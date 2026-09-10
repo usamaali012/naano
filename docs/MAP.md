@@ -22,7 +22,10 @@ apps/
       seed.ts             Realistic seed data. Figures + volume/calibration
                            targets come from docs/RECON.md §10-12. Sets an
                            explicit creator id + a randomuser.me photo avatarUrl
-                           on every creator, and 13 ShortlistItem rows.
+                           on every creator (gender keyed on first name), 44
+                           distinct surnames indexed directly, and 13
+                           ShortlistItem rows. LinkedIn only — no X creators or
+                           posts.
     src/
       main.ts
       app.module.ts
@@ -39,7 +42,8 @@ apps/
                            within-days) and four sorts (best_match default,
                            price_asc, followers_desc, engagement_desc). Optional
                            campaignId sets the ranking context; rows return as
-                           MarketplaceCreator (CreatorProfile + icpFitPct).
+                           MarketplaceCreator (CreatorProfile + sectorFitPct =
+                           creator vertical vs campaign target, 0..100).
                            GET /creators/:id returns profile + audienceSegments
                            + posts (CreatorProfileDetail). Filter/sort DTO in
                            dto/list-creators.dto.ts. CPM from @naano/shared
@@ -74,10 +78,14 @@ apps/
       analytics/          Empty, wired stub module. No routes yet.
   web/                    React + Vite
     scripts/
-      shot.mjs            Playwright screenshot tool. `npm run shot
+      shot.mjs            Playwright screenshot tool for one route. `npm run shot
                            --workspace=apps/web -- <route> [name]` -> 1440px PNG
                            in apps/web/.screenshots/ (gitignored). Dev server
                            must be up. From Git-Bash prefix MSYS_NO_PATHCONV=1.
+      shots.mjs            `npm run shots --workspace=apps/web` — the full
+                           marketplace suite (grid, both modal tabs, booking
+                           rail, error state). Wipes .screenshots/ first, prints
+                           mtimes. Run it to finish any UI change.
     tailwind.config.js    Maps Tailwind utilities onto the CSS custom properties
                            in src/index.css via var(). No raw hex/px in configs
                            or components.

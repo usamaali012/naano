@@ -86,7 +86,7 @@ export interface Campaign {
   destinationUrl: string;
   budgetCents: number;
   status: CampaignStatus;
-  /** The buyer vertical this campaign targets. Drives per-campaign ICP fit. */
+  /** The buyer vertical this campaign targets. Drives per-campaign sector fit. */
   targetVertical: Vertical;
   startDate: string | null;
   endDate: string | null;

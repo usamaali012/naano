@@ -14,7 +14,7 @@ export class ShortlistService {
     private readonly campaigns: CampaignsService,
   ) {}
 
-  /** Creators shortlisted for one campaign, newest first, with ICP fit. */
+  /** Creators shortlisted for one campaign, newest first, with sector fit. */
   async list(
     campaignId: string,
     page = 1,

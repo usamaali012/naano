@@ -295,6 +295,24 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-11 — Second review pass (no new slices):
+  - **`npm run shots`** (`apps/web/scripts/shots.mjs`) regenerates the whole
+    marketplace suite — grid, both modal tabs, booking rail (bundle), error
+    state — wiping `.screenshots/` first so every mtime is from that run. Run it
+    to finish any UI task; don't hand-pick or reuse stale shots. The error shot
+    aborts the API origin so the shell renders with the error panel.
+  - **The card badge is "N% sector fit", not "ICP fit".** It scores
+    `creator.vertical === campaign.targetVertical` — the creator's own sector
+    match, nothing about their audience. The wire field is `sectorFitPct`
+    (was `icpFitPct`) across `@naano/shared`, the API, and the web. Scoring in
+    `audience-fit.ts` is unchanged. The marketplace subtitle already said
+    "sector fit leads".
+  - **LinkedIn only.** Seed no longer produces X creators or X posts (0 of
+    each). `NetworkBadge` and the `Network` enum's `X` value stay for the
+    schema; the seed just never emits them.
+  - **44 distinct surnames**, indexed directly (no `% LAST_NAMES.length`
+    wraparound), so all 40 creators have a unique surname. Avatar gender is
+    still keyed on the first name (`FEMININE_NAMES`), untouched.
 - 2026-09-11 — Screenshot-review fixes (no new slices):
   - **Avatars are photos.** Seed sets `avatarUrl` on every creator —
     `randomuser.me/api/portraits/{gender}/{n}.jpg`, portrait number stepped by a
