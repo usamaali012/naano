@@ -9,8 +9,27 @@ docker-compose.yml        Postgres for local dev (not needed if you already run
                            Postgres elsewhere, as this session does)
 .env.example               Root-level template. Real .env files live in
                            apps/api/ and apps/web/, gitignored.
+.gitattributes             `* text=auto eol=lf` (Session B) — stops CRLF churn.
+.dockerignore               Session B. Shared by both service images (context
+                           is the repo root for both); excludes node_modules,
+                           dist, and every .env*.
+scripts/
+  smoke.mjs                 Session B. `node scripts/smoke.mjs <api-base-url>`
+                           — pre-submission "is it still up" check (health,
+                           40 creators, seeded-account login, dev-guard 404).
+                           No deps, fetch only. Seeded emails/password read
+                           from apps/api/prisma/seed.ts, not hardcoded blind.
 apps/
   api/                    NestJS
+    Dockerfile               Session B. Build context is the repo root. Single
+                           build stage (install after the real source is
+                           copied in — see docs/DECISIONS.md Session B for
+                           why) -> pruned runtime layer. No devDependencies at
+                           runtime, so the seed cannot run in this image.
+    railway.json             Session B. Builder DOCKERFILE, healthcheck
+                           `/health`. Railway's Builder setting (dashboard)
+                           has to say Dockerfile too, or Railpack silently
+                           wins — see DECISIONS.md.
     prisma/
       schema.prisma       Source of truth for the data model. Reflects the
                            docs/RECON.md §10 delta (medianViews, postCostCents +
@@ -71,6 +90,17 @@ apps/
                            guarded off in production.
       analytics/          Empty, wired stub module. No routes yet.
   web/                    React + Vite
+    Dockerfile               Session B. Build context is the repo root. Takes
+                           VITE_API_URL / VITE_API_MODE as Docker build ARGs
+                           and fails the build if VITE_API_URL is empty — Vite
+                           inlines both at BUILD time (see docs/DECISIONS.md
+                           Session B: changing the API URL means rebuilding
+                           this image, not restarting it). Runner is
+                           caddy:2-alpine serving the static dist/.
+    Caddyfile                Session B. Site address `:{$PORT}` (the
+                           Railway-injected port, never hardcoded) +
+                           `try_files {path} /index.html` for SPA routing.
+    railway.json             Session B. Builder DOCKERFILE, healthcheck `/`.
     scripts/
       shot.mjs            Playwright screenshot tool. `npm run shot
                            --workspace=apps/web -- <route> [name]` -> 1440px PNG

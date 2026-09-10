@@ -195,3 +195,80 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   three, rather than a placeholder tab. New `ui/Disclosure` primitive (styled
   `<details>` + chevron) replaces raw `<details>` markers. `ReachSparkline` is
   hand-rolled inline SVG — no charting dependency added.
+
+## Session B
+
+Deploy work on branch `deploy`, running on Railway. New files only
+(`apps/{api,web}/Dockerfile`, `apps/{api,web}/railway.json`, `Caddyfile`,
+`.dockerignore`, `.gitattributes`, `scripts/smoke.mjs`); the one shared-file
+edit is `apps/api/src/main.ts` binding `0.0.0.0` explicitly. Everything below
+is what the next session (or session A, hitting deploy for the first time)
+needs to not lose an hour to.
+
+- **Dockerfiles, not nixpacks.** The workspace monorepo needs a deterministic
+  root `npm ci`, an explicit build order (`packages/shared` → `prisma
+  generate` → the target app), a Prisma query-engine binary that matches the
+  runtime base image, and a static-file server with SPA fallback for the web
+  service. Nixpacks' auto-detection does not know any of those four things
+  about a workspace monorepo; a Dockerfile makes each one an explicit,
+  reviewable line.
+- **Railpack cost two build cycles.** Railway's newer default builder
+  (Railpack) was silently building both services from its own auto-detection
+  — ignoring `apps/{api,web}/railway.json` — until the dashboard's Builder
+  setting was switched to Dockerfile per service. The config-as-code path
+  setting alone does not make Railway prefer the Dockerfile builder; the
+  service's Builder setting has to say `DOCKERFILE` too. If a service is
+  building but the logs don't look like the Dockerfile you're reading,
+  check that setting first.
+- **`apps/api/Dockerfile` cross-stage `node_modules` bug (found via the first
+  real Railway build failing).** An earlier version ran `npm ci` in its own
+  `deps` stage before the real source existed, then copied that
+  `node_modules` into the `build` stage. npm workspace symlinks
+  (`node_modules/@naano/shared`) and `prisma generate`'s output
+  (`node_modules/.prisma/client`) are position/content-dependent and did not
+  survive that — `nest build` failed with `TS2307` on `@naano/shared` and
+  stub Prisma types (`no exported member 'Campaign'`). Fixed by dropping the
+  `deps` stage: `npm ci` now runs in `build`, after the real source is
+  copied in. Confirmed by inspection (a probe build printing the actual
+  filesystem, not assumed): npm workspaces hoist everything to the **root**
+  `node_modules` — `apps/api/node_modules` never exists — so both the
+  generated Prisma client and the `@naano/shared` symlink live at
+  `/app/node_modules`, which is what the runner stage copies from. Added a
+  build-stage guard (`test -f node_modules/.prisma/client/index.js`) that
+  fails the build loudly if the client isn't there, instead of surfacing as
+  a confusing TS error two steps later. `apps/web/Dockerfile` never had the
+  cross-stage copy (single build stage, runner only takes the static
+  `dist/`), but had the same install-before-source ordering risk; reordered
+  for consistency.
+- **`VITE_API_URL` is inlined at BUILD time, not read at runtime.** Vite
+  bakes `import.meta.env.VITE_API_URL` into the JS bundle when `vite build`
+  runs (`apps/web/src/lib/api/http.ts` is the only place it's read). If the
+  API's public URL ever changes, **the web service must be rebuilt**, not
+  just restarted or redeployed without a rebuild — a restart keeps serving
+  the old baked-in URL and looks like a CORS or network failure, not a stale
+  build. `apps/web/Dockerfile` takes it as a build `ARG` and fails the build
+  if it's empty, specifically so this can't silently ship a `localhost`
+  fallback.
+- **Railway's generated domain needs its target port to match the injected
+  `PORT`, not the app's local dev port.** Both services bind
+  `process.env.PORT` (API: `main.ts`; web: Caddy's `:{$PORT}` in the
+  Caddyfile) — Railway injects that value (observed as 8080 on this
+  project), which does not have to match `PORT=3000` in `.env.example` or
+  Vite's dev port 5173. When generating a public domain for a service in the
+  dashboard, the target port field must be set to the Railway-injected
+  `PORT`, not a value copied from local dev — a mismatch here passes the
+  build and then fails the healthcheck in a way that reads as an app bug.
+- **`GET /dev/tracked-links` 404s under `NODE_ENV=production` — by design,
+  not a bug.** `NonProductionGuard` (`apps/api/src/common/non-production.guard.ts`)
+  guards that one route and 404s it whenever `NODE_ENV === "production"`,
+  which is the correct setting for the deployed API. Don't spend time
+  debugging that 404; it's confirmed working as intended (`scripts/smoke.mjs`
+  asserts it).
+- **The seed does not and cannot run inside the production API image.**
+  `prisma:seed` is `ts-node prisma/seed.ts`; `ts-node` and `typescript` are
+  devDependencies that the pruned runtime layer never installs (deliberately
+  — see the Dockerfile comment). The seed is a one-time operation, run once
+  from a developer machine against the public `DATABASE_URL` via `railway
+  run`, which injects the connection string into the subprocess without it
+  ever being typed, printed, or committed anywhere. `prisma migrate deploy`
+  is run the same way, forward-only.
