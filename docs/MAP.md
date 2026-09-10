@@ -12,8 +12,13 @@ docker-compose.yml        Postgres for local dev (not needed if you already run
 apps/
   api/                    NestJS
     prisma/
-      schema.prisma       Source of truth for the data model
-      seed.ts             Realistic seed data. Figures come from docs/PRODUCT.md
+      schema.prisma       Source of truth for the data model. Reflects the
+                           docs/RECON.md §10 delta (medianViews, postCostCents +
+                           bundle5PriceCents, network, Icp, AudienceSegment,
+                           CreatorPost, Booking.initiatedBy, observedEngagerCount,
+                           postsAnalyzed). CPM is never a column.
+      seed.ts             Realistic seed data. Figures + volume/calibration
+                           targets come from docs/RECON.md §10-12
     src/
       main.ts
       app.module.ts
@@ -38,7 +43,18 @@ apps/
                            guarded off in production.
       analytics/          Empty, wired stub module. No routes yet.
   web/                    React + Vite
+    scripts/
+      shot.mjs            Playwright screenshot tool. `npm run shot
+                           --workspace=apps/web -- <route> [name]` -> 1440px PNG
+                           in apps/web/.screenshots/ (gitignored). Dev server
+                           must be up. From Git-Bash prefix MSYS_NO_PATHCONV=1.
+    tailwind.config.js    Maps Tailwind utilities onto the CSS custom properties
+                           in src/index.css via var(). No raw hex/px in configs
+                           or components.
     src/
+      index.css           The design token layer: colour, two radii, one overlay
+                           shadow, type ramp, Inter stack -- defined once here
+                           per docs/DESIGN.md. Single source of truth.
       lib/
         api/              ALL http lives here. Two impls: http + fixtures,
                            selected by VITE_API_MODE. client.ts has the interface.
@@ -49,7 +65,10 @@ apps/
       routes/             PublicHome (public), AppShell (authed-feeling chrome)
                            wrapping CreatorsListPage (the working creators list).
       components/
-        ui/               Primitives (button, card, input, badge)
+        ui/               Token-only primitives: Button, Card, Input, Select,
+                           Checkbox, Badge, StatusPill, Table (+ THead/TBody/TR/
+                           TH/TD), Tabs, Modal, SegmentedBar. None hardcode a
+                           colour, radius or spacing value.
         marketplace/      CreatorCard, CreatorGrid, CreatorsPagination
                            (Prev/Next + range, driven by the list envelope).
                            No filter panel yet -- out of scope this session.
@@ -59,8 +78,16 @@ apps/
 packages/
   shared/                 Wire-safe types (enums.ts, entities.ts, api.ts) hand-kept
                            in sync with prisma/schema.prisma. Imported by both apps.
+                           cpm.ts: the one CPM formula (postCostCents / medianViews
+                           * 1000), used by API and web so the number never
+                           disagrees. Run `npm run build:shared` after editing.
 docs/
-  PRODUCT.md              Domain reference
+  PRODUCT.md              Domain reference (superseded by RECON.md on conflict)
+  RECON.md                Direct walkthrough of the live naano brand app. Wins
+                           over PRODUCT.md. §10-12 drive the schema/seed/plan.
+  DESIGN.md               Hard visual constraints. Read before any component.
+  PLAN.md                 Sliced build checklist + session handoff. Read at the
+                           start of every session, tick at the end.
   DECISIONS.md            Architecture + running log
   MAP.md                  This file
   BRIEF.md                The assignment text once opened. Authoritative.

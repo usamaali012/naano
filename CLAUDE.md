@@ -8,6 +8,10 @@ a broad one that half works.
 
 - `docs/PRODUCT.md` — what naano is, the core loop, the data that matters.
   Domain reference. Read once, never re-fetch naano.com.
+- `docs/RECON.md` — the live product, observed directly. Supersedes PRODUCT.md.
+- `docs/DESIGN.md` — visual constraints. Read before writing any component.
+- `docs/PLAN.md` — the running build checklist. Read at the start of every
+  session, tick items as they are finished.
 - `docs/DECISIONS.md` — stack, architecture, and the running log of choices made.
   Read before proposing anything structural.
 - `docs/MAP.md` — file tree and what each area owns. Read this INSTEAD of
@@ -27,6 +31,13 @@ a broad one that half works.
 4. **Ask before adding a dependency.** Every package is a decision the human owns.
 5. **No placeholder features.** A button that does nothing is worse than no
    button. If it renders, it works.
+6. **Every component follows `docs/DESIGN.md`.** Tokens are defined once as CSS
+   custom properties. No colour, radius or spacing value is hardcoded in a
+   component. After building any screen, screenshot it and check it against the
+   anti-slop rules before moving on.
+7. **`docs/PLAN.md` is the handoff.** Each session starts by reading it and ends
+   by ticking what was finished and adding anything discovered. It is how a new
+   session with empty context knows where the build is.
 
 ## Stack
 
