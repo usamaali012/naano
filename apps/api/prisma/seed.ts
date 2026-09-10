@@ -675,6 +675,7 @@ async function main(): Promise<void> {
     {
       company: vertice,
       name: "Q4 RevOps Awareness",
+      targetVertical: Vertical.REVOPS,
       objective: "Build awareness for the new forecasting module among RevOps leaders.",
       brief: "Introduce Vertice's forecasting module to RevOps and sales ops audiences on LinkedIn.",
       keyMessages: "Forecast accuracy, less spreadsheet glue, faster close.",
@@ -691,6 +692,7 @@ async function main(): Promise<void> {
     {
       company: vertice,
       name: "DevTools Integration Launch",
+      targetVertical: Vertical.DEVTOOLS,
       objective: "Drive signups for the new API integration among developer-tool creators.",
       brief: "Get developer-focused creators to demo the new webhook integration.",
       keyMessages: "5-minute setup, no vendor lock-in, generous free tier.",
@@ -707,6 +709,7 @@ async function main(): Promise<void> {
     {
       company: ledgerly,
       name: "Fintech Trust Campaign",
+      targetVertical: Vertical.FINTECH,
       objective: "Position Ledgerly as the compliant embedded-finance layer for vertical SaaS.",
       brief: "Explain embedded finance risk/compliance tradeoffs through fintech and vertical SaaS creators.",
       keyMessages: "PCI-DSS out of the box, 3-week integration, audit-ready.",
@@ -723,6 +726,7 @@ async function main(): Promise<void> {
     {
       company: ledgerly,
       name: "Summer Payouts Push",
+      targetVertical: Vertical.HR_TECH,
       objective: "Drive demo bookings from HR-tech and product audiences evaluating payout rails.",
       brief: "Completed campaign from earlier this year, kept for historical reporting.",
       keyMessages: "Same-day payouts, single API, built-in tax forms.",
@@ -744,6 +748,7 @@ async function main(): Promise<void> {
       data: {
         companyId: def.company.id,
         name: def.name,
+        targetVertical: def.targetVertical,
         objective: def.objective,
         brief: def.brief,
         keyMessages: def.keyMessages,

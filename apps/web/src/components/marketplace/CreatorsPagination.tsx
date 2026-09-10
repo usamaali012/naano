@@ -18,12 +18,12 @@ export function CreatorsPagination({
   const last = Math.min(page * pageSize, total);
 
   return (
-    <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
-      <span>
+    <div className="flex items-center justify-between border-t border-border pt-s3 text-body text-text-muted">
+      <span className="tabular-nums">
         Showing {first}–{last} of {total}
       </span>
-      <div className="flex items-center gap-3">
-        <span>
+      <div className="flex items-center gap-s3">
+        <span className="tabular-nums">
           Page {page} of {totalPages}
         </span>
         <Button

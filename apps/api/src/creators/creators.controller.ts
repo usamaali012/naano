@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Query } from "@nestjs/common";
 import type {
-  CreatorProfile,
   CreatorProfileDetail,
+  MarketplaceCreator,
   Paginated,
 } from "@naano/shared";
 import { CreatorsService } from "./creators.service";
@@ -12,7 +12,7 @@ export class CreatorsController {
   constructor(private readonly creatorsService: CreatorsService) {}
 
   @Get()
-  list(@Query() query: ListCreatorsDto): Promise<Paginated<CreatorProfile>> {
+  list(@Query() query: ListCreatorsDto): Promise<Paginated<MarketplaceCreator>> {
     return this.creatorsService.list(query);
   }
 

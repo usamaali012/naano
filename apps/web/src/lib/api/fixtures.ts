@@ -1,11 +1,19 @@
-import type { CreatorProfile, PageParams, Paginated } from "@naano/shared";
+import type {
+  AudienceSegment,
+  CreatorPost,
+  CreatorProfileDetail,
+  ListCreatorsParams,
+  MarketplaceCreator,
+  Paginated,
+} from "@naano/shared";
 import type { ApiClient } from "./client";
 
-// Static stand-in for the API. Kept in the same shape as the live payload so
-// swapping VITE_API_MODE is the only change. Figures follow the calibration in
-// docs/RECON.md §10: median views 20-100% of followers, CPM in the EUR 10-30
-// band, bundle of five ~3.3x a single post.
-const FIXTURE_CREATORS: CreatorProfile[] = [
+// Static stand-in for the API — the hedge in CLAUDE.md. Same shape as the live
+// payload so swapping VITE_API_MODE is the only change. Figures follow the
+// calibration in docs/RECON.md §10: median views 20-100% of followers, CPM in
+// the EUR 10-30 band, bundle of five ~3.3x a single post. `icpFitPct` stands in
+// for a marketplace ranked against a fintech-leaning campaign.
+const FIXTURE_CREATORS: MarketplaceCreator[] = [
   {
     id: "fixture-1",
     userId: "fixture-user-1",
@@ -24,6 +32,7 @@ const FIXTURE_CREATORS: CreatorProfile[] = [
     postsAnalyzed: 22,
     engagementRate: 0.041,
     createdAt: "2026-08-01T09:00:00.000Z",
+    icpFitPct: 38,
   },
   {
     id: "fixture-2",
@@ -43,6 +52,7 @@ const FIXTURE_CREATORS: CreatorProfile[] = [
     postsAnalyzed: 19,
     engagementRate: 0.035,
     createdAt: "2026-08-03T09:00:00.000Z",
+    icpFitPct: 32,
   },
   {
     id: "fixture-3",
@@ -62,6 +72,7 @@ const FIXTURE_CREATORS: CreatorProfile[] = [
     postsAnalyzed: 17,
     engagementRate: 0.028,
     createdAt: "2026-08-05T09:00:00.000Z",
+    icpFitPct: 100,
   },
   {
     id: "fixture-4",
@@ -81,6 +92,7 @@ const FIXTURE_CREATORS: CreatorProfile[] = [
     postsAnalyzed: 24,
     engagementRate: 0.052,
     createdAt: "2026-08-07T09:00:00.000Z",
+    icpFitPct: 22,
   },
   {
     id: "fixture-5",
@@ -100,6 +112,7 @@ const FIXTURE_CREATORS: CreatorProfile[] = [
     postsAnalyzed: 20,
     engagementRate: 0.038,
     createdAt: "2026-08-09T09:00:00.000Z",
+    icpFitPct: 32,
   },
   {
     id: "fixture-6",
@@ -119,19 +132,97 @@ const FIXTURE_CREATORS: CreatorProfile[] = [
     postsAnalyzed: 21,
     engagementRate: 0.044,
     createdAt: "2026-08-11T09:00:00.000Z",
+    icpFitPct: 32,
   },
 ];
 
+const SORTERS: Record<
+  NonNullable<ListCreatorsParams["sort"]>,
+  (a: MarketplaceCreator, b: MarketplaceCreator) => number
+> = {
+  best_match: (a, b) =>
+    (b.icpFitPct ?? 0) - (a.icpFitPct ?? 0) ||
+    a.postCostCents / a.medianViews - b.postCostCents / b.medianViews,
+  price_asc: (a, b) => a.postCostCents - b.postCostCents,
+  followers_desc: (a, b) => b.followerCount - a.followerCount,
+  engagement_desc: (a, b) => b.engagementRate - a.engagementRate,
+};
+
+function segmentsFor(detail: CreatorProfileDetail): AudienceSegment[] {
+  const spec: Array<[AudienceSegment["dimension"], string[]]> = [
+    ["JOB_TITLE", ["Marketing leaders", "Founders & CEOs", "RevOps & Sales Ops", "Product managers"]],
+    ["SENIORITY", ["VP", "Director", "Manager", "C-level"]],
+    ["INDUSTRY", ["B2B SaaS", "Fintech", "Agencies & consulting", "E-commerce & retail"]],
+    ["GEOGRAPHY", [detail.country === "GB" ? "United Kingdom" : "United States", "United Kingdom", "Germany", "Other"]],
+  ];
+  const pcts = [46, 27, 16, 11];
+  return spec.flatMap(([dimension, labels]) =>
+    labels.map((label, i) => ({
+      id: `${detail.id}-${dimension}-${i}`,
+      creatorProfileId: detail.id,
+      dimension,
+      label,
+      percentage: pcts[i]!,
+      createdAt: detail.createdAt,
+    })),
+  );
+}
+
+function postsFor(detail: CreatorProfileDetail): CreatorPost[] {
+  const base = Date.parse(detail.createdAt);
+  return [0, 1, 2].map((i) => ({
+    id: `${detail.id}-post-${i}`,
+    creatorProfileId: detail.id,
+    network: detail.network,
+    content:
+      i === 0
+        ? "A feature nobody would fight to keep is a feature you can delete. We cut four last month and shipped one that moved activation five points."
+        : "Short breakdown of how we approached this with the team — full write-up in the link below.",
+    publishedAt: new Date(base + i * 3 * 86_400_000).toISOString(),
+    views: Math.round(detail.medianViews * (1.2 - i * 0.2)),
+    reactions: Math.round(detail.medianViews * 0.03),
+    comments: Math.round(detail.medianViews * 0.006),
+    reposts: Math.round(detail.medianViews * 0.002),
+    externalUrl: "https://www.linkedin.com/",
+  }));
+}
+
 export const fixturesClient: ApiClient = {
-  async listCreators(params?: PageParams): Promise<Paginated<CreatorProfile>> {
+  async listCreators(params?: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>> {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 20;
+    const q = params?.q?.trim().toLowerCase();
+
+    let rows = [...FIXTURE_CREATORS];
+    if (q) {
+      rows = rows.filter(
+        (c) =>
+          c.displayName.toLowerCase().includes(q) ||
+          c.headline.toLowerCase().includes(q),
+      );
+    }
+    rows.sort(SORTERS[params?.sort ?? "best_match"]);
+
     const start = (page - 1) * pageSize;
     return {
-      items: FIXTURE_CREATORS.slice(start, start + pageSize),
-      total: FIXTURE_CREATORS.length,
+      items: rows.slice(start, start + pageSize),
+      total: rows.length,
       page,
       pageSize,
     };
+  },
+
+  async getCreator(id: string): Promise<CreatorProfileDetail> {
+    const creator = FIXTURE_CREATORS.find((c) => c.id === id);
+    if (!creator) throw new Error(`fixture creator ${id} not found`);
+    const { icpFitPct: _icpFitPct, ...profile } = creator;
+    const detail: CreatorProfileDetail = {
+      ...profile,
+      audienceSegments: [],
+      posts: [],
+    };
+    detail.audienceSegments = segmentsFor(detail);
+    detail.posts = postsFor(detail);
+    return detail;
   },
 };

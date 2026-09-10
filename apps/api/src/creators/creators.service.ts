@@ -12,6 +12,7 @@ import type {
   CreatorProfileDetail,
   CreatorSort,
   ListCreatorsParams,
+  MarketplaceCreator,
   Paginated,
 } from "@naano/shared";
 import { cpmEur } from "@naano/shared";
@@ -97,16 +98,23 @@ const COLUMN_SORTS: Record<
 export class CreatorsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(params: ListCreatorsParams): Promise<Paginated<CreatorProfile>> {
+  async list(params: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>> {
     const page = params.page ?? 1;
     const pageSize = params.pageSize ?? DEFAULT_PAGE_SIZE;
     const sort: CreatorSort = params.sort ?? "best_match";
 
+    const q = params.q?.trim();
     const where: Prisma.CreatorProfileWhereInput = {
       vertical: params.vertical?.length
         ? { in: params.vertical as Vertical[] }
         : undefined,
       country: params.country,
+      OR: q
+        ? [
+            { displayName: { contains: q, mode: "insensitive" } },
+            { headline: { contains: q, mode: "insensitive" } },
+          ]
+        : undefined,
       postCostCents: range(params.priceMinCents, params.priceMaxCents),
       followerCount: range(params.minFollowers, params.maxFollowers),
       medianViews:
@@ -134,8 +142,24 @@ export class CreatorsService {
       });
     }
 
+    // The list is "Ranked for your company" (RECON §4): sector fit against the
+    // campaign in context. An explicit campaignId wins; otherwise the most
+    // recent live campaign stands in for the brand's active target. With no
+    // campaign at all, fit is unknown and best_match stays performance-only.
+    const targetVertical = await this.resolveTargetVertical(params.campaignId);
+    const fitById = targetVertical
+      ? new Map(
+          rows.map((row) => [
+            row.id,
+            scoreAudienceFit(row, { targetVertical }),
+          ]),
+        )
+      : undefined;
+
     if (sort === "best_match") {
-      const position = new Map(bestMatchOrder(rows).map((id, i) => [id, i]));
+      const position = new Map(
+        bestMatchOrder(rows, fitById).map((id, i) => [id, i]),
+      );
       rows.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
     } else {
       const compare = COLUMN_SORTS[sort];
@@ -144,9 +168,40 @@ export class CreatorsService {
 
     const total = rows.length;
     const start = (page - 1) * pageSize;
-    const items = rows.slice(start, start + pageSize).map(toCreatorProfile);
+    const items: MarketplaceCreator[] = rows
+      .slice(start, start + pageSize)
+      .map((row) => ({
+        ...toCreatorProfile(row),
+        icpFitPct: fitById?.get(row.id) ?? null,
+      }));
 
     return { items, total, page, pageSize };
+  }
+
+  /**
+   * The buyer vertical the marketplace ranks against. An explicit `campaignId`
+   * must exist (404 otherwise); with none supplied, fall back to the most
+   * recent live campaign, and to null when the brand has no campaigns yet.
+   */
+  private async resolveTargetVertical(
+    campaignId?: string,
+  ): Promise<Vertical | null> {
+    if (campaignId) {
+      const campaign = await this.prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: { targetVertical: true },
+      });
+      if (!campaign) {
+        throw new NotFoundException(`No campaign "${campaignId}"`);
+      }
+      return campaign.targetVertical;
+    }
+    const active = await this.prisma.campaign.findFirst({
+      where: { status: "LIVE" },
+      orderBy: { createdAt: "desc" },
+      select: { targetVertical: true },
+    });
+    return active?.targetVertical ?? null;
   }
 
   async detail(id: string): Promise<CreatorProfileDetail> {

@@ -56,13 +56,19 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   `apps/api/src/creators/dto/list-creators.dto.ts`,
   `apps/api/src/creators/cpm.ts`, `packages/shared/src/api.ts`.
 
-- [ ] **2.4 Marketplace grid shell**
+- [x] **2.4 Marketplace grid shell** — done 2026-09-11.
   Scope: "All creators" title + ranking explainer, All/Shortlist tabs with
   counts, "Ranked for your company" strip, search box, sort-by control with the
   four options, "Top ranked creators" section header. No filters yet.
   Files: `apps/web/src/routes/CreatorsListPage.tsx`,
   `apps/web/src/components/marketplace/MarketplaceHeader.tsx`,
   `apps/web/src/lib/stores/creatorsStore.ts`.
+  Notes: the standalone "Ranked for your company" strip was folded into the
+  title explainer (anti-slop: three restatements of the ranking logic stacked).
+  Search is a real server-side `q` param (name/headline contains); it was added
+  to `GET /creators` this slice. `AppShell` was rebuilt as the 72px icon rail
+  (DESIGN §layout) since it frames every marketplace screenshot; rail items past
+  Creators are not wired to routes yet.
 
 - [ ] **2.5 Filter panel**
   Scope: industry searchable multi-select, country dropdown, price range slider
@@ -79,25 +85,45 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   Files: `apps/web/src/components/marketplace/PerformanceFilters.tsx`,
   `apps/web/src/lib/stores/creatorsStore.ts`.
 
-- [ ] **2.7 Creator card**
+- [x] **2.7 Creator card** — done 2026-09-11.
   Scope: checkbox, LinkedIn/X badge, shortlist star, Book button, header band +
   overlapping avatar, name, vertical string + country, four-cell metric strip
   (followers, median views, CPM, post cost), "View profile" row.
   Files: `apps/web/src/components/marketplace/CreatorCard.tsx`,
+  `apps/web/src/components/marketplace/icons.tsx` (new),
   `apps/web/src/lib/format.ts`.
+  Notes: carries the ICP fit badge (real per-(creator, campaign) %, top row next
+  to Book). The RECON "cloud-image header band" was dropped — no asset, and a
+  flat colour block read as a placeholder against the anti-slop rules; the
+  avatar is a soft-tint initials circle instead. Metric order is exactly
+  followers / median views / CPM / post cost. "View profile" is a plain link,
+  no trailing arrow (DESIGN). Book and View profile both open the profile modal.
 
-- [ ] **2.8 Shortlist**
+- [x] **2.8 Shortlist** — done 2026-09-11.
   Scope: shortlist store, star toggle persists, Shortlist tab shows saved
   creators with count, empty state names the marketplace.
   Files: `apps/web/src/lib/stores/shortlistStore.ts`,
   `apps/web/src/components/marketplace/*`, `apps/web/src/lib/api/*`.
+  Notes: `shortlistStore` is zustand + `persist` (localStorage key
+  `naano.shortlist`), no new dep. Star toggles on card and in the modal; a
+  multi-select bar over the grid bulk-adds selected creators. The Shortlist tab
+  fetches the catalogue at pageSize 100 and filters client-side (seed is 40).
+  The campaign-scoped shortlist (3.5) is a separate surface.
 
-- [ ] **2.9 Creator modal shell**
+- [~] **2.9 Creator modal shell**
   Scope: modal primitive in use — header (avatar, name, "AI · Marketing ·
   LinkedIn creator", star, close), three tabs, persistent booking rail column.
   Opens from both "Book" and "View profile". Shadow allowed here (DESIGN §depth).
   Files: `apps/web/src/components/marketplace/CreatorModal.tsx`,
   `apps/web/src/routes/CreatorsListPage.tsx`.
+  Started 2026-09-11: `CreatorProfileModal.tsx` exists and opens from both Book
+  and View profile, backed by `GET /creators/:id` — header (initials, name,
+  role line, star, close), the four metrics, job-title + seniority segmented
+  bars with the real "estimated from N engagers" caption, single/bundle pricing
+  with the literal CPM formula, latest post + engagement row. Built so nothing
+  on the card is a dead button. Remaining for 2.9: the three-tab structure and
+  the persistent booking-rail column — evolve this file, don't restart. The
+  booking CTA + `Booking` write land with 2.13.
 
 - [ ] **2.10 Modal — Overview tab**
   Scope: blurb, two check chips (% in observed audience, typical reach), audience
@@ -261,6 +287,39 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-11 — Slices 2.4, 2.7, 2.8 done + 2.9 started; `Campaign.targetVertical`
+  added ahead of the card so the ICP fit badge shows a real number. Key points
+  for the next session:
+  - **Ranking campaign.** `GET /creators` takes optional `?campaignId=`. Given
+    one it 404s if unknown; omitted, it ranks against the **most recent LIVE
+    campaign** as the implicit "your company" context (there is no campaign
+    switcher yet). Response rows are `MarketplaceCreator` = `CreatorProfile` +
+    `icpFitPct` (0..100, or `null` when no campaign exists at all). `best_match`
+    is now **fit-band first, then the performance blend within a band** (not a
+    weighted mix) — `creators/ranking.ts` takes an optional `fitById` map.
+    `CreatorsService.audienceFitScore` / `audience-fit.ts` is now live (was
+    uncalled). Seeded target verticals: Q4 RevOps→REVOPS, DevTools→DEVTOOLS,
+    Fintech Trust→FINTECH (this is the active one — most recent LIVE),
+    Summer Payouts→HR_TECH.
+  - **`q` search param.** `GET /creators?q=` does a case-insensitive contains
+    over displayName + headline. Added this slice for the 2.4 search box.
+  - **Web API client** now takes `ListCreatorsParams` and has
+    `getCreator(id): CreatorProfileDetail`. `http.ts` maps every param; the
+    filter params (2.5/2.6) are already wired through the query builder, just
+    not surfaced in UI yet.
+  - **Shared build.** `packages/shared/src/index.ts` now names the cpm re-export
+    (`export { cpmCents, cpmEur }`) — Rollup can't follow `export *` through the
+    CJS/NodeNext interop for runtime values. `apps/web/vite.config.ts` also
+    aliases `@naano/shared` to its **source** for the same reason. The API
+    still consumes `dist`.
+  - **2.9 modal.** `CreatorProfileModal.tsx` is the thin real version (see the
+    2.9 line). Grow it into the tabbed shell + booking rail; don't restart.
+  - **AppShell** is now the real 72px icon rail; only "Creators" routes.
+  - `uiStore.ts` (sidebar collapse) has no consumer any more — left as the
+    zustand pattern example per MAP, fair game to delete or repurpose.
+  - `apps/web/vite.config.{js,d.ts}` were tracked build artifacts (tsc -b emits
+    them; `tsconfig.node.json` is `composite`). Now gitignored + untracked;
+    Vite loads the `.ts`.
 - 2026-09-10 — Slice 2.3 done (creators API filters/sort/detail). Next natural
   slice is 2.4 (marketplace grid shell) or 2.7 (creator card). The web api
   client (`apps/web/src/lib/api/{client,http,fixtures}.ts`) still only exposes

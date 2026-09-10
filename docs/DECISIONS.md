@@ -145,3 +145,28 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   `ListCreatorsParams`, `CreatorProfileDetail`) added to
   `packages/shared/src/api.ts`. Web api client left untouched (slice was
   API-only).
+- 2026-09-11 — `Campaign.targetVertical` (required `Vertical`) added. Per-
+  (creator, campaign) ICP fit is now computed on the list endpoint:
+  `GET /creators` takes optional `campaignId`; with none it ranks against the
+  most recent LIVE campaign as the implicit brand context ("Ranked for your
+  company", RECON §4), and rows come back as `MarketplaceCreator`
+  (`CreatorProfile` + `icpFitPct: number | null`). `best_match` changed from a
+  weighted fit/perf mix to **fit-band first, performance blend within the
+  band** — RECON says sector fit comes first and performance only "refines",
+  and `scoreAudienceFit` returns ~8 discrete values so banding is clean.
+  `audience-fit.ts` is now called (was dead code).
+- 2026-09-11 — `GET /creators?q=` free-text filter (case-insensitive contains
+  over displayName + headline), added for the 2.4 search box. In the Prisma
+  `where`, so it costs nothing extra.
+- 2026-09-11 — Web consumes `@naano/shared` from **source** via a vite alias,
+  and `packages/shared/src/index.ts` names the cpm re-export instead of
+  `export *`. Rollup can't statically resolve runtime named exports through
+  tsc's NodeNext CJS interop (`__exportStar` / `Object.defineProperty` getters),
+  so importing `cpmCents` into the web bundle failed. The API keeps consuming
+  `dist`. First real cross-app use of the shared CPM helper.
+- 2026-09-11 — Shortlist is client-only: `shortlistStore` (zustand `persist` →
+  localStorage `naano.shortlist`). No backend `Shortlist` model this slice; the
+  campaign-scoped shortlist (3.5) can revisit. Book and View profile both open
+  a thin real `CreatorProfileModal` (backed by `GET /creators/:id`) so no card
+  control is a dead button; the full tabbed modal + booking rail stay in
+  2.9–2.13. `AppShell` rebuilt as the DESIGN §layout 72px icon rail.

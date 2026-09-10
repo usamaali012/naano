@@ -1,25 +1,53 @@
-import { useEffect, useState } from "react";
-import type { CreatorProfile } from "@naano/shared";
+import { useEffect, useMemo, useState } from "react";
+import type { MarketplaceCreator } from "@naano/shared";
 import { api } from "../lib/api";
 import { useCreatorsStore } from "../lib/stores/creatorsStore";
+import { useShortlistStore } from "../lib/stores/shortlistStore";
+import { MarketplaceHeader } from "../components/marketplace/MarketplaceHeader";
 import { CreatorGrid } from "../components/marketplace/CreatorGrid";
 import { CreatorsPagination } from "../components/marketplace/CreatorsPagination";
+import { CreatorProfileModal } from "../components/marketplace/CreatorProfileModal";
+import { Button } from "../components/ui/Button";
+
+// The shortlist tab filters the full catalogue client-side, so fetch as much of
+// it as the list endpoint allows in one page (pageSize is capped at 100). The
+// seed catalogue is ~40 rows, well inside that.
+const SHORTLIST_FETCH_SIZE = 100;
 
 export function CreatorsListPage(): JSX.Element {
-  const page = useCreatorsStore((state) => state.page);
-  const pageSize = useCreatorsStore((state) => state.pageSize);
-  const setPage = useCreatorsStore((state) => state.setPage);
+  const { page, pageSize, sort, q, tab, setPage, setSort, setQuery, setTab } =
+    useCreatorsStore();
 
-  const [creators, setCreators] = useState<CreatorProfile[]>([]);
+  const shortlistIds = useShortlistStore((state) => state.ids);
+  const toggleShortlist = useShortlistStore((state) => state.toggle);
+  const addToShortlist = useShortlistStore((state) => state.add);
+  const shortlistSet = useMemo(() => new Set(shortlistIds), [shortlistIds]);
+
+  const [creators, setCreators] = useState<MarketplaceCreator[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [openCreatorId, setOpenCreatorId] = useState<string | null>(null);
+
+  // Debounce the search box so typing does not fire a request per keystroke.
+  const [queryInput, setQueryInput] = useState(q);
+  useEffect(() => {
+    const handle = setTimeout(() => setQuery(queryInput), 250);
+    return () => clearTimeout(handle);
+  }, [queryInput, setQuery]);
+
+  const onShortlistTab = tab === "shortlist";
 
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
-
     api
-      .listCreators({ page, pageSize })
+      .listCreators({
+        page: onShortlistTab ? 1 : page,
+        pageSize: onShortlistTab ? SHORTLIST_FETCH_SIZE : pageSize,
+        sort,
+        q: q || undefined,
+      })
       .then((result) => {
         if (cancelled) return;
         setCreators(result.items);
@@ -27,40 +55,166 @@ export function CreatorsListPage(): JSX.Element {
         setStatus("ready");
       })
       .catch(() => {
-        if (cancelled) return;
-        setStatus("error");
+        if (!cancelled) setStatus("error");
       });
 
     return () => {
       cancelled = true;
     };
-  }, [page, pageSize]);
+  }, [onShortlistTab, page, pageSize, sort, q]);
+
+  const displayed = onShortlistTab
+    ? creators.filter((creator) => shortlistSet.has(creator.id))
+    : creators;
+
+  function toggleSelect(id: string): void {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function shortlistSelected(): void {
+    addToShortlist([...selectedIds]);
+    setSelectedIds(new Set());
+  }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">Creators</h1>
-        <p className="text-sm text-slate-500">Vetted LinkedIn creators available to book.</p>
-      </div>
+    <div className="flex flex-col gap-s6">
+      <MarketplaceHeader
+        totalCount={total}
+        shortlistCount={shortlistIds.length}
+        tab={tab}
+        onTabChange={(next) => {
+          setTab(next);
+          setSelectedIds(new Set());
+        }}
+        sort={sort}
+        onSortChange={setSort}
+        query={queryInput}
+        onQueryChange={setQueryInput}
+      />
 
-      {status === "loading" && <p className="text-sm text-slate-500">Loading creators...</p>}
+      {status === "loading" && (
+        <p className="text-body text-text-muted">Loading creators…</p>
+      )}
       {status === "error" && (
-        <p className="text-sm text-red-600">Could not load creators. Is the API running?</p>
+        <p className="text-body text-warn">
+          Could not load creators. Check that the API is running.
+        </p>
       )}
-      {status === "ready" && total === 0 && (
-        <p className="text-sm text-slate-500">No creators yet.</p>
-      )}
-      {status === "ready" && total > 0 && (
+
+      {status === "ready" && (
         <>
-          <CreatorGrid creators={creators} />
-          <CreatorsPagination
-            page={page}
-            pageSize={pageSize}
-            total={total}
-            onPageChange={setPage}
-          />
+          {selectedIds.size > 0 && (
+            <div className="flex flex-wrap items-center gap-s3 rounded-card border border-border bg-surface px-s4 py-s3">
+              <span className="text-body text-text">
+                {selectedIds.size} selected
+              </span>
+              <Button size="sm" onClick={shortlistSelected}>
+                Add to shortlist
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                Clear selection
+              </Button>
+            </div>
+          )}
+
+          {displayed.length === 0 ? (
+            <EmptyState
+              tab={tab}
+              query={q}
+              onClearQuery={() => {
+                setQueryInput("");
+                setQuery("");
+              }}
+              onBrowseAll={() => setTab("all")}
+            />
+          ) : (
+            <>
+              <CreatorGrid
+                creators={displayed}
+                selectedIds={selectedIds}
+                shortlistIds={shortlistSet}
+                onToggleSelect={toggleSelect}
+                onToggleShortlist={toggleShortlist}
+                onOpen={setOpenCreatorId}
+              />
+              {!onShortlistTab && (
+                <CreatorsPagination
+                  page={page}
+                  pageSize={pageSize}
+                  total={total}
+                  onPageChange={setPage}
+                />
+              )}
+            </>
+          )}
         </>
       )}
+
+      <CreatorProfileModal
+        creatorId={openCreatorId}
+        onClose={() => setOpenCreatorId(null)}
+        shortlisted={openCreatorId ? shortlistSet.has(openCreatorId) : false}
+        onToggleShortlist={toggleShortlist}
+      />
+    </div>
+  );
+}
+
+interface EmptyStateProps {
+  tab: "all" | "shortlist";
+  query: string;
+  onClearQuery: () => void;
+  onBrowseAll: () => void;
+}
+
+function EmptyState({
+  tab,
+  query,
+  onClearQuery,
+  onBrowseAll,
+}: EmptyStateProps): JSX.Element {
+  if (tab === "shortlist") {
+    return (
+      <div className="rounded-card border border-border bg-surface p-s8 text-body text-text-muted">
+        No saved creators yet. Star a creator in the marketplace to build your
+        shortlist.{" "}
+        <button
+          type="button"
+          onClick={onBrowseAll}
+          className="font-medium text-primary"
+        >
+          Browse all creators
+        </button>
+      </div>
+    );
+  }
+  if (query) {
+    return (
+      <div className="rounded-card border border-border bg-surface p-s8 text-body text-text-muted">
+        No creators match &ldquo;{query}&rdquo;.{" "}
+        <button
+          type="button"
+          onClick={onClearQuery}
+          className="font-medium text-primary"
+        >
+          Clear the search
+        </button>{" "}
+        to see every creator.
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-card border border-border bg-surface p-s8 text-body text-text-muted">
+      No creators available yet.
     </div>
   );
 }

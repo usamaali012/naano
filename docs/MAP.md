@@ -30,21 +30,25 @@ apps/
       auth/               JWT strategy/guards/role decorator + POST /auth/login.
                            Working, not stubbed: needed to exercise the role guard.
       creators/           GET /creators (paginated) with filters (vertical x N,
-                           country, price range, max CPM, min median views,
-                           min/max followers, min engagement %, posted-within-
-                           days) and four sorts (best_match default, price_asc,
-                           followers_desc, engagement_desc). GET /creators/:id
-                           returns the profile + audienceSegments + posts
-                           (CreatorProfileDetail). Filter/sort DTO in
-                           dto/list-creators.dto.ts. CPM comes from
-                           @naano/shared cpm.ts, never stored. ranking.ts holds
-                           the best_match blend (verified-performance only until
-                           campaigns carry a target vertical). audience-fit.ts
-                           holds the single swappable sector-fit rule;
-                           CreatorsService.audienceFitScore() wraps it, still
-                           uncalled. List filter/sort/page happen in memory over
-                           the ~40-row catalogue after one cheap DB where.
-      campaigns/          Empty, wired stub module. No routes yet.
+                           country, q free-text, price range, max CPM, min median
+                           views, min/max followers, min engagement %, posted-
+                           within-days) and four sorts (best_match default,
+                           price_asc, followers_desc, engagement_desc). Optional
+                           campaignId sets the ranking context; rows return as
+                           MarketplaceCreator (CreatorProfile + icpFitPct).
+                           GET /creators/:id returns profile + audienceSegments
+                           + posts (CreatorProfileDetail). Filter/sort DTO in
+                           dto/list-creators.dto.ts. CPM from @naano/shared
+                           cpm.ts, never stored. ranking.ts: best_match is
+                           fit-band-first then a rank-normalised performance
+                           blend within the band (CPM .5 / views .3 / eng .2);
+                           takes an optional fitById map. audience-fit.ts holds
+                           the swappable sector-fit rule and is now called by
+                           list() (via scoreAudienceFit) and by
+                           CreatorsService.audienceFitScore(). Filter/sort/page
+                           in memory over the ~40-row catalogue after one DB where.
+      campaigns/          Empty, wired stub module. No routes yet. Campaign now
+                           carries targetVertical (drives ICP fit + ranking).
       bookings/           Empty, wired stub module. No routes yet.
       tracking/           GET /r/:slug -> record ClickEvent -> 302. The spine.
                            Fully working, verified end to end.
@@ -61,36 +65,55 @@ apps/
     tailwind.config.js    Maps Tailwind utilities onto the CSS custom properties
                            in src/index.css via var(). No raw hex/px in configs
                            or components.
+    vite.config.ts        Aliases @naano/shared -> its src/index.ts (source, not
+                           dist): Rollup can't follow the shared package's CJS
+                           re-exports for runtime named imports (cpmCents).
     src/
       index.css           The design token layer: colour, two radii, one overlay
                            shadow, type ramp, Inter stack -- defined once here
                            per docs/DESIGN.md. Single source of truth.
       lib/
         api/              ALL http lives here. Two impls: http + fixtures,
-                           selected by VITE_API_MODE. client.ts has the interface.
-        stores/           Zustand stores, one per domain (uiStore.ts is the
-                           pattern example: sidebar collapse state).
-                           creatorsStore.ts holds the creators-grid page state.
-        format.ts         Money/number formatting helpers. Render-boundary only.
-      routes/             PublicHome (public), AppShell (authed-feeling chrome)
-                           wrapping CreatorsListPage (the working creators list).
+                           selected by VITE_API_MODE. client.ts is the interface:
+                           listCreators(ListCreatorsParams) -> MarketplaceCreator
+                           page, getCreator(id) -> CreatorProfileDetail. http.ts
+                           maps every list param (filter params wired, not yet
+                           surfaced in UI). fixtures.ts mirrors both.
+        stores/           Zustand stores, one per domain. creatorsStore.ts:
+                           grid page/sort/q/tab state. shortlistStore.ts: saved
+                           creator ids, zustand persist -> localStorage
+                           (naano.shortlist). uiStore.ts: unused pattern example.
+        format.ts         Money/number/percent + verticalLabel helpers.
+                           Render-boundary only; formatCpm uses @naano/shared.
+      routes/             PublicHome (public). AppShell = the 72px icon rail
+                           (DESIGN §layout), only Creators routes. CreatorsListPage
+                           wires header + grid + pagination + profile modal +
+                           multi-select + shortlist.
       components/
         ui/               Token-only primitives: Button, Card, Input, Select,
                            Checkbox, Badge, StatusPill, Table (+ THead/TBody/TR/
                            TH/TD), Tabs, Modal, SegmentedBar. None hardcode a
                            colour, radius or spacing value.
-        marketplace/      CreatorCard, CreatorGrid, CreatorsPagination
-                           (Prev/Next + range, driven by the list envelope).
-                           No filter panel yet -- out of scope this session.
+        marketplace/      MarketplaceHeader (title/explainer, All+Shortlist tabs
+                           with counts, search, sort-by, section header).
+                           CreatorCard (checkbox, network badge, ICP fit badge,
+                           star, Book, 4-metric strip, View profile). CreatorGrid
+                           (3/2/1 cols). CreatorsPagination (Prev/Next + range).
+                           CreatorProfileModal (thin real profile from
+                           GET /creators/:id; grows into the 2.9 tabbed modal).
+                           icons.tsx (NetworkBadge, StarIcon). No filter panel yet.
         campaign/         Empty. Brief form, campaign list, status pills land
                            with the campaign flow.
         dashboard/        Empty. Metric tiles, charts land with the dashboard.
 packages/
   shared/                 Wire-safe types (enums.ts, entities.ts, api.ts) hand-kept
                            in sync with prisma/schema.prisma. Imported by both apps.
-                           cpm.ts: the one CPM formula (postCostCents / medianViews
-                           * 1000), used by API and web so the number never
-                           disagrees. Run `npm run build:shared` after editing.
+                           api.ts adds MarketplaceCreator + campaignId/q on
+                           ListCreatorsParams. cpm.ts: the one CPM formula
+                           (postCostCents / medianViews * 1000), used by API and
+                           web. index.ts NAMES the cpm re-export (not export *) so
+                           bundlers see it. Run `npm run build:shared` after
+                           editing (the API reads dist; web reads src via alias).
 docs/
   PRODUCT.md              Domain reference (superseded by RECON.md on conflict)
   RECON.md                Direct walkthrough of the live naano brand app. Wins
