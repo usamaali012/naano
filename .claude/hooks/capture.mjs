@@ -102,6 +102,23 @@ function readTranscript(p) {
   return out;
 }
 
+// True when the text carries an actual human prompt. Harness-injected
+// wrappers are ignored for this test only; the logged text stays verbatim.
+// Filters bare IDE events, slash-command plumbing, and background
+// <task-notification> pings — none of which are prompts.
+function carriesPrompt(rawText) {
+  const core = (rawText || "")
+    .replace(/<ide_opened_file>[\s\S]*?<\/ide_opened_file>/g, "")
+    .replace(/<ide_selection>[\s\S]*?<\/ide_selection>/g, "")
+    .replace(/<ide_diagnostics>[\s\S]*?<\/ide_diagnostics>/g, "")
+    .replace(/<task-notification>[\s\S]*?<\/task-notification>/g, "")
+    .trim();
+  if (!core) return false;
+  if (core.startsWith("<command-name>")) return false;
+  if (core.startsWith("<local-command-stdout>")) return false;
+  return true;
+}
+
 function isRealUserPrompt(e) {
   if (!e || e.type !== "user" || e.isSidechain || e.isMeta) return false;
   const c = e.message && e.message.content;
@@ -114,11 +131,7 @@ function isRealUserPrompt(e) {
       .map((b) => b.text || "")
       .join("");
   } else return false;
-  const t = text.trim();
-  if (!t) return false;
-  if (t.startsWith("<command-name>")) return false;
-  if (t.startsWith("<local-command-stdout>")) return false;
-  return true;
+  return carriesPrompt(text);
 }
 
 function userPromptText(e) {
@@ -336,7 +349,7 @@ function main() {
       (typeof input.user_input === "string" && input.user_input) ||
       (typeof input.user_prompt === "string" && input.user_prompt) ||
       "";
-    if (!promptText.trim()) return;
+    if (!carriesPrompt(promptText)) return;
 
     const model = latestModelFromTranscript(events, cfg.default_model);
     state.prompts += 1;
