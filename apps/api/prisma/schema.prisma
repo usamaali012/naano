@@ -24,6 +24,11 @@ enum Vertical {
   VERTICAL_SAAS
 }
 
+enum Network {
+  LINKEDIN
+  X
+}
+
 enum CampaignStatus {
   DRAFT
   LIVE
@@ -40,10 +45,26 @@ enum BookingStatus {
   PAID
 }
 
+// Which side opened the deal. "Invitations received" vs "sent" in the
+// Collaborations view is this field read from the other party's seat.
+enum BookingInitiator {
+  BRAND
+  CREATOR
+}
+
 enum PayoutStatus {
   PENDING
   PAID
   FAILED
+}
+
+// The four axes a creator's audience is broken down along. Each axis has its
+// own set of segments that sum to 100.
+enum AudienceDimension {
+  JOB_TITLE
+  SENIORITY
+  INDUSTRY
+  GEOGRAPHY
 }
 
 model User {
@@ -70,60 +91,127 @@ model Company {
 }
 
 model CreatorProfile {
-  id                 String   @id @default(cuid())
-  userId             String   @unique
-  user               User     @relation(fields: [userId], references: [id])
-  displayName        String
-  headline           String
-  avatarUrl          String?
-  vertical           Vertical
-  followerCount      Int
-  country            String
-  language            String
-  pricePerPostCents  Int
-  avgImpressions     Int
-  engagementRate     Float
-  createdAt          DateTime @default(now())
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  displayName   String
+  headline      String
+  avatarUrl     String?
+  vertical      Vertical
+  network       Network  @default(LINKEDIN)
+  followerCount Int
+  country       String
+  language      String
 
-  bookings Booking[]
+  // Money the brand pays. CPM is postCostCents / medianViews * 1000 and is
+  // computed at the render boundary, never stored.
+  postCostCents     Int
+  bundle5PriceCents Int
+
+  // Verified performance signal that replaces the old avgImpressions.
+  medianViews Int
+
+  // Backs the "estimated from N recent public engagers" / "N posts analyzed"
+  // captions in the profile modal. Real numbers, not copy.
+  observedEngagerCount Int
+  postsAnalyzed        Int
+
+  engagementRate Float
+  createdAt      DateTime @default(now())
+
+  bookings         Booking[]
+  audienceSegments AudienceSegment[]
+  posts            CreatorPost[]
 
   @@index([vertical])
   @@index([country])
+  @@index([network])
+}
+
+// One slice of one audience dimension for one creator. Four dimensions per
+// creator, four segments per dimension, each dimension summing to 100.
+model AudienceSegment {
+  id               String            @id @default(cuid())
+  creatorProfileId String
+  creatorProfile   CreatorProfile    @relation(fields: [creatorProfileId], references: [id])
+  dimension        AudienceDimension
+  label            String
+  percentage       Int
+  createdAt        DateTime          @default(now())
+
+  @@index([creatorProfileId])
+  @@index([creatorProfileId, dimension])
+}
+
+// A recent public post scraped from the creator's feed. Five per creator.
+// Feeds the Content tab carousel and the reach sparkline.
+model CreatorPost {
+  id               String         @id @default(cuid())
+  creatorProfileId String
+  creatorProfile   CreatorProfile @relation(fields: [creatorProfileId], references: [id])
+  network          Network
+  content          String
+  publishedAt      DateTime
+  views            Int
+  reactions        Int
+  comments         Int
+  reposts          Int
+  externalUrl      String
+
+  @@index([creatorProfileId])
+  @@index([publishedAt])
 }
 
 model Campaign {
-  id              String         @id @default(cuid())
-  companyId       String
-  company         Company        @relation(fields: [companyId], references: [id])
-  name            String
-  objective       String
-  brief           String
-  keyMessages     String
-  guidelines      String
-  destinationUrl  String
-  budgetCents     Int
-  status          CampaignStatus @default(DRAFT)
-  startDate       DateTime?
-  endDate         DateTime?
-  createdAt       DateTime       @default(now())
+  id             String         @id @default(cuid())
+  companyId      String
+  company        Company        @relation(fields: [companyId], references: [id])
+  name           String
+  objective      String
+  brief          String
+  keyMessages    String
+  guidelines     String
+  destinationUrl String
+  budgetCents    Int
+  status         CampaignStatus @default(DRAFT)
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime       @default(now())
 
   bookings Booking[]
+  icps     Icp[]
 
   @@index([companyId])
   @@index([status])
 }
 
+// The ICP cards extracted during brand onboarding. A campaign carries up to
+// three; `rank` is 1..3 and unique per campaign.
+model Icp {
+  id          String   @id @default(cuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id])
+  rank        Int
+  title       String
+  description String
+  createdAt   DateTime @default(now())
+
+  @@unique([campaignId, rank])
+  @@index([campaignId])
+}
+
 model Booking {
-  id                String        @id @default(cuid())
-  campaignId        String
-  campaign          Campaign      @relation(fields: [campaignId], references: [id])
-  creatorProfileId  String
-  creatorProfile    CreatorProfile @relation(fields: [creatorProfileId], references: [id])
-  agreedPriceCents  Int
-  status            BookingStatus @default(INVITED)
-  deliverable       String
-  deadline          DateTime?
-  createdAt         DateTime      @default(now())
+  id               String           @id @default(cuid())
+  campaignId       String
+  campaign         Campaign         @relation(fields: [campaignId], references: [id])
+  creatorProfileId String
+  creatorProfile   CreatorProfile   @relation(fields: [creatorProfileId], references: [id])
+  agreedPriceCents Int
+  status           BookingStatus    @default(INVITED)
+  initiatedBy      BookingInitiator @default(BRAND)
+  deliverable      String
+  deadline         DateTime?
+  createdAt        DateTime         @default(now())
 
   post        Post?
   trackedLink TrackedLink?
@@ -135,22 +223,22 @@ model Booking {
 }
 
 model Post {
-  id            String    @id @default(cuid())
-  bookingId     String    @unique
-  booking       Booking   @relation(fields: [bookingId], references: [id])
-  linkedinUrl   String?
-  content       String
-  publishedAt   DateTime?
-  impressions   Int       @default(0)
+  id          String    @id @default(cuid())
+  bookingId   String    @unique
+  booking     Booking   @relation(fields: [bookingId], references: [id])
+  linkedinUrl String?
+  content     String
+  publishedAt DateTime?
+  impressions Int       @default(0)
 }
 
 model TrackedLink {
-  id              String   @id @default(cuid())
-  bookingId       String   @unique
-  booking         Booking  @relation(fields: [bookingId], references: [id])
-  slug            String   @unique
-  destinationUrl  String
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  bookingId      String   @unique
+  booking        Booking  @relation(fields: [bookingId], references: [id])
+  slug           String   @unique
+  destinationUrl String
+  createdAt      DateTime @default(now())
 
   clickEvents ClickEvent[]
 
@@ -158,14 +246,14 @@ model TrackedLink {
 }
 
 model ClickEvent {
-  id             String      @id @default(cuid())
-  trackedLinkId  String
-  trackedLink    TrackedLink @relation(fields: [trackedLinkId], references: [id])
-  createdAt      DateTime    @default(now())
-  referrer       String?
-  userAgent      String?
-  ipHash         String
-  isLead         Boolean     @default(false)
+  id            String      @id @default(cuid())
+  trackedLinkId String
+  trackedLink   TrackedLink @relation(fields: [trackedLinkId], references: [id])
+  createdAt     DateTime    @default(now())
+  referrer      String?
+  userAgent     String?
+  ipHash        String
+  isLead        Boolean     @default(false)
 
   @@index([trackedLinkId])
   @@index([createdAt])

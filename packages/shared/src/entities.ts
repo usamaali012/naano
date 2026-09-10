@@ -2,8 +2,11 @@
 // (JSON has no Date type); money is always integer cents.
 
 import type {
+  AudienceDimension,
+  BookingInitiator,
   BookingStatus,
   CampaignStatus,
+  Network,
   PayoutStatus,
   Role,
   Vertical,
@@ -32,13 +35,44 @@ export interface CreatorProfile {
   headline: string;
   avatarUrl: string | null;
   vertical: Vertical;
+  network: Network;
   followerCount: number;
   country: string;
   language: string;
-  pricePerPostCents: number;
-  avgImpressions: number;
+  /** What the brand pays for one post, integer cents. */
+  postCostCents: number;
+  /** Price for a bundle of five posts, integer cents. */
+  bundle5PriceCents: number;
+  /** Verified median views per post. CPM derives from this; see cpmFromCents. */
+  medianViews: number;
+  /** Public engagers sampled to build the audience breakdown. */
+  observedEngagerCount: number;
+  /** Recent posts inspected for the content signals. */
+  postsAnalyzed: number;
   engagementRate: number;
   createdAt: string;
+}
+
+export interface AudienceSegment {
+  id: string;
+  creatorProfileId: string;
+  dimension: AudienceDimension;
+  label: string;
+  percentage: number;
+  createdAt: string;
+}
+
+export interface CreatorPost {
+  id: string;
+  creatorProfileId: string;
+  network: Network;
+  content: string;
+  publishedAt: string;
+  views: number;
+  reactions: number;
+  comments: number;
+  reposts: number;
+  externalUrl: string;
 }
 
 export interface Campaign {
@@ -57,12 +91,22 @@ export interface Campaign {
   createdAt: string;
 }
 
+export interface Icp {
+  id: string;
+  campaignId: string;
+  rank: number;
+  title: string;
+  description: string;
+  createdAt: string;
+}
+
 export interface Booking {
   id: string;
   campaignId: string;
   creatorProfileId: string;
   agreedPriceCents: number;
   status: BookingStatus;
+  initiatedBy: BookingInitiator;
   deliverable: string;
   deadline: string | null;
   createdAt: string;

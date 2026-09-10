@@ -13,7 +13,17 @@ export type Vertical =
   | "FINTECH"
   | "VERTICAL_SAAS";
 
+export type Network = "LINKEDIN" | "X";
+
 export type CampaignStatus = "DRAFT" | "LIVE" | "COMPLETED";
+
+export type BookingInitiator = "BRAND" | "CREATOR";
+
+export type AudienceDimension =
+  | "JOB_TITLE"
+  | "SENIORITY"
+  | "INDUSTRY"
+  | "GEOGRAPHY";
 
 export type BookingStatus =
   | "INVITED"

@@ -24,7 +24,7 @@ export function CreatorCard({ creator }: CreatorCardProps): JSX.Element {
       </div>
       <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3">
         <span className="text-sm text-slate-500">per post</span>
-        <span className="text-lg font-semibold text-slate-900">{formatCents(creator.pricePerPostCents)}</span>
+        <span className="text-lg font-semibold text-slate-900">{formatCents(creator.postCostCents)}</span>
       </div>
     </Card>
   );
