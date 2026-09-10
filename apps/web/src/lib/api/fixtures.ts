@@ -1,14 +1,25 @@
 import type {
   AudienceSegment,
+  AuthMe,
   CampaignSummary,
   CreatorPost,
   CreatorProfileDetail,
   ListCreatorsParams,
+  LoginResponse,
   MarketplaceCreator,
   PageParams,
   Paginated,
 } from "@naano/shared";
 import type { ApiClient } from "./client";
+
+const FIXTURE_ME: AuthMe = {
+  userId: "fixture-user-brand",
+  email: "growth@ledgerly.example.com",
+  role: "COMPANY",
+  companyId: "fixture-company-1",
+  creatorProfileId: null,
+  displayName: "Ledgerly",
+};
 
 const FIXTURE_CAMPAIGN: CampaignSummary = {
   id: "fixture-campaign-1",
@@ -210,6 +221,12 @@ function postsFor(detail: CreatorProfileDetail): CreatorPost[] {
 }
 
 export const fixturesClient: ApiClient = {
+  async login(): Promise<LoginResponse> {
+    return { accessToken: "fixture-token" };
+  },
+  async getMe(): Promise<AuthMe> {
+    return FIXTURE_ME;
+  },
   async listCreators(params?: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>> {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 20;

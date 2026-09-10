@@ -231,3 +231,40 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   screenshot suite: wipes `.screenshots/`, reshoots grid + both modal tabs +
   booking rail + error state, prints mtimes. Regenerating all of it is part of
   finishing a UI task.
+- 2026-09-11 — `ui/Avatar` reworked: initials render underneath the `<img>`
+  always (not only after `onError`), and `loading="lazy"` was dropped. A
+  fullPage Playwright screenshot right after navigation was catching randomuser
+  images mid-load — neither the photo nor the fallback had painted yet, so 12
+  cards showed empty circles. Initials-as-background degrades a slow or failed
+  load the same way; `shots.mjs` also now waits for `document.images` to settle
+  before every shot.
+- 2026-09-11 — Post cost clamp removed (`CLAMP_COST_MIN_EUR`/`MAX_EUR`,
+  seed.ts). It was inventing a floor/ceiling docs/RECON.md §10 never asked for,
+  and it was visibly binding (two creators at exactly EUR 1,500). Cost is now
+  purely `cpm * medianViews / 1000`; the four `TIER_BANDS` were narrowed to a
+  believable B2B follower range (18K-215K, was 1K-480K) so the unclamped result
+  stays plausible on its own (EUR 255-986 this reseed). A `usedPostCosts`
+  module-level `Set` plus a "nudge off any multiple of 25" step guarantee no
+  two creators share a price and none lands on a round figure; CPM stays in
+  the RECON EUR 10-30 band because tier CPM ranges carry 2+ EUR of headroom
+  before the nudge could push a value out.
+- 2026-09-11 — Marketplace section subtitle no longer claims "The 40 strongest
+  profiles" when there are exactly 40 total (a vacuous "top 40 of 40" next to
+  "Showing 1-12 of 40"). Now "All {totalCount} creators, ordered by sector fit
+  then verified performance"; the ranked-view section heading changed from
+  "Top ranked creators" to "Best match first" for the same reason — true at
+  any catalogue size, not just when the shown set is a subset.
+- 2026-09-11 — `/` is now a real demo entry (slice 6.2), not a placeholder
+  "Enter the app" link. `EntryPage` (replaces `PublicHome`) offers two
+  one-click sign-ins against seeded accounts — brand (Ledgerly, the company
+  that owns the live campaign the marketplace already ranks against) and
+  creator (seed index 0) — each doing a genuine `POST /auth/login` +
+  `GET /auth/me` (new endpoint), not a faked session. `authStore` (zustand
+  persist) holds the JWT + the `/me` result; `apps/web/src/lib/api/http.ts`
+  attaches it as a Bearer header via `setApiToken`. `App.tsx`'s `AppIndex`
+  routes by role: brand -> the marketplace (already fully built), creator ->
+  new `CreatorHomePage`, a real page showing the signed-in creator their own
+  `GET /creators/:id` ("this is exactly how brands see you") — the honest
+  stand-in until Phase 4 builds the actual creator side. `/app` redirects
+  signed-out visitors to `/`. `AppShell` gained a top bar (identity + Sign
+  out) so the login is visible, not just functional.

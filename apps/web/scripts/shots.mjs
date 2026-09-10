@@ -1,12 +1,13 @@
-// Full marketplace screenshot suite. Regenerating every shot is part of
-// finishing a task — run this, don't hand-pick.
+// Full screenshot suite. Regenerating every shot is part of finishing a task —
+// run this, don't hand-pick.
 //
 //   npm run dev            # in another terminal (api + web)
 //   npm run shots --workspace=apps/web
 //
-// Writes grid, both modal tabs, the booking rail (bundle selected), and the
-// marketplace error state into apps/web/.screenshots/, wiping the folder first
-// so every file's mtime is from this run.
+// Writes the entry page, the brand marketplace (grid + both modal tabs +
+// booking rail), the creator home, and the marketplace error state into
+// apps/web/.screenshots/, wiping the folder first so every mtime is from this
+// run. Each side signs in for real from the entry page.
 import { mkdir, rm, readdir, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -15,6 +16,7 @@ import { chromium } from "playwright";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(HERE, "..", ".screenshots");
 const BASE = process.env.SHOT_BASE_URL ?? "http://localhost:5173";
+const API = process.env.VITE_API_URL ?? "http://localhost:3000";
 const WIDTH = 1440;
 
 await rm(OUT, { recursive: true, force: true });
@@ -23,21 +25,47 @@ await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch();
 const errors = [];
 
-async function newPage(height = 1400) {
-  const page = await browser.newPage({ viewport: { width: WIDTH, height } });
+async function newContext(height = 1400) {
+  const context = await browser.newContext({ viewport: { width: WIDTH, height } });
+  const page = await context.newPage();
   page.on("pageerror", (e) => errors.push(`${page.url()} :: ${e}`));
   page.on("console", (m) => m.type() === "error" && errors.push(`${page.url()} :: ${m.text()}`));
-  return page;
+  return { context, page };
+}
+
+async function settleImages(page) {
+  await page
+    .waitForFunction(() => Array.from(document.images).every((i) => i.complete), null, { timeout: 10_000 })
+    .catch(() => {});
+  await page.waitForTimeout(400); // let onError fallbacks re-render
 }
 
 async function shot(page, name) {
+  await settleImages(page);
   await page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: true });
 }
 
-// --- grid + modal ---------------------------------------------------------
+async function signIn(page, side) {
+  const label = side === "brand" ? "Continue as a brand" : "Continue as a creator";
+  await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: label }).click();
+  await page.waitForURL("**/app");
+  await page.getByRole("button", { name: "Sign out" }).waitFor({ timeout: 8000 });
+}
+
+// --- entry page ---------------------------------------------------------------
 {
-  const page = await newPage();
-  await page.goto(`${BASE}/app`, { waitUntil: "networkidle" });
+  const { context, page } = await newContext(900);
+  await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(300);
+  await shot(page, "entry-page");
+  await context.close();
+}
+
+// --- brand: grid + modal ----------------------------------------------------
+{
+  const { context, page } = await newContext();
+  await signIn(page, "brand");
   await page.waitForTimeout(1500); // avatar images
   await shot(page, "creators-grid");
 
@@ -54,21 +82,29 @@ async function shot(page, name) {
   await page.getByRole("tab", { name: "Audience" }).click();
   await page.waitForTimeout(350);
   await shot(page, "modal-audience");
-  await page.close();
+  await context.close();
+}
+
+// --- creator home ---------------------------------------------------------
+{
+  const { context, page } = await newContext();
+  await signIn(page, "creator");
+  await page.waitForTimeout(1200);
+  await shot(page, "creator-home");
+  await context.close();
 }
 
 // --- marketplace error state -------------------------------------------------
 {
-  const api = process.env.VITE_API_URL ?? "http://localhost:3000";
-  const page = await newPage(900);
-  // Fail every API call (only the API origin — Vite assets on :5173 still load)
-  // so the shell renders and the marketplace shows its error panel.
-  await page.route(`${api}/**`, (r) => r.abort());
-  await page.goto(`${BASE}/app`, { waitUntil: "domcontentloaded" });
+  const { context, page } = await newContext(900);
+  await signIn(page, "brand");
+  await page.route(`${API}/creators*`, (r) => r.abort());
+  await page.route(`${API}/campaigns/**`, (r) => r.abort());
+  await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Try again" }).waitFor({ timeout: 5000 });
   await page.waitForTimeout(300);
   await shot(page, "error-state");
-  await page.close();
+  await context.close();
 }
 
 await browser.close();

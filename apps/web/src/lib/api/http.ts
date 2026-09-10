@@ -1,7 +1,9 @@
 import type {
+  AuthMe,
   CampaignSummary,
   CreatorProfileDetail,
   ListCreatorsParams,
+  LoginResponse,
   MarketplaceCreator,
   PageParams,
   Paginated,
@@ -10,8 +12,17 @@ import type { ApiClient } from "./client";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, init);
+// Bearer token for authenticated calls. The auth store sets it on sign-in /
+// rehydrate and clears it on sign-out.
+let apiToken: string | null = null;
+export function setApiToken(token: string | null): void {
+  apiToken = token;
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (apiToken) headers.set("authorization", `Bearer ${apiToken}`);
+  const response = await fetch(`${API_URL}${path}`, { ...init, headers });
   if (!response.ok) {
     throw new Error(`${path} failed with status ${response.status}`);
   }
@@ -82,6 +93,16 @@ function creatorsQuery(params?: ListCreatorsParams): string {
 }
 
 export const httpClient: ApiClient = {
+  login(email: string, password: string): Promise<LoginResponse> {
+    return request<LoginResponse>("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  },
+  getMe(): Promise<AuthMe> {
+    return getJson<AuthMe>("/auth/me");
+  },
   listCreators(params?: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>> {
     return getJson<Paginated<MarketplaceCreator>>(`/creators${creatorsQuery(params)}`);
   },

@@ -1,13 +1,20 @@
 import type {
+  AuthMe,
   CampaignSummary,
   CreatorProfileDetail,
   ListCreatorsParams,
+  LoginResponse,
   MarketplaceCreator,
   PageParams,
   Paginated,
 } from "@naano/shared";
 
 export interface ApiClient {
+  /** Real login. Returns the JWT; the caller stores it and calls getMe. */
+  login(email: string, password: string): Promise<LoginResponse>;
+  /** The signed-in user — requires the token to have been set. */
+  getMe(): Promise<AuthMe>;
+
   listCreators(params?: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>>;
   getCreator(id: string): Promise<CreatorProfileDetail>;
 

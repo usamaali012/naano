@@ -37,7 +37,7 @@ export function MarketplaceHeader({
     tab === "shortlist"
       ? "Your shortlist"
       : rankedView
-        ? "Top ranked creators"
+        ? "Best match first"
         : "All creators";
 
   return (
@@ -82,8 +82,8 @@ export function MarketplaceHeader({
         <h2 className="text-section-title text-text">{sectionTitle}</h2>
         {rankedView && totalCount > 0 && (
           <p className="text-label text-text-muted">
-            The {totalCount} strongest profiles according to your sector and
-            performance signals.
+            All {totalCount} creators, ordered by sector fit then verified
+            performance.
           </p>
         )}
       </div>

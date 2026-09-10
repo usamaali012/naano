@@ -2,7 +2,7 @@
 // per-endpoint request/response contracts shared by the API and the web client.
 
 import type { AudienceSegment, CreatorPost, CreatorProfile } from "./entities";
-import type { CampaignStatus, Vertical } from "./enums";
+import type { CampaignStatus, Role, Vertical } from "./enums";
 
 export interface Paginated<T> {
   items: T[];
@@ -14,6 +14,24 @@ export interface Paginated<T> {
 export interface PageParams {
   page?: number;
   pageSize?: number;
+}
+
+// --- Auth ------------------------------------------------------------------
+
+/** POST /auth/login response. */
+export interface LoginResponse {
+  accessToken: string;
+}
+
+/** GET /auth/me — the signed-in user and which side they belong to. */
+export interface AuthMe {
+  userId: string;
+  email: string;
+  role: Role;
+  companyId: string | null;
+  creatorProfileId: string | null;
+  /** Company name or creator display name, for the app chrome. */
+  displayName: string | null;
 }
 
 // --- Creators -------------------------------------------------------------

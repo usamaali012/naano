@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 interface AvatarProps {
   src: string | null;
   name: string;
-  /** Size + any extra classes. Applied to both the image and the fallback. */
+  /** Size + any extra classes. Applied to the circle. */
   className?: string;
-  /** Font size for the initials fallback. */
+  /** Font size for the initials. */
   initialsClassName?: string;
 }
 
@@ -17,8 +17,9 @@ function initials(name: string): string {
     .join("");
 }
 
-// A photo avatar with an initials block as the fallback for a missing or failed
-// image — not the default. Circle, cover-fit.
+// Photo avatar over an initials block. The initials always render; the image
+// paints on top once it loads and is removed if it fails — so a slow or broken
+// image degrades to initials rather than an empty circle.
 export function Avatar({
   src,
   name,
@@ -30,26 +31,20 @@ export function Avatar({
     setFailed(false);
   }, [src]);
 
-  const shape = `shrink-0 overflow-hidden rounded-full ${className}`;
-
-  if (!src || failed) {
-    return (
-      <span
-        aria-hidden="true"
-        className={`inline-flex items-center justify-center bg-primary-soft font-semibold text-primary ${shape} ${initialsClassName}`}
-      >
-        {initials(name)}
-      </span>
-    );
-  }
-
   return (
-    <img
-      src={src}
-      alt=""
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className={`object-cover ${shape}`}
-    />
+    <span
+      aria-hidden="true"
+      className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-soft font-semibold text-primary ${className} ${initialsClassName}`}
+    >
+      {initials(name)}
+      {src && !failed && (
+        <img
+          src={src}
+          alt=""
+          onError={() => setFailed(true)}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+    </span>
   );
 }

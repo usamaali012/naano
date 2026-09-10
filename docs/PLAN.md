@@ -264,8 +264,19 @@ Where the UX score is won. The modal is the densest surface; build it properly.
 Reserve three hours minimum.
 
 - [ ] **6.1 Deploy** — API + web + Postgres reachable.
-- [ ] **6.2 Demo entry on `/`** — public home routes into a seeded logged-in
-  feeling brand session.
+- [x] **6.2 Demo entry on `/`** — done 2026-09-11.
+  Scope: public home routes into a seeded logged-in feeling brand session.
+  Files: `apps/web/src/routes/EntryPage.tsx` (new, replaces `PublicHome.tsx`),
+  `apps/web/src/routes/CreatorHomePage.tsx` (new), `apps/web/src/App.tsx`,
+  `apps/web/src/routes/AppShell.tsx`, `apps/web/src/lib/stores/authStore.ts`
+  (new), `apps/web/src/lib/api/*`, `apps/api/src/auth/*`.
+  Notes: two one-click sign-ins (brand = Ledgerly, creator = the seed's index-0
+  creator) do a real `POST /auth/login` + `GET /auth/me` (new, JWT-guarded) and
+  land role-aware — brand on the marketplace, creator on a real "your profile"
+  page (their own `GET /creators/:id`, i.e. exactly what a brand sees). No
+  fake session. `/app` redirects signed-out visitors back to `/`. Shell gained
+  a top bar: signed-in identity + Sign out. Demo password lives only in
+  `EntryPage.tsx` and the seed — not repeated in docs.
 - [ ] **6.3 Walkthrough video + README** — record the core loop; README names
   what was cut and why.
 
@@ -295,6 +306,28 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-11 — Third pass: seed cost fix, subtitle fix, and the `/` demo entry
+  (slice 6.2, pulled forward — see its PLAN entry above). For the next session:
+  - **Real auth now exists end to end.** `GET /auth/me` (JWT-guarded) added
+    alongside the working `POST /auth/login`. Web has `authStore` (zustand
+    persist, localStorage `naano.auth`): `signIn(email, password)` does a real
+    login + `/me`, `signOut()` clears it. `apps/web/src/lib/api/http.ts`
+    exports `setApiToken` — call it (the store already does) before any
+    authenticated request. `/app` redirects to `/` when signed out.
+  - **Two real landings.** Brand → `CreatorsListPage` (marketplace). Creator →
+    new `CreatorHomePage` ("your profile", their own `GET /creators/:id`). When
+    Phase 4 (creator side: collaborations, earnings) lands, it likely replaces
+    or extends `CreatorHomePage` rather than starting fresh — the role-aware
+    routing in `App.tsx`'s `AppIndex` is the hook to extend.
+  - **Seed cost.** No more `CLAMP_COST_*`. Post cost is `cpm * medianViews /
+    1000`, nudged a few euros off any round-25 figure or collision
+    (`usedPostCosts` module-level `Set`) — never clamped, never repeated. If a
+    future tier change pushes the cheapest creator under ~€150 or the priciest
+    over ~€2,500, that is the tier bands to revisit, not a clamp to re-add.
+  - **`CreatorCard`'s badge and the marketplace section note both changed
+    wording** this pass (sector fit label from the prior session, "All 40
+    creators, ordered by…" this one) — if either drifts again, check both
+    together, they read as a pair.
 - 2026-09-11 — Second review pass (no new slices):
   - **`npm run shots`** (`apps/web/scripts/shots.mjs`) regenerates the whole
     marketplace suite — grid, both modal tabs, booking rail (bundle), error

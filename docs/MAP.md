@@ -25,7 +25,9 @@ apps/
                            on every creator (gender keyed on first name), 44
                            distinct surnames indexed directly, and 13
                            ShortlistItem rows. LinkedIn only — no X creators or
-                           posts.
+                           posts. Post cost = cpm * medianViews / 1000, no
+                           clamp; nudged off round-25s and collisions
+                           (usedPostCosts) so all 40 are distinct.
     src/
       main.ts
       app.module.ts
@@ -34,8 +36,10 @@ apps/
                            route when NODE_ENV=production) and
                            dto/pagination-query.dto.ts (page/pageSize, the base
                            every list DTO extends).
-      auth/               JWT strategy/guards/role decorator + POST /auth/login.
-                           Working, not stubbed: needed to exercise the role guard.
+      auth/               JWT strategy/guards/role decorator, POST /auth/login,
+                           and GET /auth/me (JWT-guarded — userId, email, role,
+                           companyId, creatorProfileId, displayName). Backs the
+                           `/` entry page's two real sign-ins.
       creators/           GET /creators (paginated) with filters (vertical x N,
                            country, q free-text, price range, max CPM, min median
                            views, min/max followers, min engagement %, posted-
@@ -99,33 +103,44 @@ apps/
       lib/
         api/              ALL http lives here. Two impls: http + fixtures,
                            selected by VITE_API_MODE. client.ts is the interface:
-                           listCreators, getCreator, getActiveCampaign,
-                           listShortlist / addToShortlist / removeFromShortlist.
-                           http.ts maps every list param (filter params wired,
-                           not yet surfaced in UI). fixtures.ts mirrors all of it
-                           (in-memory per-campaign shortlist).
-        stores/           Zustand stores, one per domain. creatorsStore.ts:
-                           grid page/sort/q/tab state. shortlistStore.ts:
-                           {campaignId, ids, status} — hydrates from the API,
-                           optimistic writes, no localStorage. uiStore.ts:
-                           unused pattern example.
+                           login, getMe, listCreators, getCreator,
+                           getActiveCampaign, listShortlist / addToShortlist /
+                           removeFromShortlist. http.ts maps every list param
+                           (filter params wired, not yet surfaced in UI) and
+                           exports setApiToken (Bearer header for authed calls).
+                           fixtures.ts mirrors all of it (in-memory shortlist).
+        stores/           Zustand stores, one per domain. authStore.ts:
+                           {token, me}, persist -> localStorage naano.auth;
+                           signIn does a real login + /me, signOut clears it.
+                           creatorsStore.ts: grid page/sort/q/tab state.
+                           shortlistStore.ts: {campaignId, ids, status} —
+                           hydrates from the API, optimistic writes, no
+                           localStorage. uiStore.ts: unused pattern example.
         format.ts         Money/number/percent + verticalLabel helpers.
                            Render-boundary only; formatCpm uses @naano/shared.
-      routes/             PublicHome (public). AppShell = the 72px icon rail
-                           (DESIGN §layout), only Creators routes. CreatorsListPage
-                           wires header + grid + pagination + profile modal +
-                           multi-select + shortlist.
+      routes/             EntryPage (public, "/") — two real one-click sign-ins
+                           (brand/creator) against seeded accounts, then routes
+                           into /app. AppShell = the 72px icon rail (DESIGN
+                           §layout) + a top bar (signed-in identity, Sign out);
+                           redirects signed-out /app to /. App.tsx's AppIndex
+                           picks the surface by role: CreatorsListPage (brand)
+                           or CreatorHomePage (creator — their own profile,
+                           "this is how brands see you", from GET /creators/:id).
       components/
         ui/               Token-only primitives: Button, Card, Input, Select,
                            Checkbox, Badge, StatusPill, Table (+ THead/TBody/TR/
                            TH/TD), Tabs, Modal, SegmentedBar, Disclosure
                            (styled <details> + chevron, controlled), Avatar
-                           (photo <img> with an initials fallback on load
-                           failure). None hardcode a colour, radius or spacing.
+                           (initials always render underneath; the <img> paints
+                           over them once loaded and is removed on error — no
+                           empty circle while a slow photo loads). None hardcode
+                           a colour, radius or spacing value.
         marketplace/      MarketplaceHeader (title/explainer, All+Shortlist tabs
-                           with counts, search, sort-by, section header).
-                           CreatorCard (checkbox, network badge, ICP fit badge,
-                           star, Book, 4-metric strip, View profile). CreatorGrid
+                           with counts, search, sort-by, section header — "Best
+                           match first" / "All N creators, ordered by…", true at
+                           any catalogue size). CreatorCard (checkbox, network
+                           badge, sector-fit badge, star, Book, 4-metric strip,
+                           View profile). CreatorGrid
                            (3/2/1 cols). CreatorsPagination (Prev/Next + range).
                            CreatorProfileModal = two-column shell (tabbed content
                            + persistent BookingRail aside), from GET /creators/:id.
@@ -167,5 +182,6 @@ docs/
   component in `components/campaign/`
 - Shortlist behaviour → `apps/api/src/shortlist/` + `lib/stores/shortlistStore.ts`
 - "Active campaign" logic → `apps/api/src/campaigns/campaigns.service.ts`
+- Sign-in / session logic → `apps/api/src/auth/` + `lib/stores/authStore.ts`
 - Anything touching the data model → `prisma/schema.prisma` first, then
   `packages/shared`, then consumers
