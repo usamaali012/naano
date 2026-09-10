@@ -1,7 +1,10 @@
 import type {
   AudienceSegment,
   AuthMe,
+  Booking,
+  BookingReceived,
   CampaignSummary,
+  CreateBookingBody,
   CreatorPost,
   CreatorProfileDetail,
   ListCreatorsParams,
@@ -9,8 +12,10 @@ import type {
   MarketplaceCreator,
   PageParams,
   Paginated,
+  UpdateBookingStatusBody,
 } from "@naano/shared";
 import type { ApiClient } from "./client";
+import { ApiError } from "./errors";
 
 const FIXTURE_ME: AuthMe = {
   userId: "fixture-user-brand",
@@ -40,6 +45,13 @@ function shortlistSet(campaignId: string): Set<string> {
   }
   return set;
 }
+
+// In-memory bookings for the session. FIXTURE_ME is always the brand (no
+// creator-mode fixture context yet), so listBookingsReceived has nothing to
+// return, but creating/listing/updating on the brand side works the same way
+// the real API does.
+let fixtureBookings: Booking[] = [];
+let fixtureBookingSeq = 0;
 
 // Static stand-in for the API — the hedge in CLAUDE.md. Same shape as the live
 // payload so swapping VITE_API_MODE is the only change. Figures follow the
@@ -301,5 +313,66 @@ export const fixturesClient: ApiClient = {
     creatorProfileId: string,
   ): Promise<void> {
     shortlistSet(campaignId).delete(creatorProfileId);
+  },
+
+  async createBooking(body: CreateBookingBody): Promise<Booking> {
+    const creator = FIXTURE_CREATORS.find((c) => c.id === body.creatorProfileId);
+    if (!creator) throw new ApiError(404, `No creator profile "${body.creatorProfileId}"`);
+
+    const existing = fixtureBookings.find(
+      (b) =>
+        b.campaignId === FIXTURE_CAMPAIGN.id &&
+        b.creatorProfileId === creator.id &&
+        b.status !== "DECLINED",
+    );
+    if (existing) {
+      throw new ApiError(409, `${creator.displayName} is already booked for this campaign`);
+    }
+
+    const booking: Booking = {
+      id: `fixture-booking-${fixtureBookingSeq++}`,
+      campaignId: FIXTURE_CAMPAIGN.id,
+      creatorProfileId: creator.id,
+      agreedPriceCents:
+        body.package === "bundle" ? creator.bundle5PriceCents : creator.postCostCents,
+      status: "INVITED",
+      initiatedBy: "BRAND",
+      deliverable: body.deliverable,
+      deadline: null,
+      createdAt: new Date().toISOString(),
+    };
+    fixtureBookings = [booking, ...fixtureBookings];
+    return booking;
+  },
+
+  async listBookingsReceived(params?: PageParams): Promise<Paginated<BookingReceived>> {
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
+    return { items: [], total: 0, page, pageSize };
+  },
+
+  async listBookingsSent(
+    params?: PageParams & { campaignId?: string },
+  ): Promise<Paginated<Booking>> {
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
+    const rows = params?.campaignId
+      ? fixtureBookings.filter((b) => b.campaignId === params.campaignId)
+      : fixtureBookings;
+    const start = (page - 1) * pageSize;
+    return { items: rows.slice(start, start + pageSize), total: rows.length, page, pageSize };
+  },
+
+  async updateBookingStatus(
+    id: string,
+    status: UpdateBookingStatusBody["status"],
+  ): Promise<Booking> {
+    const booking = fixtureBookings.find((b) => b.id === id);
+    if (!booking) throw new ApiError(404, `No booking "${id}"`);
+    if (booking.status !== "INVITED") {
+      throw new ApiError(409, `This booking is already ${booking.status.toLowerCase()}`);
+    }
+    booking.status = status;
+    return booking;
   },
 };

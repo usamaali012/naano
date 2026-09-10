@@ -1,8 +1,8 @@
 // Shapes for the paginated list envelope every list endpoint returns, plus the
 // per-endpoint request/response contracts shared by the API and the web client.
 
-import type { AudienceSegment, CreatorPost, CreatorProfile } from "./entities";
-import type { CampaignStatus, Role, Vertical } from "./enums";
+import type { AudienceSegment, Booking, CreatorPost, CreatorProfile } from "./entities";
+import type { BookingStatus, CampaignStatus, Role, Vertical } from "./enums";
 
 export interface Paginated<T> {
   items: T[];
@@ -107,4 +107,31 @@ export interface CampaignSummary {
 /** Body of POST /campaigns/:campaignId/shortlist. */
 export interface AddToShortlistBody {
   creatorProfileId: string;
+}
+
+// --- Bookings ----------------------------------------------------------------
+
+/** The two rail options; the server, not the client, converts this to cents. */
+export type BookingPackage = "single" | "bundle";
+
+/**
+ * Body of POST /bookings. `agreedPriceCents` is deliberately not accepted from
+ * the client — the server derives it from the creator's own postCostCents /
+ * bundle5PriceCents so the price can't be tampered with in transit.
+ */
+export interface CreateBookingBody {
+  creatorProfileId: string;
+  package: BookingPackage;
+  deliverable: string;
+}
+
+/** Body of PATCH /bookings/:id/status. Only these two transitions exist yet. */
+export interface UpdateBookingStatusBody {
+  status: Extract<BookingStatus, "ACCEPTED" | "DECLINED">;
+}
+
+/** GET /bookings/received — a booking plus who it is from, for the creator. */
+export interface BookingReceived extends Booking {
+  campaignName: string;
+  companyName: string;
 }
