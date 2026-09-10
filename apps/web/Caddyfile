@@ -1,0 +1,9 @@
+# Site address MUST read Railway's injected port, never a hardcoded one, or the
+# healthcheck fails and looks like an app bug. try_files gives the SPA its
+# client-side-routing fallback.
+:{$PORT} {
+	root * /usr/share/caddy
+	encode gzip zstd
+	try_files {path} /index.html
+	file_server
+}

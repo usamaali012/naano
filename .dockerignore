@@ -1,0 +1,18 @@
+# Build context is the repo root for BOTH service images. Keep it to source +
+# lockfile + workspace manifests; everything below is rebuilt or is a secret.
+**/node_modules
+**/dist
+**/build
+**/.git
+**/.screenshots
+**/*.tsbuildinfo
+**/.vite
+**/.env
+**/.env.*
+**/*.log
+.agent-logs
+recon
+docs
+*.md
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
