@@ -1,20 +1,37 @@
 import type { ButtonHTMLAttributes } from "react";
 
-type ButtonVariant = "primary" | "secondary";
+type ButtonVariant = "primary" | "secondary" | "ghost";
+type ButtonSize = "md" | "sm";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
+  size?: ButtonSize;
 }
 
+// Border does the work on secondary; hover shifts the border, never lifts or
+// scales. Radius is the single control value. See docs/DESIGN.md.
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: "bg-slate-900 text-white hover:bg-slate-700",
-  secondary: "bg-white text-slate-900 border border-slate-300 hover:bg-slate-50",
+  primary: "bg-primary text-white hover:opacity-90",
+  secondary: "bg-surface text-text border border-border hover:border-primary",
+  ghost: "bg-transparent text-text-muted hover:text-text",
 };
 
-export function Button({ variant = "primary", className = "", ...props }: ButtonProps): JSX.Element {
+const SIZE_CLASSES: Record<ButtonSize, string> = {
+  md: "px-s4 py-s2 text-body",
+  sm: "px-s3 py-s1 text-label",
+};
+
+export function Button({
+  variant = "primary",
+  size = "md",
+  className = "",
+  type = "button",
+  ...props
+}: ButtonProps): JSX.Element {
   return (
     <button
-      className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${VARIANT_CLASSES[variant]} ${className}`}
+      type={type}
+      className={`inline-flex items-center justify-center gap-s2 rounded-control font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${SIZE_CLASSES[size]} ${VARIANT_CLASSES[variant]} ${className}`}
       {...props}
     />
   );
