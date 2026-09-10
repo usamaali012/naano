@@ -1,5 +1,9 @@
-import { Controller, Get, Query } from "@nestjs/common";
-import type { CreatorProfile, Paginated } from "@naano/shared";
+import { Controller, Get, Param, Query } from "@nestjs/common";
+import type {
+  CreatorProfile,
+  CreatorProfileDetail,
+  Paginated,
+} from "@naano/shared";
 import { CreatorsService } from "./creators.service";
 import { ListCreatorsDto } from "./dto/list-creators.dto";
 
@@ -9,8 +13,11 @@ export class CreatorsController {
 
   @Get()
   list(@Query() query: ListCreatorsDto): Promise<Paginated<CreatorProfile>> {
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
-    return this.creatorsService.list(page, pageSize);
+    return this.creatorsService.list(query);
+  }
+
+  @Get(":id")
+  detail(@Param("id") id: string): Promise<CreatorProfileDetail> {
+    return this.creatorsService.detail(id);
   }
 }

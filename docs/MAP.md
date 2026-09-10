@@ -29,11 +29,21 @@ apps/
                            every list DTO extends).
       auth/               JWT strategy/guards/role decorator + POST /auth/login.
                            Working, not stubbed: needed to exercise the role guard.
-      creators/           GET /creators (paginated list) is real and hits Postgres.
-                           No filter/detail yet -- those wait for the brief.
-                           audience-fit.ts holds the single swappable scoring
-                           rule; CreatorsService.audienceFitScore() wraps it.
-                           Nothing calls it yet.
+      creators/           GET /creators (paginated) with filters (vertical x N,
+                           country, price range, max CPM, min median views,
+                           min/max followers, min engagement %, posted-within-
+                           days) and four sorts (best_match default, price_asc,
+                           followers_desc, engagement_desc). GET /creators/:id
+                           returns the profile + audienceSegments + posts
+                           (CreatorProfileDetail). Filter/sort DTO in
+                           dto/list-creators.dto.ts. CPM comes from
+                           @naano/shared cpm.ts, never stored. ranking.ts holds
+                           the best_match blend (verified-performance only until
+                           campaigns carry a target vertical). audience-fit.ts
+                           holds the single swappable sector-fit rule;
+                           CreatorsService.audienceFitScore() wraps it, still
+                           uncalled. List filter/sort/page happen in memory over
+                           the ~40-row catalogue after one cheap DB where.
       campaigns/          Empty, wired stub module. No routes yet.
       bookings/           Empty, wired stub module. No routes yet.
       tracking/           GET /r/:slug -> record ClickEvent -> 302. The spine.

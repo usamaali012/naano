@@ -1,46 +1,172 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import type { CreatorProfile, Paginated } from "@naano/shared";
+import { Prisma, Vertical } from "@prisma/client";
+import type {
+  AudienceSegment as PrismaAudienceSegment,
+  CreatorPost as PrismaCreatorPost,
+  CreatorProfile as PrismaCreatorProfile,
+} from "@prisma/client";
+import type {
+  AudienceSegment,
+  CreatorPost,
+  CreatorProfile,
+  CreatorProfileDetail,
+  CreatorSort,
+  ListCreatorsParams,
+  Paginated,
+} from "@naano/shared";
+import { cpmEur } from "@naano/shared";
 import { PrismaService } from "../prisma/prisma.service";
-import {
-  scoreAudienceFit,
-  type AudienceFitCampaign,
-} from "./audience-fit";
+import { bestMatchOrder } from "./ranking";
+import { scoreAudienceFit, type AudienceFitCampaign } from "./audience-fit";
+
+const DEFAULT_PAGE_SIZE = 20;
+
+function daysAgo(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
+/** A gte/lte pair from an optional min/max, or undefined when neither is set. */
+function range(min?: number, max?: number): Prisma.IntFilter | undefined {
+  if (min == null && max == null) return undefined;
+  const filter: Prisma.IntFilter = {};
+  if (min != null) filter.gte = min;
+  if (max != null) filter.lte = max;
+  return filter;
+}
+
+function toCreatorProfile(row: PrismaCreatorProfile): CreatorProfile {
+  return {
+    id: row.id,
+    userId: row.userId,
+    displayName: row.displayName,
+    headline: row.headline,
+    avatarUrl: row.avatarUrl,
+    vertical: row.vertical,
+    network: row.network,
+    followerCount: row.followerCount,
+    country: row.country,
+    language: row.language,
+    postCostCents: row.postCostCents,
+    bundle5PriceCents: row.bundle5PriceCents,
+    medianViews: row.medianViews,
+    observedEngagerCount: row.observedEngagerCount,
+    postsAnalyzed: row.postsAnalyzed,
+    engagementRate: row.engagementRate,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toAudienceSegment(row: PrismaAudienceSegment): AudienceSegment {
+  return {
+    id: row.id,
+    creatorProfileId: row.creatorProfileId,
+    dimension: row.dimension,
+    label: row.label,
+    percentage: row.percentage,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toCreatorPost(row: PrismaCreatorPost): CreatorPost {
+  return {
+    id: row.id,
+    creatorProfileId: row.creatorProfileId,
+    network: row.network,
+    content: row.content,
+    publishedAt: row.publishedAt.toISOString(),
+    views: row.views,
+    reactions: row.reactions,
+    comments: row.comments,
+    reposts: row.reposts,
+    externalUrl: row.externalUrl,
+  };
+}
+
+// Comparators for the stored-column sorts. best_match is handled separately
+// because it ranks over the whole filtered set, not row-by-row.
+const COLUMN_SORTS: Record<
+  Exclude<CreatorSort, "best_match">,
+  (a: PrismaCreatorProfile, b: PrismaCreatorProfile) => number
+> = {
+  price_asc: (a, b) => a.postCostCents - b.postCostCents,
+  followers_desc: (a, b) => b.followerCount - a.followerCount,
+  engagement_desc: (a, b) => b.engagementRate - a.engagementRate,
+};
 
 @Injectable()
 export class CreatorsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(page: number, pageSize: number): Promise<Paginated<CreatorProfile>> {
-    const [rows, total] = await Promise.all([
-      this.prisma.creatorProfile.findMany({
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      this.prisma.creatorProfile.count(),
-    ]);
+  async list(params: ListCreatorsParams): Promise<Paginated<CreatorProfile>> {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? DEFAULT_PAGE_SIZE;
+    const sort: CreatorSort = params.sort ?? "best_match";
 
-    const items: CreatorProfile[] = rows.map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      displayName: row.displayName,
-      headline: row.headline,
-      avatarUrl: row.avatarUrl,
-      vertical: row.vertical,
-      network: row.network,
-      followerCount: row.followerCount,
-      country: row.country,
-      language: row.language,
-      postCostCents: row.postCostCents,
-      bundle5PriceCents: row.bundle5PriceCents,
-      medianViews: row.medianViews,
-      observedEngagerCount: row.observedEngagerCount,
-      postsAnalyzed: row.postsAnalyzed,
-      engagementRate: row.engagementRate,
-      createdAt: row.createdAt.toISOString(),
-    }));
+    const where: Prisma.CreatorProfileWhereInput = {
+      vertical: params.vertical?.length
+        ? { in: params.vertical as Vertical[] }
+        : undefined,
+      country: params.country,
+      postCostCents: range(params.priceMinCents, params.priceMaxCents),
+      followerCount: range(params.minFollowers, params.maxFollowers),
+      medianViews:
+        params.minMedianViews != null ? { gte: params.minMedianViews } : undefined,
+      engagementRate:
+        params.minEngagementPct != null
+          ? { gte: params.minEngagementPct / 100 }
+          : undefined,
+      posts:
+        params.postedWithinDays != null
+          ? { some: { publishedAt: { gte: daysAgo(params.postedWithinDays) } } }
+          : undefined,
+    };
+
+    // CPM is derived, never stored, so the max-CPM filter and the best-match
+    // blend both need the full filtered set in hand. The catalogue is ~40 rows;
+    // fetch it, refine in memory, then page the array.
+    let rows = await this.prisma.creatorProfile.findMany({ where });
+
+    if (params.maxCpmEur != null) {
+      const max = params.maxCpmEur;
+      rows = rows.filter((row) => {
+        const cpm = cpmEur(row.postCostCents, row.medianViews);
+        return cpm === 0 || cpm <= max; // unknown CPM stays visible (RECON §4)
+      });
+    }
+
+    if (sort === "best_match") {
+      const position = new Map(bestMatchOrder(rows).map((id, i) => [id, i]));
+      rows.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
+    } else {
+      const compare = COLUMN_SORTS[sort];
+      rows.sort((a, b) => compare(a, b) || (a.id < b.id ? -1 : 1));
+    }
+
+    const total = rows.length;
+    const start = (page - 1) * pageSize;
+    const items = rows.slice(start, start + pageSize).map(toCreatorProfile);
 
     return { items, total, page, pageSize };
+  }
+
+  async detail(id: string): Promise<CreatorProfileDetail> {
+    const row = await this.prisma.creatorProfile.findUnique({
+      where: { id },
+      include: {
+        audienceSegments: {
+          orderBy: [{ dimension: "asc" }, { percentage: "desc" }],
+        },
+        posts: { orderBy: { publishedAt: "desc" } },
+      },
+    });
+    if (!row) {
+      throw new NotFoundException(`No creator profile "${id}"`);
+    }
+    return {
+      ...toCreatorProfile(row),
+      audienceSegments: row.audienceSegments.map(toAudienceSegment),
+      posts: row.posts.map(toCreatorPost),
+    };
   }
 
   /**

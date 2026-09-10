@@ -131,3 +131,17 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   single post. `migrate reset` was required (existing 40 rows blocked the new
   NOT NULL columns); demo seed data, so expected. Running API/dev processes hold
   the Prisma engine DLL on Windows — stop them before `prisma generate`/`migrate`.
+- 2026-09-10 — Slice 2.3: `GET /creators` gained filters (vertical×N, country,
+  price range, maxCpmEur, minMedianViews, min/max followers, minEngagementPct,
+  postedWithinDays) and four sorts; `GET /creators/:id` returns
+  `CreatorProfileDetail` (profile + audienceSegments ordered by dimension then
+  %, + posts newest-first). Column filters run as one Prisma `where`; CPM is
+  derived (`@naano/shared` `cpmEur`), so the max-CPM filter and the `best_match`
+  blend run in memory over the full filtered set, then the array is paged —
+  chosen over a two-path DB/in-memory split because the catalogue is ~40 rows.
+  `best_match` (`creators/ranking.ts`) is a rank-normalised blend of CPM (0.5),
+  median views (0.3), engagement (0.2); sector fit is deferred until Campaign
+  carries a target vertical. Request/response contracts (`CreatorSort`,
+  `ListCreatorsParams`, `CreatorProfileDetail`) added to
+  `packages/shared/src/api.ts`. Web api client left untouched (slice was
+  API-only).

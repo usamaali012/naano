@@ -45,7 +45,7 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   1440px into `.screenshots/`. `.screenshots/` gitignored.
   Files: `apps/web/package.json`, `apps/web/scripts/shot.mjs`, `.gitignore`.
 
-- [ ] **2.3 Creators API: filters, sort, detail**
+- [x] **2.3 Creators API: filters, sort, detail** — done 2026-09-10.
   Scope: extend `GET /creators` with industry, country, price range, and the
   performance filters (max CPM, min median views, min/max followers, min
   engagement, posted-recently); four sort modes (best match, price asc, most
@@ -261,6 +261,21 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-10 — Slice 2.3 done (creators API filters/sort/detail). Next natural
+  slice is 2.4 (marketplace grid shell) or 2.7 (creator card). The web api
+  client (`apps/web/src/lib/api/{client,http,fixtures}.ts`) still only exposes
+  `listCreators(PageParams)` — extend it to take `ListCreatorsParams` and add
+  `getCreator(id): CreatorProfileDetail` when 2.4 / 2.9 land; it was left
+  untouched here to keep the slice API-only. Param names: industry is `vertical`
+  (repeatable, `?vertical=SALES&vertical=REVOPS`); `country` is a 2-letter code,
+  case-insensitive; price is `priceMinCents`/`priceMaxCents`; performance filters
+  are `maxCpmEur`, `minMedianViews`, `minFollowers`, `maxFollowers`,
+  `minEngagementPct` (whole %), `postedWithinDays`. `sort` is one of
+  `best_match|price_asc|followers_desc|engagement_desc`. `best_match` is a
+  verified-performance blend only (`creators/ranking.ts`) — sector fit joins in
+  once Campaign carries a target vertical. The `maxCpmEur` filter deliberately
+  keeps creators whose CPM is unknown (no median views) visible; the seed has no
+  such rows so that path is untested against real absent data.
 - 2026-09-10 — Plan created. Slices 1.1, 2.1, 2.2 done the same session. Next
   natural slice is 2.3 (creators API: filters, sort, `GET /creators/:id`
   returning segments + posts) or 2.4 (marketplace grid shell). The pre-token
