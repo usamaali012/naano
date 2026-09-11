@@ -5,6 +5,7 @@ import type {
   CampaignSummary,
   CreateBookingBody,
   CreatorProfileDetail,
+  DemoCreatorResponse,
   ListCreatorsParams,
   LoginResponse,
   MarketplaceCreator,
@@ -111,6 +112,9 @@ export const httpClient: ApiClient = {
   },
   getMe(): Promise<AuthMe> {
     return getJson<AuthMe>("/auth/me");
+  },
+  getDemoCreatorEmail(): Promise<DemoCreatorResponse> {
+    return getJson<DemoCreatorResponse>("/auth/demo-creator");
   },
   listCreators(params?: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>> {
     return getJson<Paginated<MarketplaceCreator>>(`/creators${creatorsQuery(params)}`);

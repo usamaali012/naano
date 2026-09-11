@@ -58,7 +58,13 @@ apps/
       auth/               JWT strategy/guards/role decorator, POST /auth/login,
                            and GET /auth/me (JWT-guarded — userId, email, role,
                            companyId, creatorProfileId, displayName). Backs the
-                           `/` entry page's two real sign-ins.
+                           `/` entry page's two real sign-ins. GET
+                           /auth/demo-creator (public, no guard) resolves which
+                           seeded creator "Continue as a creator" signs into:
+                           whoever the demo brand (Ledgerly) most recently
+                           booked, else the first creator the seed created —
+                           see DECISIONS.md for why EntryPage can no longer
+                           hardcode a creator email.
       creators/           GET /creators (paginated) with filters (vertical x N,
                            country, q free-text, price range, max CPM, min median
                            views, min/max followers, min engagement %, posted-
@@ -215,7 +221,10 @@ apps/
                            (VITE_API_URL + /r/ + slug), for display and copy.
       routes/             EntryPage (public, "/") — two real one-click sign-ins
                            (brand/creator) against seeded accounts, then routes
-                           into /app. AppShell = the 72px icon rail (DESIGN
+                           into /app. "Continue as a creator" first calls GET
+                           /auth/demo-creator to resolve which creator email to
+                           sign in as (see DECISIONS.md) rather than a
+                           hardcoded one. AppShell = the 72px icon rail (DESIGN
                            §layout) + a top bar (signed-in identity, Sign out);
                            redirects signed-out /app to /. App.tsx's AppIndex
                            picks the surface by role: CreatorsListPage (brand)

@@ -361,6 +361,32 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   path in and stays that way. `CreatorHomePage` gained a "Booking requests"
   section (all of the creator's bookings, Accept/Decline shown only on
   INVITED rows, empty state in-voice) — the creator-side half of the loop.
+- 2026-09-11 — `GET /auth/demo-creator` added: public, unauthenticated,
+  demo-only affordance. Verified by hand against the deployed site (not
+  assumed): booking a creator as Ledgerly, then clicking "Continue as a
+  creator," landed on Emma Berg — who is not who was just booked. Cause: the
+  seed gives Emma a non-declined booking against every Ledgerly campaign, so
+  `POST /bookings` always 409s for her, and `EntryPage.tsx` hardcoded her
+  email (`emma.berg0@creators.naano.dev`) as the creator side of "Continue as
+  a creator" regardless of who the brand actually booked. Result: the
+  two-sided loop — the single most important thing a reviewer will try —
+  could not be completed by anyone on the live site, ever. Fixed by resolving
+  the creator dynamically: `AuthService.demoCreatorEmail()` returns the email
+  of whoever the demo brand (Ledgerly, matched by
+  `growth@ledgerly.example.com`) most recently booked (`Booking.createdAt`
+  desc, any status), falling back to the first creator the seed created
+  (`CreatorProfile.createdAt` asc) when Ledgerly has no bookings at all.
+  `EntryPage.tsx` calls it before signing in, instead of a hardcoded email.
+  Public and unauthenticated — deliberately not behind `NonProductionGuard`
+  like the `/dev/*` routes, because it has to keep working on the deployed
+  site for a reviewer days from now, and it returns nothing but a seeded
+  account's email, nothing sensitive. Verified end to end on the local stack
+  via the real UI: booked Ines Jensen (a creator with no prior Ledgerly
+  booking) as the brand, signed out, clicked "Continue as a creator," landed
+  on Ines Jensen with an Invited row for Fintech Trust Campaign, and Accept
+  worked (row moved to Accepted). Re-running the same check against an
+  already-booked creator correctly still resolves to them (most recent, not
+  first match), confirming this works repeatedly, not just once.
 
 ## Session B
 

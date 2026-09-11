@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../lib/api";
 import { useAuthStore } from "../lib/stores/authStore";
 
-// Seeded demo accounts (apps/api/prisma/seed.ts): Ledgerly is the brand that
-// owns the live campaign the marketplace ranks against; the creator is index 0
-// of the seeded catalogue. Same seed password for both.
+// Seeded demo brand (apps/api/prisma/seed.ts): Ledgerly owns the live campaign
+// the marketplace ranks against. Same seed password for both sides.
 const DEMO_PASSWORD = "password123";
 const BRAND_EMAIL = "growth@ledgerly.example.com";
-const CREATOR_EMAIL = "emma.berg0@creators.naano.dev";
 
 type Side = "brand" | "creator";
 
@@ -21,7 +20,13 @@ export function EntryPage(): JSX.Element {
     setPending(side);
     setFailed(false);
     try {
-      await signIn(side === "brand" ? BRAND_EMAIL : CREATOR_EMAIL, DEMO_PASSWORD);
+      // "Continue as a creator" resolves which account to use via GET
+      // /auth/demo-creator: whoever the demo brand most recently booked, so
+      // booking someone as the brand and clicking through here lands on
+      // exactly that person with a fresh INVITED row. See DECISIONS.md.
+      const email =
+        side === "brand" ? BRAND_EMAIL : (await api.getDemoCreatorEmail()).email;
+      await signIn(email, DEMO_PASSWORD);
       navigate("/app");
     } catch {
       setFailed(true);
