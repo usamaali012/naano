@@ -221,7 +221,14 @@ apps/
                            booking info for the active campaign so the
                            marketplace card can show "already booked" (and,
                            once accepted, its click count) without a new
-                           screen; recordBooking() takes the full Booking and
+                           screen. A creator can have more than one booking
+                           against the active campaign (e.g. declined, then
+                           rebooked) — hydrate() keeps the most recent one
+                           (listBookingsSent is createdAt desc; first seen
+                           per creator wins), not whichever sorts last, so
+                           the card always reflects what the brand most
+                           recently did. See docs/DECISIONS.md.
+                           recordBooking() takes the full Booking and
                            updates the map immediately on a successful
                            create. uiStore.ts: unused pattern example.
         format.ts         Money/number/percent + verticalLabel helpers.

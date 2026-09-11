@@ -340,24 +340,33 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-11 — Session A's last build task: fixed the stale-card bug found
+  the same day (below). `bookingsStore.hydrate()` now keeps the *most
+  recent* booking per creator instead of whichever sorts last in the loop —
+  see the second 2026-09-11 DECISIONS.md entry for the fix, the reasoning
+  for choosing "most recent" over any other tie-break, and the three cases
+  verified on the local stack (Adam Bauer's card now reads Invited instead
+  of Declined; a single-booking creator renders unchanged; a fresh booking
+  on a creator with no live history shows Invited immediately with no
+  reload). Session A is done building after this commit.
 - 2026-09-11 — Live-site review pass: fixed the two-sided demo loop and the
   broken tracked-link destinations (both committed separately), verified
   click tracking, regenerated screenshots. For the next session:
-  - **`bookingsStore.hydrate()` can pin the marketplace card to a stale
-    booking — not fixed, found while verifying click tracking.**
+  - **`bookingsStore.hydrate()` could pin the marketplace card to a stale
+    booking — fixed the same day, see the entry above.**
     (`apps/web/src/lib/stores/bookingsStore.ts`) When a creator has more than
     one booking against the campaign the marketplace is ranked against (a
     DECLINED one plus a fresh one — normal, since `create()` only blocks a
     second *non-declined* booking for the same creator+campaign), the
-    `byCreatorId` build loop overwrites in `createdAt desc` array order, so
-    the *oldest* row wins, not the current one. Reproduced with real seed
+    `byCreatorId` build loop overwrote in `createdAt desc` array order, so
+    the *oldest* row won, not the current one. Reproduced with real seed
     data: Adam Bauer has exactly this (DECLINED + a newer INVITED, both
-    against Fintech Trust Campaign) and his marketplace card renders
+    against Fintech Trust Campaign) and his marketplace card rendered
     "Declined" despite the live pending invite. Likely explanation for what
     was seen on the live site (a brand card whose click count didn't move
-    after a click) — see the 2026-09-11 DECISIONS.md entry for the full
-    repro and the (unverified) one-line fix candidate. Recording itself is
-    correct (verified 0→3, both API and a rendered card, in the same entry).
+    after a click) — see the 2026-09-11 DECISIONS.md entries for the full
+    repro and the fix. Recording itself was always correct (verified 0→3,
+    both API and a rendered card, in the first of those entries).
   - **`GET /auth/demo-creator` (public) and `EntryPage.tsx`'s "Continue as a
     creator"** no longer hardcode a creator email — see DECISIONS.md. If a
     future session changes how bookings resolve "the demo brand" or "the

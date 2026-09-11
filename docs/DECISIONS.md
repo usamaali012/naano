@@ -458,6 +458,29 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   size the fix (sorting ascending before the loop, so the newest write wins,
   is the likely one-line fix, but wasn't verified against the rest of the
   store's contract).
+- 2026-09-11 — Fixed the `bookingsStore.hydrate()` stale-card bug above. When
+  a creator has more than one booking against the active campaign, the card
+  now shows the **most recent** one, not whichever sorts last in the loop.
+  Chose most-recent over any other tie-break (e.g. "prefer non-declined," or
+  "prefer the highest-progress status") because the card exists to answer
+  one question for the brand — "what did I just do with this creator" — and
+  the most recent booking is definitionally the state the brand most
+  recently created and the one they're looking at the marketplace to check
+  on. A creator who declined an old invite and has since been rebooked
+  should read as freshly invited, not as their old decline, regardless of
+  which one has "more" status progress. Implementation:
+  `listBookingsSent` already orders `createdAt: desc`, so `hydrate()`'s
+  build loop now skips a `creatorProfileId` it has already seen instead of
+  overwriting — first-seen-wins on an already-newest-first array is
+  most-recent-wins, with no new sort and no change to the API. Verified on
+  the local stack with the three cases asked for: Adam Bauer's card now
+  reads "Invited" (was "Declined") while his live pending invite still
+  exists; Erik Marchetti, who has exactly one booking, renders identically
+  to before (Accepted, 3 clicks); and freshly booking Ruby Holm (declined
+  out of her prior Fintech Trust history for the test) through the real UI
+  shows "Invited" immediately, with no reload — confirming `recordBooking`'s
+  separate optimistic-update path was never affected by this bug and still
+  isn't.
 
 ## Session B
 
