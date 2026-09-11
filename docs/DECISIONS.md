@@ -534,6 +534,27 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
     reaches `/app/collaborations` directly back to `/app` — the rail simply
     never showing them the icon isn't a real guard, a typed URL still is.
 
+- 2026-09-11 (Session B) — Marketplace filter panel (2.5, partial): industry
+  (searchable multi-select), country (dropdown) and follower min/max, wired to
+  the `vertical`/`country`/`minFollowers`/`maxFollowers` params `GET /creators`
+  already exposed (slice 2.3). Deliberately narrower than the full 2.5+2.6
+  scope — no price range/histogram, no performance-filters panel — per this
+  session's assignment; recorded as a deferral on the PLAN 2.5/2.6 lines, not
+  a silent scope cut. Active filters render as removable chips + one "Clear
+  all"; the empty state distinguishes query-only / filters-only / both.
+  `fixtures.ts` got matching filter logic so the http/fixtures hedge doesn't
+  silently diverge. Verified against the live 40-creator seed before
+  committing: `vertical=SALES` alone → 5; `vertical=SALES,DEVTOOLS` → 10;
+  `country=PT` → 1, `country=FR` → 1; `minFollowers=75000` → 2 (of 40);
+  `vertical=REVOPS,DEVTOOLS&country=IE&minFollowers=20000&maxFollowers=30000&q=build`
+  → 1 (Maya Ferrari) — all matched hand-computed expectations from the raw
+  seed data, and the UI's header count, section subtitle and pagination
+  footer agreed with the grid in every case (checked directly in the browser,
+  not just via the API). Shipped as two commits: filters wired to the API
+  first, chips/clear-all/fixtures parity second, so a partial session leaves
+  working filters on `main` rather than a polished control row attached to
+  nothing.
+
 ## Session B
 
 Deploy work on branch `deploy`, running on Railway. New files only

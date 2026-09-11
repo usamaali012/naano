@@ -82,8 +82,9 @@ export function MarketplaceHeader({
         <h2 className="text-section-title text-text">{sectionTitle}</h2>
         {rankedView && totalCount > 0 && (
           <p className="text-label text-text-muted">
-            All {totalCount} creators, ordered by sector fit then verified
-            performance.
+            {totalCount === 1
+              ? "1 creator, ordered by sector fit then verified performance."
+              : `All ${totalCount} creators, ordered by sector fit then verified performance.`}
           </p>
         )}
       </div>

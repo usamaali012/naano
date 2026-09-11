@@ -70,13 +70,24 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   (DESIGN §layout) since it frames every marketplace screenshot; rail items past
   Creators are not wired to routes yet.
 
-- [ ] **2.5 Filter panel**
+- [~] **2.5 Filter panel** — industry/country/follower range done 2026-09-11,
+  price range deferred.
   Scope: industry searchable multi-select, country dropdown, price range slider
   over a histogram of the real distribution. Wire to the API from 2.3. Copy:
   "These filters hide creators; matching scores stay unchanged."
   Files: `apps/web/src/components/marketplace/FilterPanel.tsx`,
   `apps/web/src/components/marketplace/PriceHistogram.tsx`,
   `apps/web/src/lib/stores/creatorsStore.ts`, `apps/web/src/lib/api/*`.
+  Done: `FilterPanel` ships industry (searchable multi-select checkboxes),
+  country (dropdown) and follower min/max, wired to the `vertical`/`country`/
+  `minFollowers`/`maxFollowers` params 2.3 already exposed. Active filters
+  render as removable chips plus one "Clear all"; the empty state
+  distinguishes search vs. filters vs. both. `fixtures.ts` mirrors the same
+  filtering so the CLAUDE.md hedge stays real in both modes. Verified against
+  the live 40-creator seed (see DECISIONS 2026-09-11 for the exact counts).
+  Deferred: `PriceHistogram.tsx` and the price-range slider — assignment
+  scoped this session to vertical/country/follower range only; the copy line
+  above still applies once price lands.
 
 - [ ] **2.6 Performance filters panel**
   Scope: separate panel — max CPM, min median views, min/max followers, min
@@ -84,6 +95,10 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   "Creators with unavailable performance data remain visible."
   Files: `apps/web/src/components/marketplace/PerformanceFilters.tsx`,
   `apps/web/src/lib/stores/creatorsStore.ts`.
+  Note: min/max followers already live in `creatorsStore` from 2.5's follower
+  range — 2.6 should reuse that state rather than re-adding it. Remaining
+  scope: max CPM, min median views, min engagement %, posted-recently, in
+  their own panel with Clear/Apply.
 
 - [x] **2.7 Creator card** — done 2026-09-11.
   Scope: checkbox, LinkedIn/X badge, shortlist star, Book button, header band +
@@ -385,6 +400,56 @@ Notes handed forward between sessions. Newest first.
   See the 2026-09-11 DECISIONS.md entry for the package-derivation reasoning
   and the creator-rail decision (dropped entirely, not shrunk to one icon).
 
+- 2026-09-11 (Session B) — Second merge: origin/main moved four more commits
+  (Session A's last build task — see the two entries below this one:
+  bookingsStore most-recent-booking fix, the demo-creator endpoint, and the
+  seeded destination-URL fix). Only docs and `fixtures.ts` overlapped this
+  time (both additive, `fixtures.ts` auto-merged clean); `CreatorsListPage`
+  didn't conflict again. Re-ran all five filter counts against the merged
+  code — unchanged: `vertical=SALES` alone → 5, `vertical=SALES,DEVTOOLS` →
+  10, `country=PT` → 1, `country=FR` → 1, `minFollowers=75000` → 2, the
+  combined vertical+country+range+q query → 1 (Maya Ferrari). Typechecked
+  `packages/shared`, `apps/web`, `apps/api` clean.
+- 2026-09-11 (Session B) — Merged main (booking loop, tracked links,
+  sector-fit rename, demo entry — 50+ files, see the entries below this one)
+  into the 2.5 filter panel work and re-wired `FilterPanel` into main's
+  current `CreatorsListPage` (booking-store hydration, card status badge,
+  framed loading/error + retry). Re-verified all five filter counts against
+  the current code post-merge — unchanged from the pre-merge numbers (see
+  DECISIONS 2026-09-11). Also fixed a pluralization bug this merge surfaced:
+  `MarketplaceHeader`'s subtitle (now "All {totalCount} creators, ordered
+  by…", renamed from "sector fit" — see the sector-fit-rename entry below)
+  rendered "All 1 creators" for a single-result filter; it now reads "1
+  creator, ordered by…" for the singular case. Superseded my own
+  pre-merge note below about the old "The 1 strongest profiles" copy — that
+  wording no longer exists on main, this is its replacement.
+- 2026-09-11 (Session B) — 2.5 filter panel: industry/country/follower range
+  only, price range and all of 2.6 deliberately deferred (see the 2.5/2.6
+  lines above). For the next session:
+  - **New files.** `apps/web/src/components/marketplace/FilterPanel.tsx`
+    (industry multi-select + country + follower range + chips + clear-all),
+    `apps/web/src/lib/countries.ts` (the 15 seeded country codes → display
+    name, read from `seed.ts` not re-derived from the API — there's no
+    distinct-countries endpoint).
+  - **Store.** `creatorsStore` gained `vertical: Vertical[]`, `country`,
+    `minFollowers`, `maxFollowers` + setters, each resetting `page` to 1 like
+    the existing sort/query/tab setters.
+  - **Empty state.** `CreatorsListPage`'s `EmptyState` now takes `hasFilters`
+    and distinguishes three cases: query only, filters only, both — "Clear
+    search and filters" only appears when both are active.
+  - **Fixtures parity.** `fixtures.ts` filters by vertical/country/follower
+    range now too, matching `http.ts`'s query semantics, so `VITE_API_MODE`
+    switching doesn't silently lose filtering.
+  - **Verified against the live seed** (40 creators, see DECISIONS
+    2026-09-11 for exact counts) — a single vertical, two verticals, a rare
+    country, an exclusive follower range, and a combined vertical+country+
+    range+search query all matched hand-computed expectations in both the
+    raw API and the UI, with header count / section subtitle / pagination
+    footer agreeing with the grid throughout.
+  - **Not done:** price range + `PriceHistogram.tsx` (rest of 2.5), all of
+    2.6 (max CPM, min median views, min engagement %, posted-recently) — see
+    the 2.6 line's note about reusing the follower-range state already in
+    the store.
 - 2026-09-11 — Session A's last build task: fixed the stale-card bug found
   the same day (below). `bookingsStore.hydrate()` now keeps the *most
   recent* booking per creator instead of whichever sorts last in the loop —

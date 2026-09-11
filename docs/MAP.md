@@ -208,32 +208,38 @@ apps/
                            getActiveCampaign, listShortlist / addToShortlist /
                            removeFromShortlist, createBooking /
                            listBookingsReceived / listBookingsSent /
-                           updateBookingStatus. http.ts maps every list param
-                           (filter params wired, not yet surfaced in UI) and
-                           exports setApiToken (Bearer header for authed calls);
+                           updateBookingStatus. http.ts maps every list param,
+                           including the vertical/country/follower-range
+                           filters FilterPanel (2.5) surfaces, and exports
+                           setApiToken (Bearer header for authed calls);
                            request() throws errors.ts's ApiError (carries the
                            HTTP status) so callers can special-case a status
                            (e.g. 409 already-booked) instead of one generic
-                           failure message. fixtures.ts mirrors all of it
-                           (in-memory shortlist + bookings; FIXTURE_ME is
+                           failure message. fixtures.ts mirrors all of it —
+                           in-memory shortlist + bookings, plus the same
+                           vertical/country/follower-range filtering as
+                           http.ts (kept in sync since 2.5) — FIXTURE_ME is
                            always the brand, so the creator-side booking
-                           methods have no real fixture context yet).
+                           methods have no real fixture context yet.
         stores/           Zustand stores, one per domain. authStore.ts:
                            {token, me}, persist -> localStorage naano.auth;
                            signIn does a real login + /me, signOut clears it.
-                           creatorsStore.ts: grid page/sort/q/tab state.
-                           shortlistStore.ts: {campaignId, ids, status} —
-                           hydrates from the API, optimistic writes, no
-                           localStorage. bookingsStore.ts: {campaignId,
-                           byCreatorId, status} — byCreatorId values are
-                           CreatorBookingInfo ({status, clickCount}), same
-                           hydrate pattern as shortlistStore, maps creator ->
-                           booking info for the active campaign so the
-                           marketplace card can show "already booked" (and,
-                           once accepted, its click count) without a new
-                           screen. A creator can have more than one booking
-                           against the active campaign (e.g. declined, then
-                           rebooked) — hydrate() keeps the most recent one
+                           creatorsStore.ts: grid page/sort/q/tab state, plus
+                           filter state (vertical[], country, minFollowers,
+                           maxFollowers) from 2.5 — each setter resets page
+                           to 1 like the others. shortlistStore.ts:
+                           {campaignId, ids, status} — hydrates from the API,
+                           optimistic writes, no localStorage.
+                           bookingsStore.ts: {campaignId, byCreatorId,
+                           status} — byCreatorId values are CreatorBookingInfo
+                           ({status, clickCount}), same hydrate pattern as
+                           shortlistStore, maps creator -> booking info for
+                           the active campaign so the marketplace card can
+                           show "already booked" (and, once accepted, its
+                           click count) without a new screen. A creator can
+                           have more than one booking against the active
+                           campaign (e.g. declined, then rebooked) —
+                           hydrate() keeps the most recent one
                            (listBookingsSent is createdAt desc; first seen
                            per creator wins), not whichever sorts last, so
                            the card always reflects what the brand most
@@ -241,6 +247,10 @@ apps/
                            recordBooking() takes the full Booking and
                            updates the map immediately on a successful
                            create. uiStore.ts: unused pattern example.
+        countries.ts      Country code -> display name for the 15 codes
+                           apps/api/prisma/seed.ts seeds. No distinct-countries
+                           endpoint exists, so this is read off the seed, not
+                           derived from the API.
         format.ts         Money/number/percent + verticalLabel helpers.
                            Render-boundary only; formatCpm uses @naano/shared.
         bookingStatus.ts  BookingStatus -> StatusPill tone/label, shared by
@@ -289,17 +299,22 @@ apps/
                            a colour, radius or spacing value.
         marketplace/      MarketplaceHeader (title/explainer, All+Shortlist tabs
                            with counts, search, sort-by, section header — "Best
-                           match first" / "All N creators, ordered by…", true at
-                           any catalogue size). CreatorCard (checkbox, network
-                           badge, sector-fit badge, booking StatusPill + "N
-                           clicks" once a booking exists for the active
-                           campaign and has a tracked link, star, Book,
-                           4-metric strip, View profile). CreatorGrid (3/2/1
-                           cols, threads bookingById — Record<id,
-                           CreatorBookingInfo> — through). CreatorsPagination
-                           (Prev/Next + range). CreatorProfileModal = two-column
-                           shell (tabbed content + persistent BookingRail aside),
-                           from GET /creators/:id. modal/ has OverviewTab,
+                           match first" / "All N creators, ordered by…" (singular:
+                           "1 creator, ordered by…"), true at any catalogue size).
+                           FilterPanel (2.5, partial): industry searchable
+                           multi-select, country dropdown, follower min/max,
+                           active-filter chips + Clear all. No price range or
+                           performance filters yet (2.5 remainder / 2.6).
+                           CreatorCard (checkbox, network badge, sector-fit
+                           badge, booking StatusPill + "N clicks" once a
+                           booking exists for the active campaign and has a
+                           tracked link, star, Book, 4-metric strip, View
+                           profile). CreatorGrid (3/2/1 cols, threads
+                           bookingById — Record<id, CreatorBookingInfo> —
+                           through). CreatorsPagination (Prev/Next + range).
+                           CreatorProfileModal = two-column shell (tabbed
+                           content + persistent BookingRail aside), from
+                           GET /creators/:id. modal/ has OverviewTab,
                            AudienceTab, BookingRail (real submit: package radio
                            + deliverable input -> POST /bookings; renders one of
                            the form / a booked confirmation / an already-booked
@@ -307,7 +322,7 @@ apps/
                            lib/api/errors.ts), ReachSparkline (inline-SVG),
                            audienceSegments.ts (dimension-filter helper).
                            Content tab is 2.12. icons.tsx (NetworkBadge,
-                           StarIcon). No filter panel yet.
+                           StarIcon).
         campaign/         CollaborationsTable (new, 4.2): Creator, Campaign,
                            Package, Agreed price, Status, Tracked link (copy
                            button + click count, gated on trackedLinkSlug

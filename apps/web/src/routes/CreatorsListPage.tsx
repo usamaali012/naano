@@ -5,14 +5,31 @@ import { useCreatorsStore } from "../lib/stores/creatorsStore";
 import { useShortlistStore } from "../lib/stores/shortlistStore";
 import { useBookingsStore } from "../lib/stores/bookingsStore";
 import { MarketplaceHeader } from "../components/marketplace/MarketplaceHeader";
+import { FilterPanel } from "../components/marketplace/FilterPanel";
 import { CreatorGrid } from "../components/marketplace/CreatorGrid";
 import { CreatorsPagination } from "../components/marketplace/CreatorsPagination";
 import { CreatorProfileModal } from "../components/marketplace/CreatorProfileModal";
 import { Button } from "../components/ui/Button";
 
 export function CreatorsListPage(): JSX.Element {
-  const { page, pageSize, sort, q, tab, setPage, setSort, setQuery, setTab } =
-    useCreatorsStore();
+  const {
+    page,
+    pageSize,
+    sort,
+    q,
+    tab,
+    vertical,
+    country,
+    minFollowers,
+    maxFollowers,
+    setPage,
+    setSort,
+    setQuery,
+    setTab,
+    setVerticals,
+    setCountry,
+    setFollowerRange,
+  } = useCreatorsStore();
 
   const shortlistIds = useShortlistStore((state) => state.ids);
   const shortlistCampaignId = useShortlistStore((state) => state.campaignId);
@@ -53,7 +70,16 @@ export function CreatorsListPage(): JSX.Element {
       ? shortlistCampaignId
         ? api.listShortlist(shortlistCampaignId, { pageSize: 100 })
         : Promise.resolve({ items: [], total: 0, page: 1, pageSize: 100 })
-      : api.listCreators({ page, pageSize, sort, q: q || undefined });
+      : api.listCreators({
+          page,
+          pageSize,
+          sort,
+          q: q || undefined,
+          vertical: vertical.length > 0 ? vertical : undefined,
+          country,
+          minFollowers,
+          maxFollowers,
+        });
 
     request
       .then((result) => {
@@ -69,7 +95,19 @@ export function CreatorsListPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [onShortlistTab, shortlistCampaignId, page, pageSize, sort, q, reloadKey]);
+  }, [
+    onShortlistTab,
+    shortlistCampaignId,
+    page,
+    pageSize,
+    sort,
+    q,
+    vertical,
+    country,
+    minFollowers,
+    maxFollowers,
+    reloadKey,
+  ]);
 
   function retry(): void {
     void hydrateShortlist();
@@ -111,6 +149,18 @@ export function CreatorsListPage(): JSX.Element {
         query={queryInput}
         onQueryChange={setQueryInput}
       />
+
+      {!onShortlistTab && (
+        <FilterPanel
+          verticals={vertical}
+          onVerticalsChange={setVerticals}
+          country={country}
+          onCountryChange={setCountry}
+          minFollowers={minFollowers}
+          maxFollowers={maxFollowers}
+          onFollowerRangeChange={setFollowerRange}
+        />
+      )}
 
       {status === "loading" && (
         <div className="rounded-card border border-border bg-surface p-s8 text-body text-text-muted">
@@ -158,9 +208,20 @@ export function CreatorsListPage(): JSX.Element {
             <EmptyState
               tab={tab}
               query={q}
+              hasFilters={
+                vertical.length > 0 ||
+                country !== undefined ||
+                minFollowers !== undefined ||
+                maxFollowers !== undefined
+              }
               onClearQuery={() => {
                 setQueryInput("");
                 setQuery("");
+              }}
+              onClearFilters={() => {
+                setVerticals([]);
+                setCountry(undefined);
+                setFollowerRange(undefined, undefined);
               }}
               onBrowseAll={() => setTab("all")}
             />
@@ -201,14 +262,18 @@ export function CreatorsListPage(): JSX.Element {
 interface EmptyStateProps {
   tab: "all" | "shortlist";
   query: string;
+  hasFilters: boolean;
   onClearQuery: () => void;
+  onClearFilters: () => void;
   onBrowseAll: () => void;
 }
 
 function EmptyState({
   tab,
   query,
+  hasFilters,
   onClearQuery,
+  onClearFilters,
   onBrowseAll,
 }: EmptyStateProps): JSX.Element {
   if (tab === "shortlist") {
@@ -226,16 +291,25 @@ function EmptyState({
       </div>
     );
   }
-  if (query) {
+  if (query || hasFilters) {
+    const subject =
+      query && hasFilters
+        ? `your search and filters`
+        : query
+          ? `“${query}”`
+          : "your filters";
     return (
       <div className="rounded-card border border-border bg-surface p-s8 text-body text-text-muted">
-        No creators match &ldquo;{query}&rdquo;.{" "}
+        No creators match {subject}.{" "}
         <button
           type="button"
-          onClick={onClearQuery}
+          onClick={() => {
+            onClearQuery();
+            onClearFilters();
+          }}
           className="font-medium text-primary"
         >
-          Clear the search
+          Clear {query && hasFilters ? "search and filters" : query ? "the search" : "filters"}
         </button>{" "}
         to see every creator.
       </div>
