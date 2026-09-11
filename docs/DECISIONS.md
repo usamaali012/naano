@@ -419,6 +419,45 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   typed or committed): from `apps/api`, `railway run npx ts-node
   prisma/fix-destination-urls.ts`. Not run against production from here —
   the user runs it.
+- 2026-09-11 — Verified click tracking end to end locally, to resolve
+  something that couldn't be told apart from outside the app: on the live
+  site, hitting `/r/728a982c` left the brand card reading "30 clicks"
+  unchanged — was the click not recorded, or was the card showing one of the
+  creator's other three bookings? **Recording itself is correct.** Booked
+  Erik Marchetti fresh, accepted as him (`trackedLinkSlug` minted,
+  `clickCount: 0` on both `GET /bookings/sent` and `/bookings/received`), hit
+  `/r/<slug>` three times (each a real 302 to the now-resolving destination),
+  re-fetched both endpoints: `clickCount: 3` on both, and a reloaded
+  marketplace card render (Playwright) shows "3 clicks" too — 0 to 3
+  everywhere, exactly once per click. **The card does not aggregate across a
+  creator's bookings** — `bookingsStore` keys `byCreatorId` by creator and
+  holds exactly one `{status, clickCount}`, the booking for whichever
+  campaign the marketplace is currently ranked against (the active one), full
+  stop. Any of the creator's other bookings (a different campaign, a
+  different company) are invisible to this card — not summed, not shown at
+  all.
+  **Found the actual bug while checking that, unprompted (in scope for this
+  verification, not fixed — reported here for the next session):**
+  `bookingsStore.hydrate()` (`apps/web/src/lib/stores/bookingsStore.ts`)
+  builds `byCreatorId` with `for (const booking of page.items) byCreatorId
+  [booking.creatorProfileId] = {...}`, and `page.items` is `GET
+  /bookings/sent` ordered `createdAt: "desc"` (newest first). When a creator
+  has more than one booking against the *same* active campaign — normal once
+  one has been declined and a fresh one made for them, since `create()` only
+  blocks a second *non-declined* booking — the loop's last write wins, and
+  because the array is newest-first, the **last** write is the **oldest**
+  row. The card ends up showing a stale booking instead of the current one.
+  Reproduced live with real seed data: Adam Bauer has a DECLINED booking
+  against Fintech Trust Campaign and a newer INVITED one against the same
+  campaign; his marketplace card renders "Declined" — the stale row — even
+  though he has a live pending invite. This is almost certainly what was seen
+  on the live site: Emma has four bookings, so if two of them collide in the
+  same campaign the way Adam's do, her card can be pinned to a stale one
+  indefinitely regardless of which of her links gets clicked. Not fixed here
+  — flagged in `docs/PLAN.md`'s Discovered section for a session that can
+  size the fix (sorting ascending before the loop, so the newest write wins,
+  is the likely one-line fix, but wasn't verified against the rest of the
+  store's contract).
 
 ## Session B
 
