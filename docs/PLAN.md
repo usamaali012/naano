@@ -381,6 +381,17 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-11 (Session B) — Third merge: origin/main brought in the
+  Collaborations table (4.2), an honest role-aware `AppShell` left rail
+  (creators get no rail), and the widened `listBookingsSent` (see the
+  session-A entry below for the detail). Merged clean, no conflicts at all
+  — not even in docs. Re-ran all five filter counts against the merged
+  code — unchanged: `vertical=SALES` alone → 5, `vertical=SALES,DEVTOOLS` →
+  10, `country=PT` → 1, `country=FR` → 1, `minFollowers=75000` → 2, the
+  combined vertical+country+range+q query → 1 (Maya Ferrari). Typechecked
+  `packages/shared`, `apps/web`, `apps/api` clean. Next: slice 2.12 (modal
+  Content tab), staying inside `apps/web/src/components/marketplace/` —
+  Session A owns `apps/web/src/routes/`, the bookings API, and tracking.
 - 2026-09-11 — Slice 4.2 closed: step 4, after session B's merge landed on
   `main` (`git pull origin main` was a no-op by the time this ran — the
   merge commits were already local). Widened `ApiClient.listBookingsSent`
