@@ -118,12 +118,72 @@ pass/fail line per check and exits non-zero on any failure.
 
 ## What shipped first
 
-_placeholder — filled in separately._
+The core loop, end to end, before anything else:
+
+1. **Data truth.** 40 seeded creators with realistic figures (followers,
+   median views, CPM, post cost, audience breakdown, five recent posts
+   each) driven by `docs/RECON.md`'s calibration targets, not lorem ipsum.
+2. **The marketplace.** A ranked grid — sector fit first, verified
+   performance second — with a real search box, four sort modes, and
+   filters (industry multi-select, country, follower range) that hide
+   creators against live `GET /creators` query params, not client-side
+   fakes.
+3. **The creator profile modal.** Audience composition, content
+   performance (a pageable post history — full text, engagement, the
+   original link), and a booking rail with live pricing (single post vs.
+   bundle of five) and the literal CPM formula.
+4. **Real two-sided bookings.** A brand books a creator; the creator
+   accepts or declines from their own real sign-in; accepting mints a
+   `TrackedLink` and surfaces it to the creator with a copy button.
+5. **Real click tracking.** `GET /r/:slug` records every click and 302s to
+   the campaign's destination; a brand sees the running click count on
+   the creator's card and in the Collaborations table.
+6. **Collaborations.** The brand-side table of every booking — creator,
+   campaign, package, price, status, tracked link and its click count —
+   with a status filter and pagination.
+7. **A seeded, role-aware demo entry (`/`).** One click signs a visitor in
+   as the demo brand or the demo creator; each lands on the surface that
+   role actually sees (marketplace + Collaborations for a brand, their own
+   profile and bookings for a creator).
+8. **Deployed.** Both services run on Railway from this repo's
+   Dockerfiles — see "Deployment" above.
+
+Results and attribution (the analytics dashboard over click/lead data):
+[RESULTS].
 
 ## What was deliberately cut
 
-_placeholder — filled in separately._
+Named out loud rather than left to be discovered:
+
+- The agency side of the marketplace entirely.
+- Real payment rails — a wallet UI may exist, but balances are never real
+  money moving.
+- The AI Matching conversational mode; the marketplace stays a browsable,
+  filterable grid.
+- The conversion pixel (a layer above click tracking) — click tracking
+  itself is real and verified end to end.
+- LinkedIn OAuth and any real LinkedIn API — post URLs and content are
+  seeded, not fetched.
+- Messages between brands and creators.
+- The Leads tab and ICP account enrichment.
+- The MCP / Connect server.
+- i18n, the blog, and the SEO page tree.
+- The floating AI command bar seen on the live product — left out rather
+  than shipped as a non-functional signature element.
+
+The standing rule behind all of it: a control that renders but doesn't do
+anything is worse than no control. Everything above either doesn't render,
+or wasn't started.
 
 ## Agent-log disclosure
 
-_placeholder — filled in separately._
+This repo was built with AI coding agents (Claude Code; see `AGENTS.md` for
+the full working convention) rather than typed by hand end to end. Every
+session's prompts and responses are captured automatically under
+`.agent-logs/`, one append-only file per session
+(`YYYY-MM-DD_HH-MM-SS_<session-id>.md`), so the full history of what was
+asked for and what was built in response is auditable rather than
+summarized after the fact. `docs/DECISIONS.md`'s running log and
+`docs/PLAN.md`'s per-slice notes are the human-readable index into that
+history — they cite the reasoning; the `.agent-logs/` transcripts are the
+record it was derived from.
