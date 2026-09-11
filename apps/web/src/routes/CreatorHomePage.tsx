@@ -59,7 +59,7 @@ export function CreatorHomePage(): JSX.Element {
     try {
       const updated = await api.updateBookingStatus(id, next);
       setBookings((current) =>
-        current.map((b) => (b.id === id ? { ...b, status: updated.status } : b)),
+        current.map((b) => (b.id === id ? { ...b, ...updated } : b)),
       );
     } catch {
       // Leave the row as it was; the buttons re-enable so they can try again.
