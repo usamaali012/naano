@@ -85,6 +85,18 @@ async function signIn(page, side) {
   await context.close();
 }
 
+// --- brand: collaborations ---------------------------------------------------
+{
+  const { context, page } = await newContext();
+  await signIn(page, "brand");
+  await page.getByRole("button", { name: "Collaborations" }).click();
+  await page.waitForURL("**/app/collaborations");
+  await page.waitForSelector("table");
+  await page.waitForTimeout(300);
+  await shot(page, "collaborations");
+  await context.close();
+}
+
 // --- ensure the demo creator (Emma Berg) has a pending invite ---------------
 // So creator-booking-requests.png shows an INVITED row with Accept/Decline
 // visible. Seed's random status assignment already pairs Emma with every

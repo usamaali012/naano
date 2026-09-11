@@ -1,29 +1,23 @@
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../lib/stores/authStore";
 
 // Fixed 72px left icon rail, icons only, active item on a --primary-soft
 // background (docs/DESIGN.md §layout). Content is capped at 1440px with 32px
-// padding. The rail items past "Creators" are not wired to routes yet — this
-// slice is the marketplace — so only the active one renders as a link target.
+// padding. Brand-only: every item routes somewhere real. A creator has
+// exactly one screen (their own profile, already reachable at /app) so they
+// get no rail at all rather than a single permanently-active icon — see
+// docs/DECISIONS.md for why that reads as decoration, not navigation.
 const RAIL = [
-  { key: "creators", label: "Creators", active: true },
-  { key: "campaigns", label: "Campaigns", active: false },
-  { key: "collaborations", label: "Collaborations", active: false },
-  { key: "results", label: "Results", active: false },
+  { key: "marketplace", label: "Marketplace", path: "/app" },
+  { key: "collaborations", label: "Collaborations", path: "/app/collaborations" },
 ];
 
 function RailIcon({ shape }: { shape: string }): JSX.Element {
   const paths: Record<string, JSX.Element> = {
-    creators: (
+    marketplace: (
       <>
         <circle cx="9" cy="7" r="3" />
         <path d="M3.5 19a5.5 5.5 0 0 1 11 0M15 4.5a3 3 0 0 1 0 5.8M20.5 19a5.5 5.5 0 0 0-4-5.3" />
-      </>
-    ),
-    campaigns: (
-      <>
-        <path d="M4 9h10l6-4v14l-6-4H4z" />
-        <path d="M6 13v5" />
       </>
     ),
     collaborations: (
@@ -31,11 +25,6 @@ function RailIcon({ shape }: { shape: string }): JSX.Element {
         <path d="M4 20v-1a4 4 0 0 1 4-4h3a4 4 0 0 1 4 4v1" />
         <circle cx="9.5" cy="8" r="3" />
         <path d="M16 15a4 4 0 0 1 4 4v1M15.5 5.5a3 3 0 0 1 0 5" />
-      </>
-    ),
-    results: (
-      <>
-        <path d="M4 19V5M4 19h16M8 16v-4M13 16V8M18 16v-6" />
       </>
     ),
   };
@@ -57,8 +46,10 @@ function RailIcon({ shape }: { shape: string }): JSX.Element {
 
 export function AppShell(): JSX.Element {
   const navigate = useNavigate();
+  const location = useLocation();
   const me = useAuthStore((state) => state.me);
   const signOut = useAuthStore((state) => state.signOut);
+  const isBrand = me?.role === "COMPANY";
 
   function handleSignOut(): void {
     signOut();
@@ -67,29 +58,35 @@ export function AppShell(): JSX.Element {
 
   return (
     <div className="flex min-h-screen bg-bg">
-      <nav className="fixed inset-y-0 left-0 flex w-[72px] flex-col items-center gap-s2 border-r border-border bg-surface py-s4">
-        <span className="mb-s4 flex h-8 w-8 items-center justify-center rounded-control bg-primary text-card-title text-white">
-          n
-        </span>
-        {RAIL.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            title={item.label}
-            aria-label={item.label}
-            aria-current={item.active ? "page" : undefined}
-            className={`flex h-10 w-10 items-center justify-center rounded-control transition-colors ${
-              item.active
-                ? "bg-primary-soft text-primary"
-                : "text-text-muted hover:text-text"
-            }`}
-          >
-            <RailIcon shape={item.key} />
-          </button>
-        ))}
-      </nav>
+      {isBrand && (
+        <nav className="fixed inset-y-0 left-0 flex w-[72px] flex-col items-center gap-s2 border-r border-border bg-surface py-s4">
+          <span className="mb-s4 flex h-8 w-8 items-center justify-center rounded-control bg-primary text-card-title text-white">
+            n
+          </span>
+          {RAIL.map((item) => {
+            const active = location.pathname === item.path;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                title={item.label}
+                aria-label={item.label}
+                aria-current={active ? "page" : undefined}
+                onClick={() => navigate(item.path)}
+                className={`flex h-10 w-10 items-center justify-center rounded-control transition-colors ${
+                  active
+                    ? "bg-primary-soft text-primary"
+                    : "text-text-muted hover:text-text"
+                }`}
+              >
+                <RailIcon shape={item.key} />
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
-      <main className="ml-[72px] flex-1">
+      <main className={`flex-1 ${isBrand ? "ml-[72px]" : ""}`}>
         {me && (
           <header className="flex items-center justify-end gap-s3 border-b border-border bg-surface px-s8 py-s3">
             <span className="text-label text-text-muted">

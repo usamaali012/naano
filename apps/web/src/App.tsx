@@ -3,6 +3,7 @@ import { EntryPage } from "./routes/EntryPage";
 import { AppShell } from "./routes/AppShell";
 import { CreatorsListPage } from "./routes/CreatorsListPage";
 import { CreatorHomePage } from "./routes/CreatorHomePage";
+import { CollaborationsPage } from "./routes/CollaborationsPage";
 import { useAuthStore } from "./lib/stores/authStore";
 
 // Signed out -> back to the entry page. Signed in -> the surface for your side:
@@ -14,6 +15,16 @@ function AppIndex(): JSX.Element {
   return role === "CREATOR" ? <CreatorHomePage /> : <CreatorsListPage />;
 }
 
+// Collaborations is brand-only. A creator who reaches the URL directly (the
+// rail never shows it to them) lands back on their own screen, not an error.
+function RequireBrand({ children }: { children: JSX.Element }): JSX.Element {
+  const token = useAuthStore((state) => state.token);
+  const role = useAuthStore((state) => state.me?.role);
+  if (!token) return <Navigate to="/" replace />;
+  if (role !== "COMPANY") return <Navigate to="/app" replace />;
+  return children;
+}
+
 export function App(): JSX.Element {
   return (
     <BrowserRouter
@@ -23,6 +34,14 @@ export function App(): JSX.Element {
         <Route path="/" element={<EntryPage />} />
         <Route path="/app" element={<AppShell />}>
           <Route index element={<AppIndex />} />
+          <Route
+            path="collaborations"
+            element={
+              <RequireBrand>
+                <CollaborationsPage />
+              </RequireBrand>
+            }
+          />
         </Route>
       </Routes>
     </BrowserRouter>

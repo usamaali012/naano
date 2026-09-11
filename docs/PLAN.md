@@ -229,12 +229,37 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   Files: `apps/api/src/bookings/bookings.service.ts`,
   `apps/api/src/bookings/next-action.ts`, `packages/shared/src/api.ts`.
 
-- [ ] **4.2 Collaborations table**
-  Scope: table (Creator, Campaign, Status, Next action, Due date, Amount,
-  Updated), status tabs with counts incl. Invitations received / sent, campaign
-  filter, search, rows-per-page. Real empty state.
-  Files: `apps/web/src/routes/CollaborationsPage.tsx`,
-  `apps/web/src/components/campaign/CollaborationsTable.tsx`.
+- [~] **4.2 Collaborations table** — steps 1–3 done 2026-09-11 (backend +
+  UI + honest rail); step 4 (web api client) held for session B, see below.
+  Scope, as actually built (narrower than the RECON-derived scope above, by
+  explicit ask): table (Creator, Campaign, Package, Agreed price, Status,
+  Tracked link + click count), a real `?status=` dropdown (not tabs with
+  counts — not free), Prev/Next pagination (existing `CreatorsPagination`,
+  reused unmodified). No campaign filter, no search, no "Next action" (4.1
+  isn't built), no Due date/Updated columns — none of those were asked for
+  this pass. Real empty state, keyed to whether a status filter is active.
+  Files: `apps/api/src/bookings/{dto/list-bookings-sent.dto.ts,
+  bookings.service.ts,mappers.ts,bookings.controller.ts}`,
+  `packages/shared/src/api.ts` (new `BookingSent`),
+  `apps/web/src/routes/CollaborationsPage.tsx` (new),
+  `apps/web/src/components/campaign/CollaborationsTable.tsx` (new),
+  `apps/web/src/routes/AppShell.tsx`, `apps/web/src/App.tsx`,
+  `apps/web/scripts/shots.mjs`. Pending (step 4, not yet touched):
+  `apps/web/src/lib/api/{client.ts,http.ts,fixtures.ts}`.
+  Notes: this slice also did problem 2 from the same ask — the left rail was
+  four buttons with no `onClick` and no route. `AppShell.tsx` is now
+  role-aware: brand gets two real destinations (Marketplace, Collaborations,
+  active state from the current path), a creator gets no rail at all — see
+  the 2026-09-11 DECISIONS.md entry for why one permanently-active icon was
+  rejected as decoration, not navigation. `App.tsx` gained a `RequireBrand`
+  route guard so `/app/collaborations` isn't just hidden from a creator, it
+  actually redirects one who reaches the URL. `package` isn't a stored
+  column — see DECISIONS.md for the derivation and why `deliverable` isn't
+  trusted for it. Verified against the running local API ahead of step 4:
+  the real HTTP response already carries `creatorDisplayName`/`campaignName`
+  /`package` (Vite doesn't type-check in dev), so the table already renders
+  correctly end to end; `tsc -b` on the web app fails with exactly two
+  errors, both in `CollaborationsPage.tsx`, both closed by step 4.
 
 - [x] **4.3 Accept issues a TrackedLink** — done 2026-09-11.
   Scope: accepting a booking mints a `TrackedLink` (slug + resolved
@@ -339,6 +364,26 @@ show it.
 ## Discovered
 
 Notes handed forward between sessions. Newest first.
+
+- 2026-09-11 — Slice 4.2 (Collaborations + honest rail), steps 1–3 only —
+  **step 4 is not done, and is the very next thing to do once session B has
+  pushed.** Step 4: widen `ApiClient.listBookingsSent` in
+  `apps/web/src/lib/api/client.ts` and `http.ts` to return `BookingSent` and
+  accept `status`, plus the matching additive change to `fixtures.ts`
+  (add `creatorDisplayName`/`campaignName`/`package` to the fixture booking
+  objects and a `status` filter to `listBookingsSent`'s fixture
+  implementation). `fixtures.ts` was on session B's protected list this
+  session (they were mid-merge on `CreatorsListPage.tsx`,
+  `creatorsStore.ts`, `FilterPanel.tsx`, `countries.ts`, and `fixtures.ts`
+  itself) — steps 1–3 deliberately touch none of those five files. Until
+  step 4 lands: `npx tsc -b apps/web/tsconfig.json` fails with exactly two
+  errors in `CollaborationsPage.tsx` (known, see the 2026-09-11 PLAN.md 4.2
+  entry and DECISIONS.md), and the screenshot suite's new `collaborations`
+  shot has not been captured yet — `npm run shots` needs step 4 done first,
+  then a full regen, then commit + this-file/DECISIONS/MAP updated again
+  (under this session's own headings, not rewriting the entries below).
+  See the 2026-09-11 DECISIONS.md entry for the package-derivation reasoning
+  and the creator-rail decision (dropped entirely, not shrunk to one icon).
 
 - 2026-09-11 — Session A's last build task: fixed the stale-card bug found
   the same day (below). `bookingsStore.hydrate()` now keeps the *most

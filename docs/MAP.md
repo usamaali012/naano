@@ -119,8 +119,12 @@ apps/
                            creator+campaign). GET /bookings/received
                            (CREATOR, own profile only, enriched with
                            campaign/company name). GET /bookings/sent
-                           (COMPANY, own company, optional ?campaignId).
-                           PATCH /bookings/:id/status (CREATOR,
+                           (COMPANY, own company, optional ?campaignId and
+                           ?status — 4.2's Collaborations table; @IsIn-
+                           validated against BookingStatus) returns
+                           BookingSent rows (creatorDisplayName, campaignName,
+                           package), not bare Booking. PATCH
+                           /bookings/:id/status (CREATOR,
                            INVITED->ACCEPTED|DECLINED — accepting mints the
                            booking's TrackedLink in the same $transaction,
                            destinationUrl from the campaign, never the
@@ -132,7 +136,12 @@ apps/
                            (TRACKED_LINK_SELECT) so the wire Booking always
                            carries trackedLinkSlug/clickCount (null until a
                            link exists). mappers.ts: toBooking/
-                           toBookingReceived. dev-bookings.controller.ts adds
+                           toBookingReceived/toBookingSent — the last derives
+                           `package` (not a stored column) by comparing
+                           agreedPriceCents to the creator's own
+                           bundle5PriceCents; see docs/DECISIONS.md for why
+                           that's sound and why `deliverable` free text isn't
+                           used instead. dev-bookings.controller.ts adds
                            a dev-only POST /dev/bookings/ensure-invited
                            (NonProductionGuard) that guarantees a creator has
                            one INVITED booking, for the screenshot suite —
@@ -166,7 +175,8 @@ apps/
                            must be up. From Git-Bash prefix MSYS_NO_PATHCONV=1.
       shots.mjs            `npm run shots --workspace=apps/web` — the full
                            marketplace suite (grid, both modal tabs, booking
-                           rail, creator home + bookings, error state). Wipes
+                           rail, collaborations, creator home + bookings,
+                           error state). Wipes
                            .screenshots/ first, prints mtimes. Run it to
                            finish any UI change. Before the creator-home
                            shots it calls the dev-only POST
@@ -244,15 +254,30 @@ apps/
                            /auth/demo-creator to resolve which creator email to
                            sign in as (see DECISIONS.md) rather than a
                            hardcoded one. AppShell = the 72px icon rail (DESIGN
-                           §layout) + a top bar (signed-in identity, Sign out);
-                           redirects signed-out /app to /. App.tsx's AppIndex
-                           picks the surface by role: CreatorsListPage (brand)
-                           or CreatorHomePage (creator — their own profile,
+                           §layout, brand-only — see below) + a top bar
+                           (signed-in identity, Sign out); redirects
+                           signed-out /app to /. App.tsx's AppIndex picks the
+                           surface by role: CreatorsListPage (brand) or
+                           CreatorHomePage (creator — their own profile,
                            "this is how brands see you", from GET /creators/:id,
                            plus a "Your bookings" section reading
                            GET /bookings/received with real Accept/Decline and,
                            per booking with a trackedLinkSlug, a copy-to-
                            clipboard tracked-link row (TrackedLinkRow)).
+                           CollaborationsPage (new, 4.2) is brand-only at
+                           /app/collaborations (App.tsx's RequireBrand
+                           redirects a creator who reaches the URL back to
+                           /app, since the rail never shows it to them) —
+                           every GET /bookings/sent row via
+                           CollaborationsTable, a real ?status= filter
+                           (dropdown, not RECON's tabs-with-counts — see
+                           DECISIONS.md), and CreatorsPagination reused
+                           unmodified for the pager. The rail (AppShell.tsx)
+                           is now role-aware and every icon routes somewhere
+                           real: brand gets Marketplace (/app) +
+                           Collaborations (/app/collaborations), a creator
+                           gets no rail at all rather than a single
+                           permanently-active icon — see DECISIONS.md.
       components/
         ui/               Token-only primitives: Button, Card, Input, Select,
                            Checkbox, Badge, StatusPill, Table (+ THead/TBody/TR/
@@ -283,14 +308,22 @@ apps/
                            audienceSegments.ts (dimension-filter helper).
                            Content tab is 2.12. icons.tsx (NetworkBadge,
                            StarIcon). No filter panel yet.
-        campaign/         Empty. Brief form, campaign list, status pills land
-                           with the campaign flow.
+        campaign/         CollaborationsTable (new, 4.2): Creator, Campaign,
+                           Package, Agreed price, Status, Tracked link (copy
+                           button + click count, gated on trackedLinkSlug
+                           existing rather than on status === ACCEPTED, since
+                           seed can place a booking straight at
+                           SCHEDULED/LIVE/PAID with a link already minted).
+                           Brief form, campaign list, status pills still land
+                           with the rest of the campaign flow.
         dashboard/        Empty. Metric tiles, charts land with the dashboard.
 packages/
   shared/                 Wire-safe types (enums.ts, entities.ts, api.ts) hand-kept
                            in sync with prisma/schema.prisma. Imported by both apps.
                            api.ts adds MarketplaceCreator + campaignId/q on
-                           ListCreatorsParams, CampaignSummary, AddToShortlistBody.
+                           ListCreatorsParams, CampaignSummary, AddToShortlistBody,
+                           BookingSent (GET /bookings/sent — Booking +
+                           creatorDisplayName/campaignName/package, 4.2).
                            cpm.ts: the one CPM formula
                            (postCostCents / medianViews * 1000), used by API and
                            web. index.ts NAMES the cpm re-export (not export *) so

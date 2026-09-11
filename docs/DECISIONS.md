@@ -481,6 +481,58 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   shows "Invited" immediately, with no reload — confirming `recordBooking`'s
   separate optimistic-update path was never affected by this bug and still
   isn't.
+- 2026-09-11 — Slice 4.2, Collaborations + an honest left rail, built and
+  committed in two passes to avoid colliding with session B (mid-merge, and
+  already burned time on one DECISIONS.md conflict). Steps 1–3 — backend
+  (`GET /bookings/sent` gains `?status=`, returns `BookingSent`),
+  `packages/shared/src/api.ts`'s new type, `CollaborationsPage` +
+  `CollaborationsTable`, and the honest `AppShell`/`App.tsx` — are this
+  commit. Step 4 — widening `ApiClient.listBookingsSent` in `client.ts` and
+  `http.ts`, plus the matching additive change to `fixtures.ts` — is
+  deliberately held until session B has pushed, since `fixtures.ts` was on
+  their protected file list; steps 1–3 touch none of their five protected
+  files (confirmed via `git status` before this commit). Verified against
+  the running local API ahead of that step anyway: Vite doesn't type-check
+  in dev, and the real HTTP response already carries the new fields, so
+  `CollaborationsPage` already renders correctly end to end (creator name,
+  campaign, both packages, price, status, tracked link + clicks) even before
+  `client.ts` catches up — only the `?status=` filter param is inert until
+  then, since `http.ts` doesn't forward it yet. `tsc -b` on the web app
+  currently fails with exactly two errors, both in `CollaborationsPage.tsx`,
+  both closed by step 4 — that's expected, not a regression to chase.
+  - **Package is derived, not stored.** `Booking` has no package column, and
+    `deliverable` is free text the brand can edit after booking (the input
+    in `BookingRail.tsx` starts from a default but is user-editable), so it
+    is untrusted and never the source of truth for which package was
+    booked. `agreedPriceCents` is set server-side at creation to exactly the
+    creator's own `postCostCents` or `bundle5PriceCents`
+    (`BookingsService.create`) and never changes afterward, so
+    `toBookingSent` (`mappers.ts`) recovers `package` by comparing
+    `agreedPriceCents === creatorProfile.bundle5PriceCents` — same
+    derive-don't-store pattern already used for CPM, no new column.
+    Verified against real data: 76 single-post and 2 bundle-of-5 bookings in
+    the local DB all derived correctly.
+  - **`?status=` is a real server-side filter**, not a client-side slice —
+    `ListBookingsSentDto` gained `status?: BookingStatus`
+    (`@IsIn`-validated, same pattern as `vertical` on `ListCreatorsDto`), so
+    it stays correct past one page. A plain dropdown, not RECON §7's status
+    tabs with counts — counts need extra queries per status, which isn't
+    "nearly free," and a correct table beats a filtered one at this hour.
+  - **The creator rail is gone, not shrunk to one icon.** The original ask
+    was "make the rail honest, no icon without a real destination" — a
+    creator has exactly one real screen (their own profile, already at
+    `/app`), and a rail holding a single permanently-active icon is the same
+    complaint about the four dead icons this slice started from, one layer
+    down: navigation with one destination is decoration wearing the same
+    clothes as a real nav. Dropping it cost one conditional
+    (`AppShell.tsx`'s `isBrand &&` gate on the `<nav>` and on `<main>`'s left
+    margin) — cheap enough that "keep the single icon because dropping it
+    isn't worth it tonight" didn't apply. A signed-in creator now gets the
+    top bar (identity, Sign out) and full-width content, nothing else.
+  - **Collaborations is brand-only at the router, not just hidden from the
+    rail.** `App.tsx`'s new `RequireBrand` wrapper redirects a creator who
+    reaches `/app/collaborations` directly back to `/app` — the rail simply
+    never showing them the icon isn't a real guard, a typed URL still is.
 
 ## Session B
 

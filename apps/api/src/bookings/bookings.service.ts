@@ -3,12 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import type { Booking, BookingReceived, Paginated } from "@naano/shared";
+import type { Booking, BookingReceived, BookingSent, BookingStatus, Paginated } from "@naano/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { CampaignsService } from "../campaigns/campaigns.service";
 import { generateTrackedLinkSlug } from "../tracking/slug";
 import { CreateBookingDto } from "./dto/create-booking.dto";
-import { toBooking, toBookingReceived } from "./mappers";
+import { toBooking, toBookingReceived, toBookingSent } from "./mappers";
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -165,13 +165,17 @@ export class BookingsService {
     return { items: rows.map(toBookingReceived), total, page, pageSize };
   }
 
-  /** Brand-only: bookings the signed-in company has made, optionally by campaign. */
+  /**
+   * Brand-only: every booking the signed-in company has made, optionally by
+   * campaign and/or status. Backs the Collaborations table.
+   */
   async listSent(
     userId: string,
     page = 1,
     pageSize = DEFAULT_PAGE_SIZE,
     campaignId?: string,
-  ): Promise<Paginated<Booking>> {
+    status?: BookingStatus,
+  ): Promise<Paginated<BookingSent>> {
     const companyId = await this.companyIdForUser(userId);
     if (campaignId) {
       await this.campaigns.assertExists(campaignId);
@@ -180,6 +184,7 @@ export class BookingsService {
     const where = {
       campaign: { companyId },
       ...(campaignId ? { campaignId } : {}),
+      ...(status ? { status } : {}),
     };
 
     const [rows, total] = await Promise.all([
@@ -188,12 +193,16 @@ export class BookingsService {
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: { trackedLink: TRACKED_LINK_SELECT },
+        include: {
+          trackedLink: TRACKED_LINK_SELECT,
+          campaign: true,
+          creatorProfile: true,
+        },
       }),
       this.prisma.booking.count({ where }),
     ]);
 
-    return { items: rows.map(toBooking), total, page, pageSize };
+    return { items: rows.map(toBookingSent), total, page, pageSize };
   }
 
   /**

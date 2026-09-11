@@ -143,3 +143,14 @@ export interface BookingReceived extends Booking {
   campaignName: string;
   companyName: string;
 }
+
+/**
+ * GET /bookings/sent — a booking plus creator/campaign context, for the
+ * brand's Collaborations table. `package` is derived server-side (not a
+ * stored column) — see docs/DECISIONS.md.
+ */
+export interface BookingSent extends Booking {
+  creatorDisplayName: string;
+  campaignName: string;
+  package: BookingPackage;
+}
