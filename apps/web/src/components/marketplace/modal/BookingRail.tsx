@@ -40,13 +40,22 @@ export function BookingRail({ creator }: BookingRailProps): JSX.Element {
   const [booking, setBooking] = useState<Booking | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const recordBooking = useBookingsStore((state) => state.recordBooking);
+  // The card badge and this rail read the same map. Subscribed, so the
+  // conflict notice can name the real status rather than a generic label.
+  const existing = useBookingsStore((state) => state.byCreatorId[creator.id]);
 
-  // A fresh creator (new modal open) always starts from a blank rail.
+  // A fresh creator (new modal open) starts from a blank rail — unless the
+  // brand already has a live booking against this campaign, in which case the
+  // rail says so up front instead of offering a booking the API will reject.
+  // Read imperatively: subscribing here would re-run on recordBooking and wipe
+  // the "booking sent" confirmation the moment it appeared.
   useEffect(() => {
+    const info = useBookingsStore.getState().byCreatorId[creator.id];
+    const booked = info !== undefined && info.status !== "DECLINED";
     setPkg("single");
     setDeliverable(defaultDeliverable("single"));
     setDeliverableTouched(false);
-    setPhase("idle");
+    setPhase(booked ? "conflict" : "idle");
     setBooking(null);
     setErrorMessage("");
   }, [creator.id]);
@@ -123,7 +132,10 @@ export function BookingRail({ creator }: BookingRailProps): JSX.Element {
         </div>
       ) : phase === "conflict" ? (
         <div className="flex flex-col gap-s2 rounded-control border border-border p-s3">
-          <StatusPill tone="neutral" label="Already booked" />
+          <StatusPill
+            tone={existing ? bookingStatusTone(existing.status) : "neutral"}
+            label={existing ? bookingStatusLabel(existing.status) : "Already booked"}
+          />
           <p className="text-body text-text">
             {firstName} is already booked for this campaign.
           </p>

@@ -1,5 +1,6 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../lib/stores/authStore";
+import { Logo } from "../components/ui/Logo";
 
 // Fixed 72px left icon rail, icons only, active item on a --primary-soft
 // background (docs/DESIGN.md §layout). Content is capped at 1440px with 32px
@@ -23,9 +24,8 @@ function RailIcon({ shape }: { shape: string }): JSX.Element {
     ),
     collaborations: (
       <>
-        <path d="M4 20v-1a4 4 0 0 1 4-4h3a4 4 0 0 1 4 4v1" />
-        <circle cx="9.5" cy="8" r="3" />
-        <path d="M16 15a4 4 0 0 1 4 4v1M15.5 5.5a3 3 0 0 1 0 5" />
+        <rect x="3.5" y="5" width="17" height="14" rx="2" />
+        <path d="M3.5 9.5h17M9.5 9.5V19" />
       </>
     ),
     results: (
@@ -66,9 +66,7 @@ export function AppShell(): JSX.Element {
     <div className="flex min-h-screen bg-bg">
       {isBrand && (
         <nav className="fixed inset-y-0 left-0 flex w-[72px] flex-col items-center gap-s2 border-r border-border bg-surface py-s4">
-          <span className="mb-s4 flex h-8 w-8 items-center justify-center rounded-control bg-primary text-card-title text-white">
-            n
-          </span>
+          <Logo className="mb-s4 h-8 w-8" />
           {RAIL.map((item) => {
             const active = location.pathname === item.path;
             return (
@@ -79,13 +77,16 @@ export function AppShell(): JSX.Element {
                 aria-label={item.label}
                 aria-current={active ? "page" : undefined}
                 onClick={() => navigate(item.path)}
-                className={`flex h-10 w-10 items-center justify-center rounded-control transition-colors ${
+                className={`group relative flex h-10 w-10 items-center justify-center rounded-control transition-colors ${
                   active
                     ? "bg-primary-soft text-primary"
                     : "text-text-muted hover:text-text"
                 }`}
               >
                 <RailIcon shape={item.key} />
+                <span className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-control bg-text px-s2 py-s1 text-label text-white opacity-0 shadow-overlay transition-opacity duration-100 group-hover:opacity-100">
+                  {item.label}
+                </span>
               </button>
             );
           })}
