@@ -361,6 +361,126 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   path in and stays that way. `CreatorHomePage` gained a "Booking requests"
   section (all of the creator's bookings, Accept/Decline shown only on
   INVITED rows, empty state in-voice) — the creator-side half of the loop.
+- 2026-09-11 — `GET /auth/demo-creator` added: public, unauthenticated,
+  demo-only affordance. Verified by hand against the deployed site (not
+  assumed): booking a creator as Ledgerly, then clicking "Continue as a
+  creator," landed on Emma Berg — who is not who was just booked. Cause: the
+  seed gives Emma a non-declined booking against every Ledgerly campaign, so
+  `POST /bookings` always 409s for her, and `EntryPage.tsx` hardcoded her
+  email (`emma.berg0@creators.naano.dev`) as the creator side of "Continue as
+  a creator" regardless of who the brand actually booked. Result: the
+  two-sided loop — the single most important thing a reviewer will try —
+  could not be completed by anyone on the live site, ever. Fixed by resolving
+  the creator dynamically: `AuthService.demoCreatorEmail()` returns the email
+  of whoever the demo brand (Ledgerly, matched by
+  `growth@ledgerly.example.com`) most recently booked (`Booking.createdAt`
+  desc, any status), falling back to the first creator the seed created
+  (`CreatorProfile.createdAt` asc) when Ledgerly has no bookings at all.
+  `EntryPage.tsx` calls it before signing in, instead of a hardcoded email.
+  Public and unauthenticated — deliberately not behind `NonProductionGuard`
+  like the `/dev/*` routes, because it has to keep working on the deployed
+  site for a reviewer days from now, and it returns nothing but a seeded
+  account's email, nothing sensitive. Verified end to end on the local stack
+  via the real UI: booked Ines Jensen (a creator with no prior Ledgerly
+  booking) as the brand, signed out, clicked "Continue as a creator," landed
+  on Ines Jensen with an Invited row for Fintech Trust Campaign, and Accept
+  worked (row moved to Accepted). Re-running the same check against an
+  already-booked creator correctly still resolves to them (most recent, not
+  first match), confirming this works repeatedly, not just once.
+- 2026-09-11 — Seeded campaign `destinationUrl`s changed from
+  `ledgerly.example.com`/`vertice-analytics.example.com` subdomains (neither
+  resolves — confirmed by hand, both DNS-fail) to `example.com` itself
+  (confirmed resolving: 200 on `/`, and a real "Example Domain" page, not a
+  browser error, on any `/lp/...` sub-path even though it 404s). Clicking a
+  tracked link previously hit a browser connection error instead of a landing
+  page — tracking still fired (the `ClickEvent` is written before the 302),
+  but it read as broken. Tracking code (`tracking.service.ts`,
+  `bookings.service.ts`'s accept-time mint) is unchanged, per the ask.
+  **This alone does not fix already-seeded data.** `seed.ts` only runs once,
+  by hand, against an empty database (Session B) — it is not rerun on
+  deploy, so a production database that was already seeded keeps the old
+  broken `Campaign.destinationUrl` values regardless of this code change.
+  Worse, `TrackedLink.destinationUrl` is copied from the campaign once at
+  accept time (`bookings.service.ts`) and never read live afterward, so even
+  a from-scratch reseed of `Campaign` wouldn't retroactively fix
+  `TrackedLink` rows that already exist — and reseeding isn't an option
+  anyway: `seed.ts` has no cleanup step (no `deleteMany`), so rerunning it
+  against a database that already has this data 500s on the first duplicate
+  email; the only remote-safe path per CLAUDE.md is forward-only, no reset.
+  Added `apps/api/prisma/fix-destination-urls.ts`: a one-off, idempotent
+  `updateMany` per exact old→new URL pair, run once against both `Campaign`
+  and `TrackedLink`. Verified locally: fixed 4 campaigns + 107 existing
+  tracked links, a second run matched 0 rows, and `GET /r/<slug>` for a
+  previously-broken link now 302s to a URL that actually resolves. **A
+  production reseed is not needed and would not be safe or sufficient
+  anyway** — what production needs instead is this one-off script, run once
+  by hand the same way `prisma:seed`/`prisma:migrate` are (`railway run`,
+  which injects `DATABASE_URL` into the subprocess without it ever being
+  typed or committed): from `apps/api`, `railway run npx ts-node
+  prisma/fix-destination-urls.ts`. Not run against production from here —
+  the user runs it.
+- 2026-09-11 — Verified click tracking end to end locally, to resolve
+  something that couldn't be told apart from outside the app: on the live
+  site, hitting `/r/728a982c` left the brand card reading "30 clicks"
+  unchanged — was the click not recorded, or was the card showing one of the
+  creator's other three bookings? **Recording itself is correct.** Booked
+  Erik Marchetti fresh, accepted as him (`trackedLinkSlug` minted,
+  `clickCount: 0` on both `GET /bookings/sent` and `/bookings/received`), hit
+  `/r/<slug>` three times (each a real 302 to the now-resolving destination),
+  re-fetched both endpoints: `clickCount: 3` on both, and a reloaded
+  marketplace card render (Playwright) shows "3 clicks" too — 0 to 3
+  everywhere, exactly once per click. **The card does not aggregate across a
+  creator's bookings** — `bookingsStore` keys `byCreatorId` by creator and
+  holds exactly one `{status, clickCount}`, the booking for whichever
+  campaign the marketplace is currently ranked against (the active one), full
+  stop. Any of the creator's other bookings (a different campaign, a
+  different company) are invisible to this card — not summed, not shown at
+  all.
+  **Found the actual bug while checking that, unprompted (in scope for this
+  verification, not fixed — reported here for the next session):**
+  `bookingsStore.hydrate()` (`apps/web/src/lib/stores/bookingsStore.ts`)
+  builds `byCreatorId` with `for (const booking of page.items) byCreatorId
+  [booking.creatorProfileId] = {...}`, and `page.items` is `GET
+  /bookings/sent` ordered `createdAt: "desc"` (newest first). When a creator
+  has more than one booking against the *same* active campaign — normal once
+  one has been declined and a fresh one made for them, since `create()` only
+  blocks a second *non-declined* booking — the loop's last write wins, and
+  because the array is newest-first, the **last** write is the **oldest**
+  row. The card ends up showing a stale booking instead of the current one.
+  Reproduced live with real seed data: Adam Bauer has a DECLINED booking
+  against Fintech Trust Campaign and a newer INVITED one against the same
+  campaign; his marketplace card renders "Declined" — the stale row — even
+  though he has a live pending invite. This is almost certainly what was seen
+  on the live site: Emma has four bookings, so if two of them collide in the
+  same campaign the way Adam's do, her card can be pinned to a stale one
+  indefinitely regardless of which of her links gets clicked. Not fixed here
+  — flagged in `docs/PLAN.md`'s Discovered section for a session that can
+  size the fix (sorting ascending before the loop, so the newest write wins,
+  is the likely one-line fix, but wasn't verified against the rest of the
+  store's contract).
+- 2026-09-11 — Fixed the `bookingsStore.hydrate()` stale-card bug above. When
+  a creator has more than one booking against the active campaign, the card
+  now shows the **most recent** one, not whichever sorts last in the loop.
+  Chose most-recent over any other tie-break (e.g. "prefer non-declined," or
+  "prefer the highest-progress status") because the card exists to answer
+  one question for the brand — "what did I just do with this creator" — and
+  the most recent booking is definitionally the state the brand most
+  recently created and the one they're looking at the marketplace to check
+  on. A creator who declined an old invite and has since been rebooked
+  should read as freshly invited, not as their old decline, regardless of
+  which one has "more" status progress. Implementation:
+  `listBookingsSent` already orders `createdAt: desc`, so `hydrate()`'s
+  build loop now skips a `creatorProfileId` it has already seen instead of
+  overwriting — first-seen-wins on an already-newest-first array is
+  most-recent-wins, with no new sort and no change to the API. Verified on
+  the local stack with the three cases asked for: Adam Bauer's card now
+  reads "Invited" (was "Declined") while his live pending invite still
+  exists; Erik Marchetti, who has exactly one booking, renders identically
+  to before (Accepted, 3 clicks); and freshly booking Ruby Holm (declined
+  out of her prior Fintech Trust history for the test) through the real UI
+  shows "Invited" immediately, with no reload — confirming `recordBooking`'s
+  separate optimistic-update path was never affected by this bug and still
+  isn't.
 
 - 2026-09-11 (Session B) — Marketplace filter panel (2.5, partial): industry
   (searchable multi-select), country (dropdown) and follower min/max, wired to

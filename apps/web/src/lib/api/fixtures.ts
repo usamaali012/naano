@@ -7,6 +7,7 @@ import type {
   CreateBookingBody,
   CreatorPost,
   CreatorProfileDetail,
+  DemoCreatorResponse,
   ListCreatorsParams,
   LoginResponse,
   MarketplaceCreator,
@@ -16,6 +17,12 @@ import type {
 } from "@naano/shared";
 import type { ApiClient } from "./client";
 import { ApiError } from "./errors";
+
+// getDemoCreatorEmail's fixture stand-in. login()/getMe() below always return
+// the brand FIXTURE_ME regardless of which email is passed in (fixtures mode
+// has no real creator-side session yet), so this email is never actually
+// signed into — it only keeps the ApiClient shape honest.
+const FIXTURE_CREATOR_EMAIL = "sofia.bergman0@creators.naano.dev";
 
 const FIXTURE_ME: AuthMe = {
   userId: "fixture-user-brand",
@@ -238,6 +245,9 @@ export const fixturesClient: ApiClient = {
   },
   async getMe(): Promise<AuthMe> {
     return FIXTURE_ME;
+  },
+  async getDemoCreatorEmail(): Promise<DemoCreatorResponse> {
+    return { email: FIXTURE_CREATOR_EMAIL };
   },
   async listCreators(params?: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>> {
     const page = params?.page ?? 1;

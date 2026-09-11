@@ -32,8 +32,15 @@ export const useBookingsStore = create<BookingsState>((set, get) => ({
     try {
       const campaign = await api.getActiveCampaign();
       const page = await api.listBookingsSent({ campaignId: campaign.id, pageSize: 100 });
+      // A creator can have more than one booking against the same campaign —
+      // a declined one plus a fresh one, since the API only blocks a second
+      // *non-declined* booking. listBookingsSent returns createdAt desc, so
+      // the first row seen per creator is the most recent one; skip the rest
+      // rather than let them overwrite it, so the card reflects the booking
+      // the brand actually just made, not whichever happens to sort last.
       const byCreatorId: Record<string, CreatorBookingInfo> = {};
       for (const booking of page.items) {
+        if (booking.creatorProfileId in byCreatorId) continue;
         byCreatorId[booking.creatorProfileId] = {
           status: booking.status,
           clickCount: booking.clickCount,

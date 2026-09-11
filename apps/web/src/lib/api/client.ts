@@ -5,6 +5,7 @@ import type {
   CampaignSummary,
   CreateBookingBody,
   CreatorProfileDetail,
+  DemoCreatorResponse,
   ListCreatorsParams,
   LoginResponse,
   MarketplaceCreator,
@@ -18,6 +19,8 @@ export interface ApiClient {
   login(email: string, password: string): Promise<LoginResponse>;
   /** The signed-in user — requires the token to have been set. */
   getMe(): Promise<AuthMe>;
+  /** Public. Which seeded creator EntryPage's "Continue as a creator" signs into. */
+  getDemoCreatorEmail(): Promise<DemoCreatorResponse>;
 
   listCreators(params?: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>>;
   getCreator(id: string): Promise<CreatorProfileDetail>;

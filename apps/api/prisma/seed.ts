@@ -719,7 +719,7 @@ async function main(): Promise<void> {
       brief: "Introduce Vertice's forecasting module to RevOps and sales ops audiences on LinkedIn.",
       keyMessages: "Forecast accuracy, less spreadsheet glue, faster close.",
       guidelines: "No discount codes. Tag @VerticeAnalytics. Keep tone practitioner, not salesy.",
-      destinationUrl: "https://vertice-analytics.example.com/lp/forecasting",
+      destinationUrl: "https://example.com/lp/forecasting",
       budgetCents: 1_200_000,
       status: CampaignStatus.DRAFT,
       icps: [
@@ -736,7 +736,7 @@ async function main(): Promise<void> {
       brief: "Get developer-focused creators to demo the new webhook integration.",
       keyMessages: "5-minute setup, no vendor lock-in, generous free tier.",
       guidelines: "Include a code screenshot or short demo clip if possible.",
-      destinationUrl: "https://vertice-analytics.example.com/lp/integrations",
+      destinationUrl: "https://example.com/lp/integrations",
       budgetCents: 800_000,
       status: CampaignStatus.LIVE,
       icps: [
@@ -753,7 +753,7 @@ async function main(): Promise<void> {
       brief: "Explain embedded finance risk/compliance tradeoffs through fintech and vertical SaaS creators.",
       keyMessages: "PCI-DSS out of the box, 3-week integration, audit-ready.",
       guidelines: "Avoid promising specific APRs or rates.",
-      destinationUrl: "https://ledgerly.example.com/lp/embedded-finance",
+      destinationUrl: "https://example.com/lp/embedded-finance",
       budgetCents: 1_500_000,
       status: CampaignStatus.LIVE,
       icps: [
@@ -770,7 +770,7 @@ async function main(): Promise<void> {
       brief: "Completed campaign from earlier this year, kept for historical reporting.",
       keyMessages: "Same-day payouts, single API, built-in tax forms.",
       guidelines: "Completed campaign, no further posts.",
-      destinationUrl: "https://ledgerly.example.com/lp/payouts",
+      destinationUrl: "https://example.com/lp/payouts",
       budgetCents: 900_000,
       status: CampaignStatus.COMPLETED,
       icps: [

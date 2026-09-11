@@ -34,6 +34,14 @@ export interface AuthMe {
   displayName: string | null;
 }
 
+/**
+ * GET /auth/demo-creator — a demo affordance for EntryPage's "Continue as a
+ * creator" button. Public: carries nothing but a seeded account's email.
+ */
+export interface DemoCreatorResponse {
+  email: string;
+}
+
 // --- Creators -------------------------------------------------------------
 
 /** The four options in the marketplace "Sort by" control (RECON §4). */

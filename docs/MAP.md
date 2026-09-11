@@ -46,7 +46,19 @@ apps/
                            ShortlistItem rows. LinkedIn only — no X creators or
                            posts. Post cost = cpm * medianViews / 1000, no
                            clamp; nudged off round-25s and collisions
-                           (usedPostCosts) so all 40 are distinct.
+                           (usedPostCosts) so all 40 are distinct. Campaign
+                           destinationUrls are example.com paths (resolves) —
+                           not example.com subdomains (don't resolve).
+      fix-destination-urls.ts  One-off, idempotent data fix (not run by
+                           deploy or by seed.ts) for a database that was
+                           already seeded before the example.com fix above:
+                           updates Campaign + TrackedLink destinationUrl by
+                           exact old->new URL pair. Run once by hand via
+                           `railway run`, same pattern as prisma:seed — see
+                           docs/DECISIONS.md for the exact command and why a
+                           reseed can't do this (TrackedLink snapshots its
+                           URL at accept time and seed.ts has no cleanup step,
+                           so it isn't safe to rerun against existing data).
     src/
       main.ts
       app.module.ts
@@ -58,7 +70,13 @@ apps/
       auth/               JWT strategy/guards/role decorator, POST /auth/login,
                            and GET /auth/me (JWT-guarded — userId, email, role,
                            companyId, creatorProfileId, displayName). Backs the
-                           `/` entry page's two real sign-ins.
+                           `/` entry page's two real sign-ins. GET
+                           /auth/demo-creator (public, no guard) resolves which
+                           seeded creator "Continue as a creator" signs into:
+                           whoever the demo brand (Ledgerly) most recently
+                           booked, else the first creator the seed created —
+                           see DECISIONS.md for why EntryPage can no longer
+                           hardcode a creator email.
       creators/           GET /creators (paginated) with filters (vertical x N,
                            country, q free-text, price range, max CPM, min median
                            views, min/max followers, min engagement %, posted-
@@ -208,10 +226,17 @@ apps/
                            shortlistStore, maps creator -> booking info for
                            the active campaign so the marketplace card can
                            show "already booked" (and, once accepted, its
-                           click count) without a new screen; recordBooking()
-                           takes the full Booking and updates the map
-                           immediately on a successful create. uiStore.ts:
-                           unused pattern example.
+                           click count) without a new screen. A creator can
+                           have more than one booking against the active
+                           campaign (e.g. declined, then rebooked) —
+                           hydrate() keeps the most recent one
+                           (listBookingsSent is createdAt desc; first seen
+                           per creator wins), not whichever sorts last, so
+                           the card always reflects what the brand most
+                           recently did. See docs/DECISIONS.md.
+                           recordBooking() takes the full Booking and
+                           updates the map immediately on a successful
+                           create. uiStore.ts: unused pattern example.
         countries.ts      Country code -> display name for the 15 codes
                            apps/api/prisma/seed.ts seeds. No distinct-countries
                            endpoint exists, so this is read off the seed, not
@@ -225,7 +250,10 @@ apps/
                            (VITE_API_URL + /r/ + slug), for display and copy.
       routes/             EntryPage (public, "/") — two real one-click sign-ins
                            (brand/creator) against seeded accounts, then routes
-                           into /app. AppShell = the 72px icon rail (DESIGN
+                           into /app. "Continue as a creator" first calls GET
+                           /auth/demo-creator to resolve which creator email to
+                           sign in as (see DECISIONS.md) rather than a
+                           hardcoded one. AppShell = the 72px icon rail (DESIGN
                            §layout) + a top bar (signed-in identity, Sign out);
                            redirects signed-out /app to /. App.tsx's AppIndex
                            picks the surface by role: CreatorsListPage (brand)
