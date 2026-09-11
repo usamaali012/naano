@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { CreatorProfileDetail } from "@naano/shared";
 import { Avatar } from "../../ui/Avatar";
@@ -34,12 +34,40 @@ function CheckChip({ children }: { children: ReactNode }): JSX.Element {
   );
 }
 
+function postDateRangeLabel(posts: CreatorProfileDetail["posts"]): string | null {
+  if (posts.length === 0) return null;
+  const format = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  // posts arrive newest-first; the oldest is the last one.
+  const newest = posts[0]!;
+  const oldest = posts[posts.length - 1]!;
+  const count = `${posts.length} post${posts.length === 1 ? "" : "s"}`;
+  if (posts.length === 1) return `${count}, ${format(newest.publishedAt)}`;
+  return `${count}, ${format(oldest.publishedAt)} – ${format(newest.publishedAt)}`;
+}
+
 export function OverviewTab({ creator }: OverviewTabProps): JSX.Element {
+  const [postIndex, setPostIndex] = useState(0);
   const [postExpanded, setPostExpanded] = useState(false);
+
+  // A different creator's posts array is a different set entirely — always
+  // land on their newest post, not wherever the pager was left.
+  useEffect(() => {
+    setPostIndex(0);
+    setPostExpanded(false);
+  }, [creator.id]);
+
   const jobTitle = segmentsFor(creator, "JOB_TITLE");
   const seniority = segmentsFor(creator, "SENIORITY");
   const topJob = jobTitle[0];
-  const recentPost = creator.posts[0];
+  const posts = creator.posts;
+  const recentPost = posts[postIndex];
+  const dateRangeLabel = postDateRangeLabel(posts);
+
+  function goToPost(delta: number): void {
+    setPostIndex((current) => Math.min(Math.max(current + delta, 0), posts.length - 1));
+    setPostExpanded(false);
+  }
 
   return (
     <div className="flex flex-col gap-s6">
@@ -80,7 +108,12 @@ export function OverviewTab({ creator }: OverviewTabProps): JSX.Element {
       </section>
 
       <section className="flex flex-col gap-s4">
-        <h3 className="text-card-title text-text">Content performance</h3>
+        <div className="flex flex-wrap items-baseline justify-between gap-s2">
+          <h3 className="text-card-title text-text">Content performance</h3>
+          {dateRangeLabel && (
+            <span className="text-label text-text-muted">{dateRangeLabel}</span>
+          )}
+        </div>
         <div className="grid items-start gap-s4 lg:grid-cols-2">
           <div className="rounded-card border border-border p-s4">
             <ReachSparkline posts={creator.posts} />
@@ -138,6 +171,51 @@ export function OverviewTab({ creator }: OverviewTabProps): JSX.Element {
                 <span>{formatCompactNumber(recentPost.comments)} comments</span>
                 <span>{formatCompactNumber(recentPost.reposts)} reposts</span>
               </div>
+              {posts.length > 1 && (
+                <div className="flex items-center justify-between border-t border-border pt-s3">
+                  <span className="text-label text-text-muted">
+                    {postIndex + 1} of {posts.length}
+                  </span>
+                  <div className="flex items-center gap-s2">
+                    <button
+                      type="button"
+                      onClick={() => goToPost(-1)}
+                      disabled={postIndex === 0}
+                      aria-label="Previous post"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-control border border-border text-text-muted transition-colors hover:border-primary disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
+                        <path
+                          d="M10 3.5 5 8l5 4.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goToPost(1)}
+                      disabled={postIndex === posts.length - 1}
+                      aria-label="Next post"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-control border border-border text-text-muted transition-colors hover:border-primary disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
+                        <path
+                          d="M6 3.5 11 8l-5 4.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

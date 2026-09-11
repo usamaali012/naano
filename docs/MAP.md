@@ -322,15 +322,18 @@ apps/
                            through). CreatorsPagination (Prev/Next + range).
                            CreatorProfileModal = two-column shell (tabbed
                            content + persistent BookingRail aside), from
-                           GET /creators/:id. modal/ has OverviewTab,
-                           AudienceTab, BookingRail (real submit: package radio
-                           + deliverable input -> POST /bookings; renders one of
+                           GET /creators/:id. modal/ has OverviewTab (its post
+                           card is paged — "N of 5", prev/next, resets to
+                           post 1 per creator; 2.12 folded in here rather
+                           than a third tab, see DECISIONS.md), AudienceTab,
+                           BookingRail (real submit: package radio +
+                           deliverable input -> POST /bookings; renders one of
                            the form / a booked confirmation / an already-booked
                            notice / a retryable error, see bookingStatus.ts and
                            lib/api/errors.ts), ReachSparkline (inline-SVG),
                            audienceSegments.ts (dimension-filter helper).
-                           Content tab is 2.12. icons.tsx (NetworkBadge,
-                           StarIcon).
+                           Two tabs only (Overview, Audience) — no Content
+                           tab. icons.tsx (NetworkBadge, StarIcon).
         campaign/         CollaborationsTable (new, 4.2): Creator, Campaign,
                            Package, Agreed price, Status, Tracked link (copy
                            button + click count, gated on trackedLinkSlug
