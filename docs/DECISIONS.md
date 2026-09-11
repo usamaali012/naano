@@ -567,6 +567,45 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   this pass touched, all three purely additive to what steps 1–3 already
   established — no design decision to record beyond what's already in the
   entries above.
+- 2026-09-11 (Session B) — 2.12 (modal Content tab) folded into Overview
+  instead of shipped as a third tab. RECON's Content tab, checked line by
+  line against the already-built `OverviewTab.tsx`:
+
+  | RECON left-column item | Verdict |
+  |---|---|
+  | Topic chips (AI, Marketing, SaaS) | No backing field anywhere in the schema — would be fabricated, not derived from real data. Dropped. |
+  | Reach sparkline | Literal duplicate of Overview's — same component, same data. Dropped. |
+  | Latest post date | Same value as post #1's date, already on Overview's post card. Dropped. |
+  | Posts analysed | Always visible in `BookingRail` regardless of which tab is open. Dropped. |
+  | Posts 2–5 (the carousel) | The only genuinely new thing — Overview only ever showed post #1. Kept, folded in. |
+
+  Four of RECON's five content-tab items were either redundant with what's
+  already on screen one tab-click away (or, for `BookingRail`, visible at
+  the same time regardless of tab) or had no real data to back it — shipping
+  them as a third tab would have padded the modal with a weaker duplicate,
+  not added a stronger one. Only the carousel (browsing posts 2–5, previously
+  unreachable) was real. So `OverviewTab.tsx`'s existing post card gained a
+  pager instead of a new tab: `postIndex` state, "N of 5" + prev/next
+  (disabled at both ends; no pager rendered for a single-post creator), and
+  a `useEffect` keyed on `creator.id` that resets to post 1 and collapses
+  the text expander whenever the modal opens a different creator (and the
+  page-change handler does the same on every prev/next). The "Content
+  performance" section header gained a caption — `"5 posts, 9 Aug – 9
+  Sept"` — giving the post set's own date span.
+  **Deliberately not measured against today.** `apps/api/prisma/seed.ts`
+  generates each `CreatorPost.publishedAt` within ~35 days *of seed time*
+  (`postDays = shuffled([2, 6, 11, 18, 27, 33])`), not of whenever a
+  reviewer opens the demo. A "posts in the last 30 days" figure would read
+  correctly on seed day and silently go to 0 afterward with no reseed to
+  fix it — the same trap `postedWithinDays` avoids server-side by being a
+  filter, not a displayed count. The date-range caption sidesteps this
+  entirely by comparing the posts only to each other.
+  No `ContentTab.tsx`, `PostCarousel.tsx`, or third `Tabs` item exists;
+  `CreatorProfileModal.tsx` is untouched. Verified live against the running
+  API: pager advances/retreats, disables correctly at both ends, collapses
+  an open "See full post" on every page change, and a freshly opened
+  creator always lands on post 1. Typechecked `packages/shared`, `apps/web`,
+  `apps/api` clean.
 
 - 2026-09-11 — Slice 5.4 (attribution by creator). `GET /analytics/attribution`
   (brand-only) aggregates in memory over the signed-in company's bookings,

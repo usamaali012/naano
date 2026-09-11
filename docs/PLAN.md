@@ -163,13 +163,30 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   Notes: uses the shared `SegmentedBar` primitive and the new `Disclosure`
   primitive (native `<details>` with the browser marker swapped for a chevron).
 
-- [ ] **2.12 Modal — Content tab**
-  Scope: content signals column (topic chips, latest post date, posts observed in
-  30 days, typical range, posts analyzed, reach sparkline) + post carousel
-  ("1 of 5") over `CreatorPost` with full text expander, "Open original" link,
-  engagement row (views, reactions, comments, reposts).
-  Files: `apps/web/src/components/marketplace/modal/ContentTab.tsx`,
+- [x] **2.12 Modal — Content tab** — done differently, 2026-09-11: folded
+  into Overview rather than shipped as a third tab.
+  Scope (as speced): content signals column (topic chips, latest post date,
+  posts observed in 30 days, typical range, posts analyzed, reach sparkline)
+  + post carousel ("1 of 5") over `CreatorPost` with full text expander,
+  "Open original" link, engagement row (views, reactions, comments, reposts).
+  Files (as speced): `apps/web/src/components/marketplace/modal/ContentTab.tsx`,
   `apps/web/src/components/marketplace/modal/PostCarousel.tsx`.
+  What shipped instead: Overview's existing post card (already had full
+  text expander, "Open original", engagement row for post #1) gained a
+  pager — "N of 5", prev/next, resets to post 1 on a new creator, no pager
+  for a single-post creator. The "Content performance" header gained a
+  date-range caption ("5 posts, 9 Aug – 9 Sept", relative to the posts
+  themselves — see the DECISIONS.md entry for why not "last 30 days").
+  Reason: RECON's Content tab, checked line by line against the built
+  Overview tab, turned out to be one genuinely new thing (posts 2–5,
+  previously unreachable) wrapped in three restatements of what Overview or
+  the always-visible BookingRail already show (the sparkline, "posts
+  analysed", "latest post date") plus one chip with no backing data in the
+  schema (topics). Building it as a full third tab would have shipped a
+  weaker duplicate; folding the one real addition into Overview was judged
+  the stronger outcome. No `ContentTab.tsx`/`PostCarousel.tsx`, no third
+  `Tabs` item.
+  Files touched: `apps/web/src/components/marketplace/modal/OverviewTab.tsx`.
 
 - [x] **2.13 Booking rail** — done 2026-09-10.
   Scope: "Book this creator", single-post vs bundle-of-5 radio with prices,
@@ -410,6 +427,44 @@ Notes handed forward between sessions. Newest first.
   not a per-slice screenshot. Whoever runs that regen should add a `results`
   shot (grid empty state, table with rows) to `shots.mjs`'s suite — it isn't
   there yet.
+- 2026-09-11 (Session B) — 2.12 done differently: folded into Overview
+  instead of a third tab. Checked RECON's Content tab line by line against
+  the already-built Overview tab:
+
+  | RECON left-column item | Verdict |
+  |---|---|
+  | Topic chips (AI, Marketing, SaaS) | No backing field anywhere in the schema — would be fabricated, not derived. Dropped. |
+  | Reach sparkline | Literal duplicate of Overview's, same component, same data. Dropped. |
+  | Latest post date | Same value as post #1's date, already on Overview's post card. Dropped. |
+  | Posts analysed | Always visible in `BookingRail` regardless of which tab is open. Dropped. |
+  | Posts 2–5 (the carousel) | **The only genuinely new thing** — Overview only ever showed post #1. Kept, folded in. |
+
+  So: `OverviewTab.tsx`'s existing post card gained a pager instead —
+  `postIndex` state, "N of 5", prev/next (disabled at the ends, no pager for
+  a single-post creator), resets to post 1 via a `useEffect` keyed on
+  `creator.id` so switching creators doesn't leave the pager mid-deck. The
+  "Content performance" header gained a caption reading `"5 posts, 9 Aug –
+  9 Sept"` — deliberately the post set's own oldest/newest dates, not
+  anything measured against today: `CreatorPost.publishedAt` in
+  `seed.ts` is generated within ~35 days *of seed time*, not of whenever a
+  reviewer opens the demo, so a "posts in the last 30 days" figure would
+  silently go stale (read 0) without a reseed. No `ContentTab.tsx`,
+  `PostCarousel.tsx`, or third `Tabs` item — `CreatorProfileModal.tsx`
+  untouched. Verified live: pager advances/retreats correctly, disables at
+  both ends, collapses an open "See full post" on every page change, and a
+  fresh creator always opens on post 1. Typechecked `packages/shared`,
+  `apps/web`, `apps/api` clean.
+- 2026-09-11 (Session B) — Third merge: origin/main brought in the
+  Collaborations table (4.2), an honest role-aware `AppShell` left rail
+  (creators get no rail), and the widened `listBookingsSent` (see the
+  session-A entry below for the detail). Merged clean, no conflicts at all
+  — not even in docs. Re-ran all five filter counts against the merged
+  code — unchanged: `vertical=SALES` alone → 5, `vertical=SALES,DEVTOOLS` →
+  10, `country=PT` → 1, `country=FR` → 1, `minFollowers=75000` → 2, the
+  combined vertical+country+range+q query → 1 (Maya Ferrari). Typechecked
+  `packages/shared`, `apps/web`, `apps/api` clean. Next: slice 2.12 (modal
+  Content tab), staying inside `apps/web/src/components/marketplace/` —
+  Session A owns `apps/web/src/routes/`, the bookings API, and tracking.
 - 2026-09-11 — Slice 4.2 closed: step 4, after session B's merge landed on
   `main` (`git pull origin main` was a no-op by the time this ran — the
   merge commits were already local). Widened `ApiClient.listBookingsSent`
