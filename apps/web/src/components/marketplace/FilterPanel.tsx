@@ -3,8 +3,9 @@ import type { Vertical } from "@naano/shared";
 import { Checkbox } from "../ui/Checkbox";
 import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
-import { COUNTRY_OPTIONS } from "../../lib/countries";
-import { verticalLabel } from "../../lib/format";
+import { Badge } from "../ui/Badge";
+import { COUNTRY_OPTIONS, countryLabel } from "../../lib/countries";
+import { formatCompactNumber, verticalLabel } from "../../lib/format";
 
 const VERTICAL_OPTIONS: Array<{ value: Vertical; label: string }> = [
   "SALES",
@@ -41,26 +42,92 @@ export function FilterPanel({
   maxFollowers,
   onFollowerRangeChange,
 }: FilterPanelProps): JSX.Element {
+  const hasActiveFilters =
+    verticals.length > 0 ||
+    country !== undefined ||
+    minFollowers !== undefined ||
+    maxFollowers !== undefined;
+
+  function clearAll(): void {
+    onVerticalsChange([]);
+    onCountryChange(undefined);
+    onFollowerRangeChange(undefined, undefined);
+  }
+
   return (
-    <div className="flex flex-wrap items-end gap-s4 rounded-card border border-border bg-surface p-s4">
-      <IndustryFilter verticals={verticals} onChange={onVerticalsChange} />
+    <div className="flex flex-col gap-s3 rounded-card border border-border bg-surface p-s4">
+      <div className="flex flex-wrap items-end gap-s4">
+        <IndustryFilter verticals={verticals} onChange={onVerticalsChange} />
 
-      <label className="flex flex-col gap-s1">
-        <span className="text-label text-text-muted">Country</span>
-        <Select
-          className="min-w-[10rem]"
-          options={COUNTRY_SELECT_OPTIONS}
-          value={country ?? ""}
-          onChange={(event) => onCountryChange(event.target.value || undefined)}
+        <label className="flex flex-col gap-s1">
+          <span className="text-label text-text-muted">Country</span>
+          <Select
+            className="min-w-[10rem]"
+            options={COUNTRY_SELECT_OPTIONS}
+            value={country ?? ""}
+            onChange={(event) => onCountryChange(event.target.value || undefined)}
+          />
+        </label>
+
+        <FollowerRangeFilter
+          min={minFollowers}
+          max={maxFollowers}
+          onChange={onFollowerRangeChange}
         />
-      </label>
+      </div>
 
-      <FollowerRangeFilter
-        min={minFollowers}
-        max={maxFollowers}
-        onChange={onFollowerRangeChange}
-      />
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center gap-s2 border-t border-border pt-s3">
+          {verticals.map((v) => (
+            <FilterChip
+              key={v}
+              label={verticalLabel(v)}
+              onRemove={() => onVerticalsChange(verticals.filter((item) => item !== v))}
+            />
+          ))}
+          {country !== undefined && (
+            <FilterChip label={countryLabel(country)} onRemove={() => onCountryChange(undefined)} />
+          )}
+          {(minFollowers !== undefined || maxFollowers !== undefined) && (
+            <FilterChip
+              label={followerRangeLabel(minFollowers, maxFollowers)}
+              onRemove={() => onFollowerRangeChange(undefined, undefined)}
+            />
+          )}
+          <button
+            type="button"
+            onClick={clearAll}
+            className="text-label font-medium text-primary"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
     </div>
+  );
+}
+
+function followerRangeLabel(min: number | undefined, max: number | undefined): string {
+  if (min !== undefined && max !== undefined) {
+    return `${formatCompactNumber(min)}–${formatCompactNumber(max)} followers`;
+  }
+  if (min !== undefined) return `${formatCompactNumber(min)}+ followers`;
+  return `Up to ${formatCompactNumber(max ?? 0)} followers`;
+}
+
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }): JSX.Element {
+  return (
+    <Badge className="gap-s1">
+      {label}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${label} filter`}
+        className="text-primary"
+      >
+        ×
+      </button>
+    </Badge>
   );
 }
 
@@ -212,5 +279,3 @@ function FollowerRangeFilter({
     </div>
   );
 }
-
-export { VERTICAL_OPTIONS };

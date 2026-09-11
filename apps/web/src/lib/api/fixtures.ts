@@ -214,6 +214,7 @@ export const fixturesClient: ApiClient = {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 20;
     const q = params?.q?.trim().toLowerCase();
+    const { vertical, country, minFollowers, maxFollowers } = params ?? {};
 
     let rows = [...FIXTURE_CREATORS];
     if (q) {
@@ -222,6 +223,18 @@ export const fixturesClient: ApiClient = {
           c.displayName.toLowerCase().includes(q) ||
           c.headline.toLowerCase().includes(q),
       );
+    }
+    if (vertical && vertical.length > 0) {
+      rows = rows.filter((c) => vertical.includes(c.vertical));
+    }
+    if (country) {
+      rows = rows.filter((c) => c.country.toLowerCase() === country.toLowerCase());
+    }
+    if (minFollowers !== undefined) {
+      rows = rows.filter((c) => c.followerCount >= minFollowers);
+    }
+    if (maxFollowers !== undefined) {
+      rows = rows.filter((c) => c.followerCount <= maxFollowers);
     }
     rows.sort(SORTERS[params?.sort ?? "best_match"]);
 

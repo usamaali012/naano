@@ -121,14 +121,21 @@ apps/
                            selected by VITE_API_MODE. client.ts is the interface:
                            listCreators, getCreator, getActiveCampaign,
                            listShortlist / addToShortlist / removeFromShortlist.
-                           http.ts maps every list param (filter params wired,
-                           not yet surfaced in UI). fixtures.ts mirrors all of it
-                           (in-memory per-campaign shortlist).
+                           http.ts maps every list param. fixtures.ts mirrors
+                           all of it, including vertical/country/follower-range
+                           filtering (in-memory per-campaign shortlist) — kept
+                           in sync with http.ts's filter semantics since 2.5.
         stores/           Zustand stores, one per domain. creatorsStore.ts:
-                           grid page/sort/q/tab state. shortlistStore.ts:
-                           {campaignId, ids, status} — hydrates from the API,
-                           optimistic writes, no localStorage. uiStore.ts:
-                           unused pattern example.
+                           grid page/sort/q/tab state, plus filter state
+                           (vertical[], country, minFollowers, maxFollowers)
+                           from 2.5 — each setter resets page to 1.
+                           shortlistStore.ts: {campaignId, ids, status} —
+                           hydrates from the API, optimistic writes, no
+                           localStorage. uiStore.ts: unused pattern example.
+        countries.ts      Country code -> display name for the 15 codes
+                           apps/api/prisma/seed.ts seeds. No distinct-countries
+                           endpoint exists, so this is read off the seed, not
+                           derived from the API.
         format.ts         Money/number/percent + verticalLabel helpers.
                            Render-boundary only; formatCpm uses @naano/shared.
       routes/             PublicHome (public). AppShell = the 72px icon rail
@@ -143,6 +150,10 @@ apps/
                            radius or spacing value.
         marketplace/      MarketplaceHeader (title/explainer, All+Shortlist tabs
                            with counts, search, sort-by, section header).
+                           FilterPanel (2.5, partial): industry searchable
+                           multi-select, country dropdown, follower min/max,
+                           active-filter chips + Clear all. No price range or
+                           performance filters yet (2.5 remainder / 2.6).
                            CreatorCard (checkbox, network badge, ICP fit badge,
                            star, Book, 4-metric strip, View profile). CreatorGrid
                            (3/2/1 cols). CreatorsPagination (Prev/Next + range).
@@ -151,7 +162,7 @@ apps/
                            modal/ has OverviewTab, AudienceTab, BookingRail,
                            ReachSparkline (inline-SVG), audienceSegments.ts
                            (dimension-filter helper). Content tab is 2.12.
-                           icons.tsx (NetworkBadge, StarIcon). No filter panel yet.
+                           icons.tsx (NetworkBadge, StarIcon).
         campaign/         Empty. Brief form, campaign list, status pills land
                            with the campaign flow.
         dashboard/        Empty. Metric tiles, charts land with the dashboard.
