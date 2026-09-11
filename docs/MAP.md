@@ -221,6 +221,14 @@ apps/
                            http.ts (kept in sync since 2.5) — FIXTURE_ME is
                            always the brand, so the creator-side booking
                            methods have no real fixture context yet.
+                           listBookingsSent (4.2) returns BookingSent
+                           (creatorDisplayName/campaignName/package added)
+                           and takes an optional status, both wired in
+                           client.ts/http.ts/fixtures.ts — see
+                           docs/DECISIONS.md for the package-derivation
+                           reasoning (real API) vs. the plain pass-through
+                           (fixtures, which already has the package on hand
+                           from the request).
         stores/           Zustand stores, one per domain. authStore.ts:
                            {token, me}, persist -> localStorage naano.auth;
                            signIn does a real login + /me, signOut clears it.

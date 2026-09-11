@@ -2,6 +2,8 @@ import type {
   AuthMe,
   Booking,
   BookingReceived,
+  BookingSent,
+  BookingStatus,
   CampaignSummary,
   CreateBookingBody,
   CreatorProfileDetail,
@@ -165,14 +167,15 @@ export const httpClient: ApiClient = {
     return getJson<Paginated<BookingReceived>>(`/bookings/received${pageQuery(params)}`);
   },
   listBookingsSent(
-    params?: PageParams & { campaignId?: string },
-  ): Promise<Paginated<Booking>> {
+    params?: PageParams & { campaignId?: string; status?: BookingStatus },
+  ): Promise<Paginated<BookingSent>> {
     const search = new URLSearchParams();
     if (params?.page) search.set("page", String(params.page));
     if (params?.pageSize) search.set("pageSize", String(params.pageSize));
     if (params?.campaignId) search.set("campaignId", params.campaignId);
+    if (params?.status) search.set("status", params.status);
     const query = search.toString();
-    return getJson<Paginated<Booking>>(`/bookings/sent${query ? `?${query}` : ""}`);
+    return getJson<Paginated<BookingSent>>(`/bookings/sent${query ? `?${query}` : ""}`);
   },
   updateBookingStatus(
     id: string,

@@ -3,6 +3,8 @@ import type {
   AuthMe,
   Booking,
   BookingReceived,
+  BookingSent,
+  BookingStatus,
   CampaignSummary,
   CreateBookingBody,
   CreatorPost,
@@ -56,8 +58,10 @@ function shortlistSet(campaignId: string): Set<string> {
 // In-memory bookings for the session. FIXTURE_ME is always the brand (no
 // creator-mode fixture context yet), so listBookingsReceived has nothing to
 // return, but creating/listing/updating on the brand side works the same way
-// the real API does.
-let fixtureBookings: Booking[] = [];
+// the real API does. Stored as BookingSent (a superset of Booking) so
+// listBookingsSent can return the real shape Collaborations needs;
+// createBooking still returns it as the Booking the interface promises.
+let fixtureBookings: BookingSent[] = [];
 let fixtureBookingSeq = 0;
 
 // Static stand-in for the API — the hedge in CLAUDE.md. Same shape as the live
@@ -352,7 +356,7 @@ export const fixturesClient: ApiClient = {
       throw new ApiError(409, `${creator.displayName} is already booked for this campaign`);
     }
 
-    const booking: Booking = {
+    const booking: BookingSent = {
       id: `fixture-booking-${fixtureBookingSeq++}`,
       campaignId: FIXTURE_CAMPAIGN.id,
       creatorProfileId: creator.id,
@@ -365,6 +369,9 @@ export const fixturesClient: ApiClient = {
       createdAt: new Date().toISOString(),
       trackedLinkSlug: null,
       clickCount: null,
+      creatorDisplayName: creator.displayName,
+      campaignName: FIXTURE_CAMPAIGN.name,
+      package: body.package,
     };
     fixtureBookings = [booking, ...fixtureBookings];
     return booking;
@@ -377,13 +384,17 @@ export const fixturesClient: ApiClient = {
   },
 
   async listBookingsSent(
-    params?: PageParams & { campaignId?: string },
-  ): Promise<Paginated<Booking>> {
+    params?: PageParams & { campaignId?: string; status?: BookingStatus },
+  ): Promise<Paginated<BookingSent>> {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 20;
-    const rows = params?.campaignId
-      ? fixtureBookings.filter((b) => b.campaignId === params.campaignId)
-      : fixtureBookings;
+    let rows = fixtureBookings;
+    if (params?.campaignId) {
+      rows = rows.filter((b) => b.campaignId === params.campaignId);
+    }
+    if (params?.status) {
+      rows = rows.filter((b) => b.status === params.status);
+    }
     const start = (page - 1) * pageSize;
     return { items: rows.slice(start, start + pageSize), total: rows.length, page, pageSize };
   },

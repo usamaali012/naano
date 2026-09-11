@@ -2,6 +2,8 @@ import type {
   AuthMe,
   Booking,
   BookingReceived,
+  BookingSent,
+  BookingStatus,
   CampaignSummary,
   CreateBookingBody,
   CreatorProfileDetail,
@@ -42,10 +44,14 @@ export interface ApiClient {
   createBooking(body: CreateBookingBody): Promise<Booking>;
   /** Creator-only. Bookings addressed to the signed-in creator's own profile. */
   listBookingsReceived(params?: PageParams): Promise<Paginated<BookingReceived>>;
-  /** Brand-only. Bookings the signed-in company has made, optionally by campaign. */
+  /**
+   * Brand-only. Bookings the signed-in company has made, optionally by
+   * campaign and/or status — backs the Collaborations table. Rows carry
+   * creator/campaign names and the derived package, not bare Booking.
+   */
   listBookingsSent(
-    params?: PageParams & { campaignId?: string },
-  ): Promise<Paginated<Booking>>;
+    params?: PageParams & { campaignId?: string; status?: BookingStatus },
+  ): Promise<Paginated<BookingSent>>;
   /** Creator-only. Accept or decline a booking addressed to them. */
   updateBookingStatus(
     id: string,

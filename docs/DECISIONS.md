@@ -554,6 +554,19 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   first, chips/clear-all/fixtures parity second, so a partial session leaves
   working filters on `main` rather than a polished control row attached to
   nothing.
+- 2026-09-11 — Slice 4.2 closed (step 4, after pulling session B's merge —
+  see the PLAN.md 2026-09-11 Discovered entry for the exact change list and
+  verification). One thing worth recording here: `git pull origin main` was
+  a no-op by the time this ran — B's merge commits (`8bf4eea`, `a0cf18d`)
+  were already present locally, most likely from an earlier `pull`/`merge`
+  in this same working copy rather than anything run in this step. Confirmed
+  via `git log` before touching anything, so step 4 built against the
+  actual merged `fixtures.ts` (session B's filter-matching logic plus the
+  booking/demo-creator fixtures from earlier this session), not a stale
+  in-context copy. `client.ts`/`http.ts`/`fixtures.ts` are the only files
+  this pass touched, all three purely additive to what steps 1–3 already
+  established — no design decision to record beyond what's already in the
+  entries above.
 
 ## Session B
 
