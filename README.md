@@ -7,8 +7,11 @@ tracks reach and clicks through a tracked link once the creator publishes.
 
 ## Live
 
-- **Web:** _placeholder — Railway web service public URL_
-- **API:** _placeholder — Railway API service public URL_
+- **Web:** https://web-production-b94cd.up.railway.app
+- **API:** https://api-production-f367c.up.railway.app
+
+Both open for a signed-out visitor. `/` offers a one-click sign-in as the
+demo brand or the demo creator.
 
 ## Stack
 
@@ -148,8 +151,12 @@ The core loop, end to end, before anything else:
 8. **Deployed.** Both services run on Railway from this repo's
    Dockerfiles — see "Deployment" above.
 
-Results and attribution (the analytics dashboard over click/lead data):
-[RESULTS].
+Then, once the loop was closed, one more screen: **attribution by
+creator.** Results aggregates real `ClickEvent` rows into clicks per
+creator, alongside accepted-booking counts and the time of the last click.
+Server-side aggregates, paginated like every other list, no charting
+dependency. It exists because the entry page promises "trace every click"
+and nothing else in the product paid that off as a screen you could open.
 
 ## What was deliberately cut
 
@@ -168,6 +175,10 @@ Named out loud rather than left to be discovered:
 - The Leads tab and ICP account enrichment.
 - The MCP / Connect server.
 - i18n, the blog, and the SEO page tree.
+- The rest of the analytics dashboard: metric cards and a daily-clicks
+  time series. Attribution by creator shipped because it closes the
+  tracked-link loop; charts drawn over data I seeded myself would only
+  have proved that I can draw a chart.
 - The floating AI command bar seen on the live product — left out rather
   than shipped as a non-functional signature element.
 
@@ -175,7 +186,42 @@ The standing rule behind all of it: a control that renders but doesn't do
 anything is worse than no control. Everything above either doesn't render,
 or wasn't started.
 
-## Agent-log disclosure
+## What is not finished, honestly
+
+**The creator side is a considered guess.** I walked the brand side of the
+real product directly. I never saw the creator side. The creator home
+screen shows a creator their own profile exactly as brands see it, plus
+their bookings and the tracked link for each accepted one. That is a
+reasonable shape for it, not a reconstruction of the real one, and I would
+not claim otherwise.
+
+**Sector fit is narrower than it looks.** The badge scores the creator's
+own vertical against the campaign's target vertical. It is not derived
+from the audience industry mix shown on the Audience tab, so the two can
+disagree for the same creator. Deriving fit from audience composition is
+the more honest version and I did not have time for it.
+
+**Search matches name and headline, not industry.** Typing an industry
+word into the search box will not find every creator in that industry; the
+industry filter is what does that. The two should agree and they do not
+yet.
+
+**Campaign context is implicit.** The marketplace ranks against the
+company's most recent live campaign. There is no campaign switcher,
+because there are no campaign screens.
+
+**Tracked-link destinations are `example.com` paths.** The redirect and
+the click recording are real and verified end to end. The page a link
+lands on is a placeholder, because the plumbing was the point.
+
+**There are no tests.** In a build this short I chose hand-verification, a
+Playwright screenshot suite that regenerates on every change, and a smoke
+script that runs against the deployed API. That is a real tradeoff, not an
+oversight, and it is the first thing I would add.
+
+## Disclosures
+
+### Agent logs
 
 This repo was built with AI coding agents (Claude Code; see `AGENTS.md` for
 the full working convention) rather than typed by hand end to end. Every
@@ -187,3 +233,24 @@ summarized after the fact. `docs/DECISIONS.md`'s running log and
 `docs/PLAN.md`'s per-slice notes are the human-readable index into that
 history — they cite the reasoning; the `.agent-logs/` transcripts are the
 record it was derived from.
+
+### The demo password is in the repo on purpose
+
+Every seeded account shares one password, hardcoded in
+`apps/web/src/routes/EntryPage.tsx`, so a reviewer can sign in as either
+side without being handed credentials. That is the right call for a seeded
+demo and the wrong call for anything real.
+
+### The logs cover implementation, not everything
+
+Planning, research, review of my own output and the merge coordination
+between parallel sessions happened in a separate Claude conversation that
+this hook does not capture. `.agent-logs/` is an honest record of what was
+built, not of everything that was thought.
+
+### Some early sessions are backfilled
+
+The scaffold was built before I opened the brief. Those sessions were
+reconstructed from on-disk transcripts after the fact and are marked
+`backfilled: true`. Everything from the brief onward was captured live by
+the hook as it happened.
