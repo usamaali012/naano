@@ -155,7 +155,24 @@ apps/
                            dev-tracked-links.controller.ts adds a dev-only
                            GET /dev/tracked-links (slug/campaign/creator/dest),
                            guarded off in production.
-      analytics/          Empty, wired stub module. No routes yet.
+      analytics/          GET /analytics/attribution (COMPANY-only, 5.4):
+                           clicks per creator for the signed-in brand, across
+                           every campaign. Aggregated in memory (bounded by
+                           how many distinct creators the brand has accepted
+                           bookings with) — booking.findMany filtered to
+                           trackedLink: { isNot: null } (accepted-only,
+                           excludes invited/declined) joined to two
+                           clickEvent.groupBy calls (count, max createdAt) by
+                           trackedLinkId, folded up to creator level, sorted
+                           totalClicks desc then creatorDisplayName asc.
+                           Returns AttributionResponse (Paginated<
+                           AttributionRow> + hasAnyClicks, computed over the
+                           full result set so a later page can't read as
+                           empty). No campaignId/date-range param — see
+                           docs/DECISIONS.md for why and for the
+                           ClickEvent.isLead investigation that killed a
+                           planned "qualified clicks" column in favour of
+                           lastClickAt.
   web/                    React + Vite
     Dockerfile               Session B. Build context is the repo root. Takes
                            VITE_API_URL / VITE_API_MODE as Docker build ARGs
@@ -208,7 +225,8 @@ apps/
                            getActiveCampaign, listShortlist / addToShortlist /
                            removeFromShortlist, createBooking /
                            listBookingsReceived / listBookingsSent /
-                           updateBookingStatus. http.ts maps every list param,
+                           updateBookingStatus, listAttribution (5.4,
+                           brand-only). http.ts maps every list param,
                            including the vertical/country/follower-range
                            filters FilterPanel (2.5) surfaces, and exports
                            setApiToken (Bearer header for authed calls);
@@ -266,7 +284,13 @@ apps/
                            CreatorHomePage's bookings list.
         trackedLink.ts    trackedLinkUrl(slug) -> the public GET /r/:slug URL
                            (VITE_API_URL + /r/ + slug), for display and copy.
-      routes/             EntryPage (public, "/") — two real one-click sign-ins
+      routes/             ResultsPage (new, 5.4, brand-only at /app/results,
+                           RequireBrand-guarded like Collaborations) — fetches
+                           GET /analytics/attribution on every mount (no store
+                           cache, so a fresh click shows on next visit), one
+                           AttributionTable, two distinct empty states (no
+                           accepted bookings vs. bookings-but-no-clicks-yet).
+                           EntryPage (public, "/") — two real one-click sign-ins
                            (brand/creator) against seeded accounts, then routes
                            into /app. "Continue as a creator" first calls GET
                            /auth/demo-creator to resolve which creator email to
@@ -293,9 +317,10 @@ apps/
                            unmodified for the pager. The rail (AppShell.tsx)
                            is now role-aware and every icon routes somewhere
                            real: brand gets Marketplace (/app) +
-                           Collaborations (/app/collaborations), a creator
-                           gets no rail at all rather than a single
-                           permanently-active icon — see DECISIONS.md.
+                           Collaborations (/app/collaborations) + Results
+                           (/app/results, 5.4), a creator gets no rail at all
+                           rather than a single permanently-active icon — see
+                           DECISIONS.md.
       components/
         ui/               Token-only primitives: Button, Card, Input, Select,
                            Checkbox, Badge, StatusPill, Table (+ THead/TBody/TR/
@@ -339,14 +364,20 @@ apps/
                            SCHEDULED/LIVE/PAID with a link already minted).
                            Brief form, campaign list, status pills still land
                            with the rest of the campaign flow.
-        dashboard/        Empty. Metric tiles, charts land with the dashboard.
+        dashboard/        AttributionTable (5.4): Creator, Accepted bookings,
+                           Clicks, Last click (formatRelativeTime, new in
+                           lib/format.ts). No ranking language, no expander —
+                           see docs/DECISIONS.md. Metric tiles/charts (5.1-5.3)
+                           are still cut.
 packages/
   shared/                 Wire-safe types (enums.ts, entities.ts, api.ts) hand-kept
                            in sync with prisma/schema.prisma. Imported by both apps.
                            api.ts adds MarketplaceCreator + campaignId/q on
                            ListCreatorsParams, CampaignSummary, AddToShortlistBody,
                            BookingSent (GET /bookings/sent — Booking +
-                           creatorDisplayName/campaignName/package, 4.2).
+                           creatorDisplayName/campaignName/package, 4.2),
+                           AttributionRow/AttributionResponse (GET
+                           /analytics/attribution, 5.4).
                            cpm.ts: the one CPM formula
                            (postCostCents / medianViews * 1000), used by API and
                            web. index.ts NAMES the cpm re-export (not export *) so

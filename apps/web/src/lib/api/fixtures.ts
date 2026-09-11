@@ -1,4 +1,6 @@
 import type {
+  AttributionResponse,
+  AttributionRow,
   AudienceSegment,
   AuthMe,
   Booking,
@@ -414,5 +416,57 @@ export const fixturesClient: ApiClient = {
       booking.clickCount = 0;
     }
     return booking;
+  },
+
+  // Fixtures never simulate a real /r/:slug click, so lastClickAt has nothing
+  // honest to report and stays null — only totalClicks (from clickCount,
+  // always 0 here) and acceptedBookingsCount are real derived numbers.
+  async listAttribution(params?: PageParams): Promise<AttributionResponse> {
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
+
+    const byCreator = new Map<
+      string,
+      { displayName: string; bookings: number; clicks: number }
+    >();
+    for (const booking of fixtureBookings) {
+      if (!booking.trackedLinkSlug) continue;
+      const existing = byCreator.get(booking.creatorProfileId);
+      const clicks = booking.clickCount ?? 0;
+      if (existing) {
+        existing.bookings += 1;
+        existing.clicks += clicks;
+      } else {
+        byCreator.set(booking.creatorProfileId, {
+          displayName: booking.creatorDisplayName,
+          bookings: 1,
+          clicks,
+        });
+      }
+    }
+
+    const rows: AttributionRow[] = Array.from(byCreator.entries())
+      .map(([creatorProfileId, v]) => ({
+        creatorProfileId,
+        creatorDisplayName: v.displayName,
+        acceptedBookingsCount: v.bookings,
+        totalClicks: v.clicks,
+        lastClickAt: null,
+      }))
+      .sort(
+        (a, b) =>
+          b.totalClicks - a.totalClicks ||
+          a.creatorDisplayName.localeCompare(b.creatorDisplayName),
+      );
+
+    const hasAnyClicks = rows.some((r) => r.totalClicks > 0);
+    const start = (page - 1) * pageSize;
+    return {
+      items: rows.slice(start, start + pageSize),
+      total: rows.length,
+      page,
+      pageSize,
+      hasAnyClicks,
+    };
   },
 };

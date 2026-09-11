@@ -154,3 +154,33 @@ export interface BookingSent extends Booking {
   campaignName: string;
   package: BookingPackage;
 }
+
+// --- Analytics ---------------------------------------------------------------
+
+/**
+ * One row of GET /analytics/attribution — real aggregates over ClickEvent for
+ * one creator this brand has an accepted booking with, across every
+ * campaign. `acceptedBookingsCount` only counts bookings that reached a
+ * TrackedLink (ACCEPTED or later) — invited/declined bookings already live
+ * in Collaborations. `lastClickAt` is null until the first click; shown as
+ * relative time. `ClickEvent.isLead` is not surfaced here: the only writer of
+ * it is the seed's random 6% assignment (see docs/DECISIONS.md), not
+ * anything the real `/r/:slug` redirect path sets, so it isn't a real signal
+ * yet.
+ */
+export interface AttributionRow {
+  creatorProfileId: string;
+  creatorDisplayName: string;
+  acceptedBookingsCount: number;
+  totalClicks: number;
+  lastClickAt: string | null;
+}
+
+/**
+ * `hasAnyClicks` is computed over the full result set server-side (not just
+ * the current page), so an empty later page can't be mistaken for "no clicks
+ * yet" — the two need different empty states (see docs/DECISIONS.md).
+ */
+export interface AttributionResponse extends Paginated<AttributionRow> {
+  hasAnyClicks: boolean;
+}

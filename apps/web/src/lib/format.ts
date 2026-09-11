@@ -51,3 +51,20 @@ export function verticalLabel(vertical: Vertical): string {
   return VERTICAL_LABELS[vertical];
 }
 
+const relativeTimeFormatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+/** An ISO timestamp as relative time: "3 hours ago", "2 days ago". */
+export function formatRelativeTime(iso: string): string {
+  const diffMs = new Date(iso).getTime() - Date.now();
+  const diffMinutes = Math.round(diffMs / 60_000);
+  if (Math.abs(diffMinutes) < 60) {
+    return relativeTimeFormatter.format(diffMinutes, "minute");
+  }
+  const diffHours = Math.round(diffMinutes / 60);
+  if (Math.abs(diffHours) < 24) {
+    return relativeTimeFormatter.format(diffHours, "hour");
+  }
+  const diffDays = Math.round(diffHours / 24);
+  return relativeTimeFormatter.format(diffDays, "day");
+}
+

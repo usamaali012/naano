@@ -327,10 +327,30 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   Scope: daily clicks chart, dated axis, period selector.
   Files: `apps/web/src/components/dashboard/PerformanceChart.tsx`.
 
-- [ ] **5.4 Attribution by creator**
-  Scope: table, Creator + Clicks columns, "More metrics & attribution details"
-  expander.
-  Files: `apps/web/src/components/dashboard/AttributionTable.tsx`.
+- [x] **5.4 Attribution by creator** — done 2026-09-11.
+  Scope, as actually built: `GET /analytics/attribution` (brand-only,
+  paginated, no campaign filter, no date range), a new minimal `ResultsPage`
+  to host it, and the restored Results rail icon. Table columns: Creator,
+  Accepted bookings, Clicks, Last click — "Qualified clicks" and the "More
+  metrics & attribution details" expander were both dropped; see the
+  2026-09-11 DECISIONS.md entry for why. Two distinct honest empty states
+  (no accepted bookings yet vs. bookings but zero clicks yet), per the
+  ask — see that DECISIONS.md entry for the exact copy and the reasoning.
+  Files: `apps/api/src/analytics/{analytics.service.ts,
+  analytics.controller.ts, analytics.module.ts,
+  dto/list-attribution.dto.ts}`, `packages/shared/src/api.ts` (new
+  `AttributionRow`/`AttributionResponse`), `apps/web/src/routes/ResultsPage.tsx`
+  (new), `apps/web/src/components/dashboard/AttributionTable.tsx` (new),
+  `apps/web/src/lib/api/{client.ts,http.ts,fixtures.ts}` (new
+  `listAttribution`), `apps/web/src/lib/format.ts` (new
+  `formatRelativeTime`), `apps/web/src/routes/AppShell.tsx` (Results icon +
+  route), `apps/web/src/App.tsx` (new `/app/results` route, `RequireBrand`).
+  Verified against the running local API before touching the UI: 200 with
+  real rows as the brand, 403 as a creator, 401 with no token, and a stable
+  sort (ties break alphabetically) — see DECISIONS.md for the exact request
+  log. `npm run shots` was deliberately not run this pass — one full
+  screenshot regen happens after this merges with session B's work, not per
+  slice.
 
 ---
 
@@ -381,6 +401,15 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-11 — Slice 5.4 (attribution by creator) done — see the PLAN entry
+  above for the file list. One thing for the next session: this touched
+  `fixtures.ts` (one additive `listAttribution` method), done last per this
+  session's file-boundary agreement with session B, after confirming with
+  the user that `fixtures.ts` was clear. `npm run shots` was **not** run —
+  the ask was one full regen after this merges with session B's other work,
+  not a per-slice screenshot. Whoever runs that regen should add a `results`
+  shot (grid empty state, table with rows) to `shots.mjs`'s suite — it isn't
+  there yet.
 - 2026-09-11 — Slice 4.2 closed: step 4, after session B's merge landed on
   `main` (`git pull origin main` was a no-op by the time this ran — the
   merge commits were already local). Widened `ApiClient.listBookingsSent`

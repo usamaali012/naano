@@ -4,6 +4,7 @@ import { AppShell } from "./routes/AppShell";
 import { CreatorsListPage } from "./routes/CreatorsListPage";
 import { CreatorHomePage } from "./routes/CreatorHomePage";
 import { CollaborationsPage } from "./routes/CollaborationsPage";
+import { ResultsPage } from "./routes/ResultsPage";
 import { useAuthStore } from "./lib/stores/authStore";
 
 // Signed out -> back to the entry page. Signed in -> the surface for your side:
@@ -39,6 +40,14 @@ export function App(): JSX.Element {
             element={
               <RequireBrand>
                 <CollaborationsPage />
+              </RequireBrand>
+            }
+          />
+          <Route
+            path="results"
+            element={
+              <RequireBrand>
+                <ResultsPage />
               </RequireBrand>
             }
           />

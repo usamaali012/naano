@@ -1,4 +1,5 @@
 import type {
+  AttributionResponse,
   AuthMe,
   Booking,
   BookingReceived,
@@ -57,4 +58,11 @@ export interface ApiClient {
     id: string,
     status: UpdateBookingStatusBody["status"],
   ): Promise<Booking>;
+
+  /**
+   * Brand-only. Clicks attributed per creator, across every campaign — only
+   * creators with at least one accepted (TrackedLink-bearing) booking are
+   * included. Backs the Results attribution table.
+   */
+  listAttribution(params?: PageParams): Promise<AttributionResponse>;
 }

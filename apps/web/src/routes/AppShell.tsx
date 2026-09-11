@@ -10,6 +10,7 @@ import { useAuthStore } from "../lib/stores/authStore";
 const RAIL = [
   { key: "marketplace", label: "Marketplace", path: "/app" },
   { key: "collaborations", label: "Collaborations", path: "/app/collaborations" },
+  { key: "results", label: "Results", path: "/app/results" },
 ];
 
 function RailIcon({ shape }: { shape: string }): JSX.Element {
@@ -25,6 +26,11 @@ function RailIcon({ shape }: { shape: string }): JSX.Element {
         <path d="M4 20v-1a4 4 0 0 1 4-4h3a4 4 0 0 1 4 4v1" />
         <circle cx="9.5" cy="8" r="3" />
         <path d="M16 15a4 4 0 0 1 4 4v1M15.5 5.5a3 3 0 0 1 0 5" />
+      </>
+    ),
+    results: (
+      <>
+        <path d="M4 19V5M4 19h16M8 19v-6M12.5 19V9M17 19v-9" />
       </>
     ),
   };

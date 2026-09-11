@@ -568,6 +568,56 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   established — no design decision to record beyond what's already in the
   entries above.
 
+- 2026-09-11 — Slice 5.4 (attribution by creator). `GET /analytics/attribution`
+  (brand-only) aggregates in memory over the signed-in company's bookings,
+  the same small-catalogue justification `creators/` already uses — the
+  result set is bounded by how many distinct creators one brand has ever
+  accepted a booking with. Four decisions worth recording:
+  - **Second number: dropped `qualifiedClicks`, used `lastClickAt` instead.**
+    Checked every writer of `ClickEvent.isLead` before building anything:
+    the only one is `seed.ts`'s `Math.random() < 0.06` — the real `/r/:slug`
+    handler (`tracking.service.ts`) never sets it, so it is always `false`
+    in production. A "qualified clicks" column would have looked like a real
+    signal while actually being a coin flip baked into the seed. `lastClickAt`
+    (max `ClickEvent.createdAt` per creator, across their tracked links) is a
+    real, honest second number instead — shown as relative time
+    (`formatRelativeTime`, new in `format.ts`) via `Intl.RelativeTimeFormat`.
+  - **`acceptedBookingsCount` counts only bookings with a `TrackedLink`,
+    and creators with none are excluded entirely.** Invited/declined
+    bookings already live in Collaborations and have no link to click, so
+    counting them here would double a number that means something different
+    in each table. This merged what would have been two separate queries
+    (all bookings, then bookings-with-links) into one `findMany` filtered on
+    `trackedLink: { isNot: null }`, which now backs both the bookings count
+    and the click join.
+  - **Dropped the "More metrics & attribution details" expander** from
+    RECON §8. Everything it would have shown (bookings, a second click-
+    derived metric) is already a plain column in a four-column table —
+    an expander over nothing but restated numbers is scaffolding, not a
+    feature.
+  - **In-memory aggregation, not a DB `groupBy` chain.** `booking.findMany`
+    (accepted-only, with creator + trackedLink id) joins to two
+    `clickEvent.groupBy` calls (by `trackedLinkId`: `_count` and
+    `_max(createdAt)`) scoped to those link ids, then link-level results
+    fold up to creator level in application code, sorted `totalClicks` desc
+    then `creatorDisplayName` asc (stable ties across pages), then paginated
+    by array slice. Two honest empty states result from this, computed over
+    the *full* result set so a later page can't be mistaken for either: zero
+    accepted bookings → "Clicks are tracked once a creator accepts a
+    booking." with a link to Collaborations; bookings exist but
+    `hasAnyClicks` is false → a distinct "no clicks yet" finished state,
+    instead of a table of all-zero rows that would read as broken. Verified
+    against the running local API before building the UI: `GET
+    /analytics/attribution` as the brand → 200 with real rows (40 creators,
+    sorted correctly, ties like Lena Eriksson/Victor Neumann at 68 clicks
+    breaking alphabetically); as a creator → 403; with no token → 401; an
+    unknown query param (`campaignId`) → 400 (confirms no campaign filter
+    exists, by design). `fixtures.ts` got one additive `listAttribution` —
+    done last, after confirming with the user it was clear of session B's
+    work — deriving the same shape from in-memory `fixtureBookings`;
+    `lastClickAt` is always `null` there since fixtures never simulate a
+    real `/r/:slug` click.
+
 ## Session B
 
 Deploy work on branch `deploy`, running on Railway. New files only

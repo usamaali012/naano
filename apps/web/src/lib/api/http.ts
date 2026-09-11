@@ -1,4 +1,5 @@
 import type {
+  AttributionResponse,
   AuthMe,
   Booking,
   BookingReceived,
@@ -186,5 +187,8 @@ export const httpClient: ApiClient = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ status }),
     });
+  },
+  listAttribution(params?: PageParams): Promise<AttributionResponse> {
+    return getJson<AttributionResponse>(`/analytics/attribution${pageQuery(params)}`);
   },
 };
