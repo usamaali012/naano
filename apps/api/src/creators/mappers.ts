@@ -24,10 +24,10 @@ export function toCreatorProfile(row: PrismaCreatorProfile): CreatorProfile {
   };
 }
 
-/** A CreatorProfile plus its ICP fit against the campaign in context. */
+/** A CreatorProfile plus its sector fit against the campaign in context. */
 export function toMarketplaceCreator(
   row: PrismaCreatorProfile,
-  icpFitPct: number | null,
+  sectorFitPct: number | null,
 ): MarketplaceCreator {
-  return { ...toCreatorProfile(row), icpFitPct };
+  return { ...toCreatorProfile(row), sectorFitPct };
 }

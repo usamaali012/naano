@@ -1,4 +1,5 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
+import { useAuthStore } from "../lib/stores/authStore";
 
 // Fixed 72px left icon rail, icons only, active item on a --primary-soft
 // background (docs/DESIGN.md §layout). Content is capped at 1440px with 32px
@@ -55,6 +56,15 @@ function RailIcon({ shape }: { shape: string }): JSX.Element {
 }
 
 export function AppShell(): JSX.Element {
+  const navigate = useNavigate();
+  const me = useAuthStore((state) => state.me);
+  const signOut = useAuthStore((state) => state.signOut);
+
+  function handleSignOut(): void {
+    signOut();
+    navigate("/");
+  }
+
   return (
     <div className="flex min-h-screen bg-bg">
       <nav className="fixed inset-y-0 left-0 flex w-[72px] flex-col items-center gap-s2 border-r border-border bg-surface py-s4">
@@ -80,6 +90,23 @@ export function AppShell(): JSX.Element {
       </nav>
 
       <main className="ml-[72px] flex-1">
+        {me && (
+          <header className="flex items-center justify-end gap-s3 border-b border-border bg-surface px-s8 py-s3">
+            <span className="text-label text-text-muted">
+              {me.displayName ?? me.email}
+              <span className="ml-s2">
+                {me.role === "COMPANY" ? "Brand" : "Creator"}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="rounded-control border border-border px-s3 py-s1 text-label font-medium text-text transition-colors hover:border-primary"
+            >
+              Sign out
+            </button>
+          </header>
+        )}
         <div className="mx-auto max-w-[1440px] p-s8">
           <Outlet />
         </div>

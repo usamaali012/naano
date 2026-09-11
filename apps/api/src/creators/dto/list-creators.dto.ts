@@ -48,7 +48,7 @@ export class ListCreatorsDto extends PaginationQueryDto {
   @Length(1, 100)
   q?: string;
 
-  // Campaign the list is ranked for. Fills icpFitPct and feeds best_match;
+  // Campaign the list is ranked for. Fills sectorFitPct and feeds best_match;
   // omitted, the API ranks against the most recent live campaign.
   @IsOptional()
   @IsString()

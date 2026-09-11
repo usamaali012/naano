@@ -1,6 +1,12 @@
 import { Module } from "@nestjs/common";
+import { CampaignsModule } from "../campaigns/campaigns.module";
+import { BookingsController } from "./bookings.controller";
+import { DevBookingsController } from "./dev-bookings.controller";
+import { BookingsService } from "./bookings.service";
 
-// Empty, wired stub. Collaboration requests and the accept/decline state
-// machine land once the brief defines the booking flow. See docs/MAP.md.
-@Module({})
+@Module({
+  imports: [CampaignsModule],
+  controllers: [BookingsController, DevBookingsController],
+  providers: [BookingsService],
+})
 export class BookingsModule {}

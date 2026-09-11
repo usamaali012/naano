@@ -1,14 +1,30 @@
 import type {
   AudienceSegment,
+  AuthMe,
+  Booking,
+  BookingReceived,
   CampaignSummary,
+  CreateBookingBody,
   CreatorPost,
   CreatorProfileDetail,
   ListCreatorsParams,
+  LoginResponse,
   MarketplaceCreator,
   PageParams,
   Paginated,
+  UpdateBookingStatusBody,
 } from "@naano/shared";
 import type { ApiClient } from "./client";
+import { ApiError } from "./errors";
+
+const FIXTURE_ME: AuthMe = {
+  userId: "fixture-user-brand",
+  email: "growth@ledgerly.example.com",
+  role: "COMPANY",
+  companyId: "fixture-company-1",
+  creatorProfileId: null,
+  displayName: "Ledgerly",
+};
 
 const FIXTURE_CAMPAIGN: CampaignSummary = {
   id: "fixture-campaign-1",
@@ -30,10 +46,17 @@ function shortlistSet(campaignId: string): Set<string> {
   return set;
 }
 
+// In-memory bookings for the session. FIXTURE_ME is always the brand (no
+// creator-mode fixture context yet), so listBookingsReceived has nothing to
+// return, but creating/listing/updating on the brand side works the same way
+// the real API does.
+let fixtureBookings: Booking[] = [];
+let fixtureBookingSeq = 0;
+
 // Static stand-in for the API — the hedge in CLAUDE.md. Same shape as the live
 // payload so swapping VITE_API_MODE is the only change. Figures follow the
 // calibration in docs/RECON.md §10: median views 20-100% of followers, CPM in
-// the EUR 10-30 band, bundle of five ~3.3x a single post. `icpFitPct` stands in
+// the EUR 10-30 band, bundle of five ~3.3x a single post. `sectorFitPct` stands in
 // for a marketplace ranked against a fintech-leaning campaign.
 const FIXTURE_CREATORS: MarketplaceCreator[] = [
   {
@@ -41,7 +64,7 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     userId: "fixture-user-1",
     displayName: "Sofia Bergman",
     headline: "RevOps systems that keep GTM data honest",
-    avatarUrl: null,
+    avatarUrl: "https://randomuser.me/api/portraits/men/32.jpg",
     vertical: "REVOPS",
     network: "LINKEDIN",
     followerCount: 42_000,
@@ -54,14 +77,14 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 22,
     engagementRate: 0.041,
     createdAt: "2026-08-01T09:00:00.000Z",
-    icpFitPct: 38,
+    sectorFitPct: 38,
   },
   {
     id: "fixture-2",
     userId: "fixture-user-2",
     displayName: "Marco Conti",
     headline: "Writing for developers who hate marketing",
-    avatarUrl: null,
+    avatarUrl: "https://randomuser.me/api/portraits/women/44.jpg",
     vertical: "DEVTOOLS",
     network: "X",
     followerCount: 128_000,
@@ -74,14 +97,14 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 19,
     engagementRate: 0.035,
     createdAt: "2026-08-03T09:00:00.000Z",
-    icpFitPct: 32,
+    sectorFitPct: 32,
   },
   {
     id: "fixture-3",
     userId: "fixture-user-3",
     displayName: "Amelia Reyes",
     headline: "Fintech and embedded finance, explained simply",
-    avatarUrl: null,
+    avatarUrl: "https://randomuser.me/api/portraits/men/67.jpg",
     vertical: "FINTECH",
     network: "LINKEDIN",
     followerCount: 310_000,
@@ -94,14 +117,14 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 17,
     engagementRate: 0.028,
     createdAt: "2026-08-05T09:00:00.000Z",
-    icpFitPct: 100,
+    sectorFitPct: 100,
   },
   {
     id: "fixture-4",
     userId: "fixture-user-4",
     displayName: "Nils Andersen",
     headline: "Outbound sales playbooks that actually convert",
-    avatarUrl: null,
+    avatarUrl: "https://randomuser.me/api/portraits/men/12.jpg",
     vertical: "SALES",
     network: "LINKEDIN",
     followerCount: 8_500,
@@ -114,14 +137,14 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 24,
     engagementRate: 0.052,
     createdAt: "2026-08-07T09:00:00.000Z",
-    icpFitPct: 22,
+    sectorFitPct: 22,
   },
   {
     id: "fixture-5",
     userId: "fixture-user-5",
     displayName: "Ines Moreau",
     headline: "People ops and HR tech for modern teams",
-    avatarUrl: null,
+    avatarUrl: "https://randomuser.me/api/portraits/women/68.jpg",
     vertical: "HR_TECH",
     network: "LINKEDIN",
     followerCount: 61_000,
@@ -134,14 +157,14 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 20,
     engagementRate: 0.038,
     createdAt: "2026-08-09T09:00:00.000Z",
-    icpFitPct: 32,
+    sectorFitPct: 32,
   },
   {
     id: "fixture-6",
     userId: "fixture-user-6",
     displayName: "Erik Larsen",
     headline: "Vertical SaaS go-to-market playbooks",
-    avatarUrl: null,
+    avatarUrl: "https://randomuser.me/api/portraits/men/5.jpg",
     vertical: "VERTICAL_SAAS",
     network: "LINKEDIN",
     followerCount: 19_000,
@@ -154,7 +177,7 @@ const FIXTURE_CREATORS: MarketplaceCreator[] = [
     postsAnalyzed: 21,
     engagementRate: 0.044,
     createdAt: "2026-08-11T09:00:00.000Z",
-    icpFitPct: 32,
+    sectorFitPct: 32,
   },
 ];
 
@@ -163,7 +186,7 @@ const SORTERS: Record<
   (a: MarketplaceCreator, b: MarketplaceCreator) => number
 > = {
   best_match: (a, b) =>
-    (b.icpFitPct ?? 0) - (a.icpFitPct ?? 0) ||
+    (b.sectorFitPct ?? 0) - (a.sectorFitPct ?? 0) ||
     a.postCostCents / a.medianViews - b.postCostCents / b.medianViews,
   price_asc: (a, b) => a.postCostCents - b.postCostCents,
   followers_desc: (a, b) => b.followerCount - a.followerCount,
@@ -210,6 +233,12 @@ function postsFor(detail: CreatorProfileDetail): CreatorPost[] {
 }
 
 export const fixturesClient: ApiClient = {
+  async login(): Promise<LoginResponse> {
+    return { accessToken: "fixture-token" };
+  },
+  async getMe(): Promise<AuthMe> {
+    return FIXTURE_ME;
+  },
   async listCreators(params?: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>> {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 20;
@@ -250,7 +279,7 @@ export const fixturesClient: ApiClient = {
   async getCreator(id: string): Promise<CreatorProfileDetail> {
     const creator = FIXTURE_CREATORS.find((c) => c.id === id);
     if (!creator) throw new Error(`fixture creator ${id} not found`);
-    const { icpFitPct: _icpFitPct, ...profile } = creator;
+    const { sectorFitPct: _sectorFitPct, ...profile } = creator;
     const detail: CreatorProfileDetail = {
       ...profile,
       audienceSegments: [],
@@ -297,5 +326,72 @@ export const fixturesClient: ApiClient = {
     creatorProfileId: string,
   ): Promise<void> {
     shortlistSet(campaignId).delete(creatorProfileId);
+  },
+
+  async createBooking(body: CreateBookingBody): Promise<Booking> {
+    const creator = FIXTURE_CREATORS.find((c) => c.id === body.creatorProfileId);
+    if (!creator) throw new ApiError(404, `No creator profile "${body.creatorProfileId}"`);
+
+    const existing = fixtureBookings.find(
+      (b) =>
+        b.campaignId === FIXTURE_CAMPAIGN.id &&
+        b.creatorProfileId === creator.id &&
+        b.status !== "DECLINED",
+    );
+    if (existing) {
+      throw new ApiError(409, `${creator.displayName} is already booked for this campaign`);
+    }
+
+    const booking: Booking = {
+      id: `fixture-booking-${fixtureBookingSeq++}`,
+      campaignId: FIXTURE_CAMPAIGN.id,
+      creatorProfileId: creator.id,
+      agreedPriceCents:
+        body.package === "bundle" ? creator.bundle5PriceCents : creator.postCostCents,
+      status: "INVITED",
+      initiatedBy: "BRAND",
+      deliverable: body.deliverable,
+      deadline: null,
+      createdAt: new Date().toISOString(),
+      trackedLinkSlug: null,
+      clickCount: null,
+    };
+    fixtureBookings = [booking, ...fixtureBookings];
+    return booking;
+  },
+
+  async listBookingsReceived(params?: PageParams): Promise<Paginated<BookingReceived>> {
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
+    return { items: [], total: 0, page, pageSize };
+  },
+
+  async listBookingsSent(
+    params?: PageParams & { campaignId?: string },
+  ): Promise<Paginated<Booking>> {
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
+    const rows = params?.campaignId
+      ? fixtureBookings.filter((b) => b.campaignId === params.campaignId)
+      : fixtureBookings;
+    const start = (page - 1) * pageSize;
+    return { items: rows.slice(start, start + pageSize), total: rows.length, page, pageSize };
+  },
+
+  async updateBookingStatus(
+    id: string,
+    status: UpdateBookingStatusBody["status"],
+  ): Promise<Booking> {
+    const booking = fixtureBookings.find((b) => b.id === id);
+    if (!booking) throw new ApiError(404, `No booking "${id}"`);
+    if (booking.status !== "INVITED") {
+      throw new ApiError(409, `This booking is already ${booking.status.toLowerCase()}`);
+    }
+    booking.status = status;
+    if (status === "ACCEPTED") {
+      booking.trackedLinkSlug = `fixture-${booking.id}`;
+      booking.clickCount = 0;
+    }
+    return booking;
   },
 };

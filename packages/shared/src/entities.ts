@@ -86,7 +86,7 @@ export interface Campaign {
   destinationUrl: string;
   budgetCents: number;
   status: CampaignStatus;
-  /** The buyer vertical this campaign targets. Drives per-campaign ICP fit. */
+  /** The buyer vertical this campaign targets. Drives per-campaign sector fit. */
   targetVertical: Vertical;
   startDate: string | null;
   endDate: string | null;
@@ -112,6 +112,10 @@ export interface Booking {
   deliverable: string;
   deadline: string | null;
   createdAt: string;
+  /** Set once the booking is accepted, when the TrackedLink is issued. */
+  trackedLinkSlug: string | null;
+  /** Clicks recorded against the tracked link, or null before one exists. */
+  clickCount: number | null;
 }
 
 export interface Post {

@@ -3,6 +3,7 @@ import type { MarketplaceCreator } from "@naano/shared";
 import { api } from "../lib/api";
 import { useCreatorsStore } from "../lib/stores/creatorsStore";
 import { useShortlistStore } from "../lib/stores/shortlistStore";
+import { useBookingsStore } from "../lib/stores/bookingsStore";
 import { MarketplaceHeader } from "../components/marketplace/MarketplaceHeader";
 import { FilterPanel } from "../components/marketplace/FilterPanel";
 import { CreatorGrid } from "../components/marketplace/CreatorGrid";
@@ -37,15 +38,20 @@ export function CreatorsListPage(): JSX.Element {
   const addToShortlist = useShortlistStore((state) => state.add);
   const shortlistSet = useMemo(() => new Set(shortlistIds), [shortlistIds]);
 
+  const bookingById = useBookingsStore((state) => state.byCreatorId);
+  const hydrateBookings = useBookingsStore((state) => state.hydrate);
+
   const [creators, setCreators] = useState<MarketplaceCreator[]>([]);
   const [allTotal, setAllTotal] = useState(0);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [reloadKey, setReloadKey] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [openCreatorId, setOpenCreatorId] = useState<string | null>(null);
 
   useEffect(() => {
     void hydrateShortlist();
-  }, [hydrateShortlist]);
+    void hydrateBookings();
+  }, [hydrateShortlist, hydrateBookings]);
 
   // Debounce the search box so typing does not fire a request per keystroke.
   const [queryInput, setQueryInput] = useState(q);
@@ -100,7 +106,14 @@ export function CreatorsListPage(): JSX.Element {
     country,
     minFollowers,
     maxFollowers,
+    reloadKey,
   ]);
+
+  function retry(): void {
+    void hydrateShortlist();
+    void hydrateBookings();
+    setReloadKey((key) => key + 1);
+  }
 
   // On the shortlist tab, drop rows the moment they are un-starred (optimistic).
   const displayed = onShortlistTab
@@ -150,12 +163,25 @@ export function CreatorsListPage(): JSX.Element {
       )}
 
       {status === "loading" && (
-        <p className="text-body text-text-muted">Loading creators…</p>
+        <div className="rounded-card border border-border bg-surface p-s8 text-body text-text-muted">
+          Loading creators…
+        </div>
       )}
       {status === "error" && (
-        <p className="text-body text-warn">
-          Could not load creators. Check that the API is running.
-        </p>
+        <div className="flex flex-col items-start gap-s3 rounded-card border border-border bg-surface p-s8">
+          <div className="flex flex-col gap-s1">
+            <p className="text-card-title text-text">
+              The marketplace didn&rsquo;t load
+            </p>
+            <p className="text-body text-text-muted">
+              That is usually a brief drop in the connection. Try again in a
+              moment.
+            </p>
+          </div>
+          <Button size="sm" onClick={retry}>
+            Try again
+          </Button>
+        </div>
       )}
 
       {status === "ready" && (
@@ -205,6 +231,7 @@ export function CreatorsListPage(): JSX.Element {
                 creators={displayed}
                 selectedIds={selectedIds}
                 shortlistIds={shortlistSet}
+                bookingById={bookingById}
                 onToggleSelect={toggleSelect}
                 onToggleShortlist={toggleShortlist}
                 onOpen={setOpenCreatorId}

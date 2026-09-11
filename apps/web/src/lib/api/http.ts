@@ -1,19 +1,39 @@
 import type {
+  AuthMe,
+  Booking,
+  BookingReceived,
   CampaignSummary,
+  CreateBookingBody,
   CreatorProfileDetail,
   ListCreatorsParams,
+  LoginResponse,
   MarketplaceCreator,
   PageParams,
   Paginated,
+  UpdateBookingStatusBody,
 } from "@naano/shared";
 import type { ApiClient } from "./client";
+import { ApiError } from "./errors";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, init);
+// Bearer token for authenticated calls. The auth store sets it on sign-in /
+// rehydrate and clears it on sign-out.
+let apiToken: string | null = null;
+export function setApiToken(token: string | null): void {
+  apiToken = token;
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (apiToken) headers.set("authorization", `Bearer ${apiToken}`);
+  const response = await fetch(`${API_URL}${path}`, { ...init, headers });
   if (!response.ok) {
-    throw new Error(`${path} failed with status ${response.status}`);
+    const body = await response.json().catch(() => null);
+    const message =
+      (body && typeof body.message === "string" && body.message) ||
+      `${path} failed with status ${response.status}`;
+    throw new ApiError(response.status, message);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
@@ -82,6 +102,16 @@ function creatorsQuery(params?: ListCreatorsParams): string {
 }
 
 export const httpClient: ApiClient = {
+  login(email: string, password: string): Promise<LoginResponse> {
+    return request<LoginResponse>("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  },
+  getMe(): Promise<AuthMe> {
+    return getJson<AuthMe>("/auth/me");
+  },
   listCreators(params?: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>> {
     return getJson<Paginated<MarketplaceCreator>>(`/creators${creatorsQuery(params)}`);
   },
@@ -119,5 +149,35 @@ export const httpClient: ApiClient = {
       )}`,
       { method: "DELETE" },
     );
+  },
+  createBooking(body: CreateBookingBody): Promise<Booking> {
+    return request<Booking>("/bookings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  listBookingsReceived(params?: PageParams): Promise<Paginated<BookingReceived>> {
+    return getJson<Paginated<BookingReceived>>(`/bookings/received${pageQuery(params)}`);
+  },
+  listBookingsSent(
+    params?: PageParams & { campaignId?: string },
+  ): Promise<Paginated<Booking>> {
+    const search = new URLSearchParams();
+    if (params?.page) search.set("page", String(params.page));
+    if (params?.pageSize) search.set("pageSize", String(params.pageSize));
+    if (params?.campaignId) search.set("campaignId", params.campaignId);
+    const query = search.toString();
+    return getJson<Paginated<Booking>>(`/bookings/sent${query ? `?${query}` : ""}`);
+  },
+  updateBookingStatus(
+    id: string,
+    status: UpdateBookingStatusBody["status"],
+  ): Promise<Booking> {
+    return request<Booking>(`/bookings/${encodeURIComponent(id)}/status`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
   },
 };

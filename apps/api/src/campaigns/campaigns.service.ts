@@ -29,6 +29,31 @@ export class CampaignsService {
     return active;
   }
 
+  /**
+   * Same fallback as getActive() (most recent LIVE, else most recent of any
+   * status) but scoped to one company. This is the campaign a booking is
+   * created against — a brand must only ever book from its own campaign.
+   */
+  async getActiveForCompany(companyId: string): Promise<Campaign | null> {
+    const live = await this.prisma.campaign.findFirst({
+      where: { companyId, status: "LIVE" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (live) return live;
+    return this.prisma.campaign.findFirst({
+      where: { companyId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async getActiveForCompanyOrThrow(companyId: string): Promise<Campaign> {
+    const active = await this.getActiveForCompany(companyId);
+    if (!active) {
+      throw new NotFoundException("Your company has no campaign yet");
+    }
+    return active;
+  }
+
   /** Exists check used by the shortlist routes before touching child rows. */
   async assertExists(campaignId: string): Promise<Campaign> {
     const campaign = await this.prisma.campaign.findUnique({

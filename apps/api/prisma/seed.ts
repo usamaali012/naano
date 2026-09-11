@@ -145,10 +145,22 @@ const FIRST_NAMES = [
   "Laura", "Marco", "Nora", "Sven", "Julia", "Jonas", "Elin", "Rafael", "Ines", "Erik",
   "Zoe", "Adam", "Lena", "Victor", "Maya", "Karl", "Alicia", "Sam", "Ruby", "Otto",
 ];
+// So the seeded portrait roughly matches the name. Names not listed use "men".
+const FEMININE_NAMES = new Set([
+  "Emma", "Olivia", "Ava", "Sophie", "Isabella", "Mia", "Charlotte", "Amelia",
+  "Freya", "Clara", "Laura", "Nora", "Julia", "Elin", "Ines", "Zoe", "Lena",
+  "Maya", "Alicia", "Ruby",
+]);
+// 44 distinct surnames — one per creator (the seed indexes this directly, no
+// wraparound), plus a small margin. Surname does not affect the avatar; that is
+// keyed on the first name (FEMININE_NAMES) and the creator index.
 const LAST_NAMES = [
   "Berg", "Novak", "Fischer", "Rossi", "Dubois", "Andersen", "Silva", "Kowalski",
   "Meyer", "Lund", "Garcia", "Weber", "Larsen", "Moreau", "Conti", "Schmidt",
   "Costa", "Nilsson", "Keller", "Haas", "Petit", "Romano", "Becker", "Sorensen",
+  "Bianchi", "Laurent", "Halvorsen", "Krause", "Jensen", "Marchetti", "Fontaine",
+  "Bauer", "Eriksson", "Neumann", "Ferrari", "Lindqvist", "Vogel", "Chevalier",
+  "Holm", "Richter", "Aalto", "Sundqvist", "Moretti", "Wagner",
 ];
 
 const VERTICAL_HEADLINES: Record<Vertical, string[]> = {
@@ -235,16 +247,25 @@ const VERTICAL_HEADLINES: Record<Vertical, string[]> = {
 };
 
 // --- Follower tiers ------------------------------------------------------------
-// Non-overlapping follower bands. Median views is a share of followers that
-// shrinks as the audience grows; the share stays inside the 20-100% window from
-// docs/RECON.md §10. Target CPM is drawn in the EUR 10-30 band and post cost is
-// derived from it (cost = cpm * medianViews / 1000), then clamped to EUR 20-1,500.
+// Follower bands sized to a believable B2B LinkedIn creator: mid-teens to low
+// hundreds of thousands, skewed small (see tierIndexFromRoll). Median views is a
+// share of followers that shrinks as the audience grows, kept inside the
+// 20-100% window (docs/RECON.md §10). Target CPM is drawn per band inside the
+// EUR 10-30 band with headroom on both sides. Post cost falls out as
+// cpm * medianViews / 1000 — there is no floor or ceiling on it, so the range
+// itself has to be believable: the smallest booking lands near EUR 175, the
+// largest near EUR 1,800.
 const TIER_BANDS = [
-  { followerMin: 1_000, followerMax: 10_000, viewsPctMin: 68, viewsPctMax: 100, cpmMin: 16, cpmMax: 30 },
-  { followerMin: 10_000, followerMax: 50_000, viewsPctMin: 46, viewsPctMax: 80, cpmMin: 13, cpmMax: 26 },
-  { followerMin: 50_000, followerMax: 150_000, viewsPctMin: 30, viewsPctMax: 55, cpmMin: 11, cpmMax: 22 },
-  { followerMin: 150_000, followerMax: 480_000, viewsPctMin: 20, viewsPctMax: 32, cpmMin: 10, cpmMax: 18 },
+  { followerMin: 18_000, followerMax: 34_000, viewsPctMin: 58, viewsPctMax: 90, cpmMin: 17, cpmMax: 26 },
+  { followerMin: 32_000, followerMax: 72_000, viewsPctMin: 42, viewsPctMax: 70, cpmMin: 14, cpmMax: 23 },
+  { followerMin: 68_000, followerMax: 132_000, viewsPctMin: 30, viewsPctMax: 52, cpmMin: 12, cpmMax: 20 },
+  { followerMin: 120_000, followerMax: 215_000, viewsPctMin: 22, viewsPctMax: 38, cpmMin: 12, cpmMax: 18 },
 ] as const;
+
+// Post costs must be distinct across all 40 and never sit on a round figure —
+// a euro or two of jitter barely moves the derived CPM. Module-level so
+// buildCreator (called per creator) can see what is already taken.
+const usedPostCosts = new Set<number>();
 
 // Engaged-profile sample size per tier — the "estimated from N recent public
 // engagers" caption. Sums across 40 creators to roughly 7,300.
@@ -265,15 +286,25 @@ function tierIndexFromRoll(roll: number): number {
   return 3;
 }
 
-const CLAMP_COST_MIN_EUR = 20;
-const CLAMP_COST_MAX_EUR = 1_500;
+// Deterministic photo avatar, so a creator always gets the same face and the
+// 40-strong set reads as varied real people rather than initials. randomuser.me
+// serves static portrait JPEGs (100 per gender). The portrait number steps by a
+// value coprime with 100 so all 40 creators get a distinct photo; gender tracks
+// the first name. The web falls back to an initials block only when the image
+// fails to load.
+function avatarUrlFor(firstName: string, index: number): string {
+  const gender = FEMININE_NAMES.has(firstName) ? "women" : "men";
+  const num = (index * 7 + 13) % 100;
+  return `https://randomuser.me/api/portraits/${gender}/${num}.jpg`;
+}
 
 interface CreatorSeed {
+  profileId: string;
+  avatarUrl: string;
   displayName: string;
   email: string;
   vertical: Vertical;
   network: Network;
-  crossPosts: boolean;
   followerCount: number;
   medianViews: number;
   postCostCents: number;
@@ -288,8 +319,9 @@ interface CreatorSeed {
 
 function buildCreator(index: number): CreatorSeed {
   const first = nth(FIRST_NAMES, index);
-  const last = nth(LAST_NAMES, index % LAST_NAMES.length);
+  const last = nth(LAST_NAMES, index);
   const displayName = `${first} ${last}`;
+  const profileId = randomBytes(12).toString("hex");
   const vertical = nth(VERTICALS, index % VERTICALS.length);
   const rankWithinVertical = Math.floor(index / VERTICALS.length);
   const country = pick(COUNTRIES);
@@ -299,37 +331,46 @@ function buildCreator(index: number): CreatorSeed {
   const band = nth(TIER_BANDS, tierIndex);
   const followerCount = messy(randomInt(band.followerMin, band.followerMax), 0.02);
   // Median views as a share of followers, then jittered off the clean ratio and
-  // clamped back inside the 20-100% window from docs/RECON.md §10.
+  // held inside the 20-95% window (docs/RECON.md §10).
   const viewsRatio = randomInt(band.viewsPctMin, band.viewsPctMax) / 100;
   const medianViews = Math.min(
-    Math.round(followerCount * 0.99),
-    Math.max(Math.round(followerCount * 0.21), messy(followerCount * viewsRatio, 0.06)),
+    Math.round(followerCount * 0.95),
+    Math.max(Math.round(followerCount * 0.2), messy(followerCount * viewsRatio, 0.06)),
   );
 
-  // Post cost is derived from the jittered median views so CPM stays in band.
-  // It is NOT run through messy(): real rate cards cluster on round-ish numbers.
+  // Post cost is CPM x median views / 1000 — no clamp, so the tiers above carry
+  // the whole burden of keeping it believable. Then nudged a euro or two off
+  // any round figure or collision (uniqueness across all 40); the shift is
+  // small enough that the derived CPM stays in the EUR 10-30 band.
   let targetCpmEur = randomFloat(band.cpmMin, band.cpmMax);
-  if (SCARCE_VERTICALS.has(vertical)) targetCpmEur = Math.min(30, targetCpmEur + randomFloat(2, 5));
+  if (SCARCE_VERTICALS.has(vertical)) {
+    targetCpmEur = Math.min(28, targetCpmEur + randomFloat(1, 2.5));
+  }
   const rawCostEur = (targetCpmEur * medianViews) / 1000;
-  const postCostEur = Math.round(Math.min(CLAMP_COST_MAX_EUR, Math.max(CLAMP_COST_MIN_EUR, rawCostEur)));
+  let postCostEur = Math.round(rawCostEur);
+  let guard = 0;
+  while ((postCostEur % 25 === 0 || usedPostCosts.has(postCostEur)) && guard++ < 40) {
+    postCostEur += randomInt(1, 9) * (Math.random() < 0.5 ? -1 : 1);
+  }
+  usedPostCosts.add(postCostEur);
   const postCostCents = postCostEur * 100;
   const bundle5PriceCents = Math.round(postCostCents * randomFloat(3.15, 3.45));
 
   const [engMin, engMax] = nth(ENGAGER_RANGE, tierIndex);
   const observedEngagerCount = messy(randomInt(engMin, engMax), 0.04);
 
-  // network: ~15% are primarily on X; a further ~20% of the rest also post on
-  // the other network (crossPosts). Most creators are LinkedIn-only.
-  const netRoll = Math.random();
-  const network = netRoll < 0.15 ? Network.X : Network.LINKEDIN;
-  const crossPosts = netRoll >= 0.15 && netRoll < 0.35;
+  // naano is a LinkedIn creator marketplace (docs/RECON.md) — every creator
+  // and every post is on LinkedIn. The Network enum keeps X for the schema, but
+  // the seed never produces it.
+  const network = Network.LINKEDIN;
 
   return {
+    profileId,
+    avatarUrl: avatarUrlFor(first, index),
     displayName,
     email: `${first.toLowerCase()}.${last.toLowerCase()}${index}@creators.naano.dev`,
     vertical,
     network,
-    crossPosts,
     followerCount,
     medianViews,
     postCostCents,
@@ -567,6 +608,8 @@ async function main(): Promise<void> {
         role: "CREATOR",
         creatorProfile: {
           create: {
+            id: c.profileId,
+            avatarUrl: c.avatarUrl,
             displayName: c.displayName,
             headline: c.headline,
             vertical: c.vertical,
@@ -610,16 +653,12 @@ async function main(): Promise<void> {
     const postDays = shuffled([2, 6, 11, 18, 27, 33]).slice(0, 5).sort((a, b) => a - b);
     const shapeOrder = shuffled([0, 1, 2, 3, 4, 5, 6]);
     for (let p = 0; p < 5; p++) {
-      const onOther = c.crossPosts && p % 2 === 1;
-      const net = onOther ? (c.network === Network.LINKEDIN ? Network.X : Network.LINKEDIN) : c.network;
+      const net = c.network; // LinkedIn only
       const views = messy(c.medianViews * randomFloat(0.55, 1.7), 0.04);
       const reactions = messy(views * randomFloat(0.015, 0.05), 0.08);
       const activityId = randomInt(1_000_000_000, 9_999_999_999);
       const handle = c.displayName.toLowerCase().replace(/[^a-z]+/g, "");
-      const externalUrl =
-        net === Network.LINKEDIN
-          ? `https://www.linkedin.com/posts/${handle}-activity-${activityId}`
-          : `https://x.com/${handle}/status/${activityId}`;
+      const externalUrl = `https://www.linkedin.com/posts/${handle}-activity-${activityId}`;
       await prisma.creatorPost.create({
         data: {
           creatorProfileId: profile.id,

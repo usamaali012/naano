@@ -39,7 +39,14 @@ apps/
                            ShortlistItem = a creator saved to a campaign
                            (unique per campaign+creator). CPM is never a column.
       seed.ts             Realistic seed data. Figures + volume/calibration
-                           targets come from docs/RECON.md §10-12
+                           targets come from docs/RECON.md §10-12. Sets an
+                           explicit creator id + a randomuser.me photo avatarUrl
+                           on every creator (gender keyed on first name), 44
+                           distinct surnames indexed directly, and 13
+                           ShortlistItem rows. LinkedIn only — no X creators or
+                           posts. Post cost = cpm * medianViews / 1000, no
+                           clamp; nudged off round-25s and collisions
+                           (usedPostCosts) so all 40 are distinct.
     src/
       main.ts
       app.module.ts
@@ -48,15 +55,18 @@ apps/
                            route when NODE_ENV=production) and
                            dto/pagination-query.dto.ts (page/pageSize, the base
                            every list DTO extends).
-      auth/               JWT strategy/guards/role decorator + POST /auth/login.
-                           Working, not stubbed: needed to exercise the role guard.
+      auth/               JWT strategy/guards/role decorator, POST /auth/login,
+                           and GET /auth/me (JWT-guarded — userId, email, role,
+                           companyId, creatorProfileId, displayName). Backs the
+                           `/` entry page's two real sign-ins.
       creators/           GET /creators (paginated) with filters (vertical x N,
                            country, q free-text, price range, max CPM, min median
                            views, min/max followers, min engagement %, posted-
                            within-days) and four sorts (best_match default,
                            price_asc, followers_desc, engagement_desc). Optional
                            campaignId sets the ranking context; rows return as
-                           MarketplaceCreator (CreatorProfile + icpFitPct).
+                           MarketplaceCreator (CreatorProfile + sectorFitPct =
+                           creator vertical vs campaign target, 0..100).
                            GET /creators/:id returns profile + audienceSegments
                            + posts (CreatorProfileDetail). Filter/sort DTO in
                            dto/list-creators.dto.ts. CPM from @naano/shared
@@ -82,9 +92,39 @@ apps/
                            Returns MarketplaceCreator rows with ICP fit vs the
                            campaign. The marketplace Shortlist tab and the
                            campaign Shortlist tab (3.5) both read GET here.
-      bookings/           Empty, wired stub module. No routes yet.
+      bookings/           Real, guarded routes. POST /bookings (COMPANY,
+                           from the signed-in company's active campaign via
+                           CampaignsService.getActiveForCompany — price
+                           derived server-side from the creator's
+                           postCostCents/bundle5PriceCents, 409 on a
+                           duplicate non-DECLINED booking for the same
+                           creator+campaign). GET /bookings/received
+                           (CREATOR, own profile only, enriched with
+                           campaign/company name). GET /bookings/sent
+                           (COMPANY, own company, optional ?campaignId).
+                           PATCH /bookings/:id/status (CREATOR,
+                           INVITED->ACCEPTED|DECLINED — accepting mints the
+                           booking's TrackedLink in the same $transaction,
+                           destinationUrl from the campaign, never the
+                           client). First feature endpoints behind
+                           JwtAuthGuard+RolesGuard+@Roles; ownership resolved
+                           server-side from the JWT subject, never from a
+                           client-supplied id. Every booking read selects
+                           trackedLink: { slug, _count: { clickEvents } }
+                           (TRACKED_LINK_SELECT) so the wire Booking always
+                           carries trackedLinkSlug/clickCount (null until a
+                           link exists). mappers.ts: toBooking/
+                           toBookingReceived. dev-bookings.controller.ts adds
+                           a dev-only POST /dev/bookings/ensure-invited
+                           (NonProductionGuard) that guarantees a creator has
+                           one INVITED booking, for the screenshot suite —
+                           see docs/PLAN.md's 2026-09-11 Discovered entry for
+                           why it exists (seed can leave a creator with no
+                           campaign left to be freshly invited into).
       tracking/           GET /r/:slug -> record ClickEvent -> 302. The spine.
-                           Fully working, verified end to end.
+                           Fully working, verified end to end. slug.ts:
+                           generateTrackedLinkSlug() (9 random bytes,
+                           base64url), used by bookings.service.ts on accept.
                            dev-tracked-links.controller.ts adds a dev-only
                            GET /dev/tracked-links (slug/campaign/creator/dest),
                            guarded off in production.
@@ -102,10 +142,27 @@ apps/
                            `try_files {path} /index.html` for SPA routing.
     railway.json             Session B. Builder DOCKERFILE, healthcheck `/`.
     scripts/
-      shot.mjs            Playwright screenshot tool. `npm run shot
+      shot.mjs            Playwright screenshot tool for one route. `npm run shot
                            --workspace=apps/web -- <route> [name]` -> 1440px PNG
                            in apps/web/.screenshots/ (gitignored). Dev server
                            must be up. From Git-Bash prefix MSYS_NO_PATHCONV=1.
+      shots.mjs            `npm run shots --workspace=apps/web` — the full
+                           marketplace suite (grid, both modal tabs, booking
+                           rail, creator home + bookings, error state). Wipes
+                           .screenshots/ first, prints mtimes. Run it to
+                           finish any UI change. Before the creator-home
+                           shots it calls the dev-only POST
+                           /dev/bookings/ensure-invited directly (no browser)
+                           so creator-booking-requests.png always has an
+                           INVITED row with Accept/Decline visible — see
+                           docs/PLAN.md's 2026-09-11 Discovered entry for why
+                           a normal booking-creation UI flow can't guarantee
+                           that. Still does not drive a real booking
+                           creation through the UI (that mutation is not
+                           idempotent against the persistent local dev DB —
+                           see docs/PLAN.md's 2026-09-10 Discovered entry);
+                           the rail's idle state is covered by
+                           modal-rail-bundle instead.
     tailwind.config.js    Maps Tailwind utilities onto the CSS custom properties
                            in src/index.css via var(). No raw hex/px in configs
                            or components.
@@ -119,50 +176,100 @@ apps/
       lib/
         api/              ALL http lives here. Two impls: http + fixtures,
                            selected by VITE_API_MODE. client.ts is the interface:
-                           listCreators, getCreator, getActiveCampaign,
-                           listShortlist / addToShortlist / removeFromShortlist.
-                           http.ts maps every list param. fixtures.ts mirrors
-                           all of it, including vertical/country/follower-range
-                           filtering (in-memory per-campaign shortlist) — kept
-                           in sync with http.ts's filter semantics since 2.5.
-        stores/           Zustand stores, one per domain. creatorsStore.ts:
-                           grid page/sort/q/tab state, plus filter state
-                           (vertical[], country, minFollowers, maxFollowers)
-                           from 2.5 — each setter resets page to 1.
-                           shortlistStore.ts: {campaignId, ids, status} —
-                           hydrates from the API, optimistic writes, no
-                           localStorage. uiStore.ts: unused pattern example.
+                           login, getMe, listCreators, getCreator,
+                           getActiveCampaign, listShortlist / addToShortlist /
+                           removeFromShortlist, createBooking /
+                           listBookingsReceived / listBookingsSent /
+                           updateBookingStatus. http.ts maps every list param,
+                           including the vertical/country/follower-range
+                           filters FilterPanel (2.5) surfaces, and exports
+                           setApiToken (Bearer header for authed calls);
+                           request() throws errors.ts's ApiError (carries the
+                           HTTP status) so callers can special-case a status
+                           (e.g. 409 already-booked) instead of one generic
+                           failure message. fixtures.ts mirrors all of it —
+                           in-memory shortlist + bookings, plus the same
+                           vertical/country/follower-range filtering as
+                           http.ts (kept in sync since 2.5) — FIXTURE_ME is
+                           always the brand, so the creator-side booking
+                           methods have no real fixture context yet.
+        stores/           Zustand stores, one per domain. authStore.ts:
+                           {token, me}, persist -> localStorage naano.auth;
+                           signIn does a real login + /me, signOut clears it.
+                           creatorsStore.ts: grid page/sort/q/tab state, plus
+                           filter state (vertical[], country, minFollowers,
+                           maxFollowers) from 2.5 — each setter resets page
+                           to 1 like the others. shortlistStore.ts:
+                           {campaignId, ids, status} — hydrates from the API,
+                           optimistic writes, no localStorage.
+                           bookingsStore.ts: {campaignId, byCreatorId,
+                           status} — byCreatorId values are CreatorBookingInfo
+                           ({status, clickCount}), same hydrate pattern as
+                           shortlistStore, maps creator -> booking info for
+                           the active campaign so the marketplace card can
+                           show "already booked" (and, once accepted, its
+                           click count) without a new screen; recordBooking()
+                           takes the full Booking and updates the map
+                           immediately on a successful create. uiStore.ts:
+                           unused pattern example.
         countries.ts      Country code -> display name for the 15 codes
                            apps/api/prisma/seed.ts seeds. No distinct-countries
                            endpoint exists, so this is read off the seed, not
                            derived from the API.
         format.ts         Money/number/percent + verticalLabel helpers.
                            Render-boundary only; formatCpm uses @naano/shared.
-      routes/             PublicHome (public). AppShell = the 72px icon rail
-                           (DESIGN §layout), only Creators routes. CreatorsListPage
-                           wires header + grid + pagination + profile modal +
-                           multi-select + shortlist.
+        bookingStatus.ts  BookingStatus -> StatusPill tone/label, shared by
+                           CreatorCard, BookingRail's confirmation state, and
+                           CreatorHomePage's bookings list.
+        trackedLink.ts    trackedLinkUrl(slug) -> the public GET /r/:slug URL
+                           (VITE_API_URL + /r/ + slug), for display and copy.
+      routes/             EntryPage (public, "/") — two real one-click sign-ins
+                           (brand/creator) against seeded accounts, then routes
+                           into /app. AppShell = the 72px icon rail (DESIGN
+                           §layout) + a top bar (signed-in identity, Sign out);
+                           redirects signed-out /app to /. App.tsx's AppIndex
+                           picks the surface by role: CreatorsListPage (brand)
+                           or CreatorHomePage (creator — their own profile,
+                           "this is how brands see you", from GET /creators/:id,
+                           plus a "Your bookings" section reading
+                           GET /bookings/received with real Accept/Decline and,
+                           per booking with a trackedLinkSlug, a copy-to-
+                           clipboard tracked-link row (TrackedLinkRow)).
       components/
         ui/               Token-only primitives: Button, Card, Input, Select,
                            Checkbox, Badge, StatusPill, Table (+ THead/TBody/TR/
                            TH/TD), Tabs, Modal, SegmentedBar, Disclosure
-                           (styled <details> + chevron). None hardcode a colour,
-                           radius or spacing value.
+                           (styled <details> + chevron, controlled), Avatar
+                           (initials always render underneath; the <img> paints
+                           over them once loaded and is removed on error — no
+                           empty circle while a slow photo loads). None hardcode
+                           a colour, radius or spacing value.
         marketplace/      MarketplaceHeader (title/explainer, All+Shortlist tabs
-                           with counts, search, sort-by, section header).
+                           with counts, search, sort-by, section header — "Best
+                           match first" / "All N creators, ordered by…" (singular:
+                           "1 creator, ordered by…"), true at any catalogue size).
                            FilterPanel (2.5, partial): industry searchable
                            multi-select, country dropdown, follower min/max,
                            active-filter chips + Clear all. No price range or
                            performance filters yet (2.5 remainder / 2.6).
-                           CreatorCard (checkbox, network badge, ICP fit badge,
-                           star, Book, 4-metric strip, View profile). CreatorGrid
-                           (3/2/1 cols). CreatorsPagination (Prev/Next + range).
-                           CreatorProfileModal = two-column shell (tabbed content
-                           + persistent BookingRail aside), from GET /creators/:id.
-                           modal/ has OverviewTab, AudienceTab, BookingRail,
-                           ReachSparkline (inline-SVG), audienceSegments.ts
-                           (dimension-filter helper). Content tab is 2.12.
-                           icons.tsx (NetworkBadge, StarIcon).
+                           CreatorCard (checkbox, network badge, sector-fit
+                           badge, booking StatusPill + "N clicks" once a
+                           booking exists for the active campaign and has a
+                           tracked link, star, Book, 4-metric strip, View
+                           profile). CreatorGrid (3/2/1 cols, threads
+                           bookingById — Record<id, CreatorBookingInfo> —
+                           through). CreatorsPagination (Prev/Next + range).
+                           CreatorProfileModal = two-column shell (tabbed
+                           content + persistent BookingRail aside), from
+                           GET /creators/:id. modal/ has OverviewTab,
+                           AudienceTab, BookingRail (real submit: package radio
+                           + deliverable input -> POST /bookings; renders one of
+                           the form / a booked confirmation / an already-booked
+                           notice / a retryable error, see bookingStatus.ts and
+                           lib/api/errors.ts), ReachSparkline (inline-SVG),
+                           audienceSegments.ts (dimension-filter helper).
+                           Content tab is 2.12. icons.tsx (NetworkBadge,
+                           StarIcon).
         campaign/         Empty. Brief form, campaign list, status pills land
                            with the campaign flow.
         dashboard/        Empty. Metric tiles, charts land with the dashboard.
@@ -193,9 +300,11 @@ docs/
 - New marketplace filter → `apps/api/src/creators/` + `components/marketplace/`
 - New dashboard metric → `apps/api/src/analytics/` then a tile in
   `components/dashboard/`
-- Booking status change → `apps/api/src/bookings/` state machine, and the pill
-  component in `components/campaign/`
+- Booking status change → `apps/api/src/bookings/bookings.service.ts`
+  (`updateStatus`, INVITED-only guard), and `lib/bookingStatus.ts` for the
+  pill tone/label
 - Shortlist behaviour → `apps/api/src/shortlist/` + `lib/stores/shortlistStore.ts`
 - "Active campaign" logic → `apps/api/src/campaigns/campaigns.service.ts`
+- Sign-in / session logic → `apps/api/src/auth/` + `lib/stores/authStore.ts`
 - Anything touching the data model → `prisma/schema.prisma` first, then
   `packages/shared`, then consumers

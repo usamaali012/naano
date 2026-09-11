@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "shot": "node scripts/shot.mjs"
+    "shot": "node scripts/shot.mjs",
+    "shots": "node scripts/shots.mjs"
   },
   "dependencies": {
     "@naano/shared": "*",

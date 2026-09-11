@@ -42,9 +42,9 @@ function percentileRanks(
 }
 
 /**
- * Creator ids ordered best-first. When `fitById` is given, creators sort by ICP
- * fit band first (higher first); the performance blend then orders creators
- * within a band. With no map, the performance blend is the whole ranking:
+ * Creator ids ordered best-first. When `fitById` is given, creators sort by
+ * sector-fit band first (higher first); the performance blend then orders
+ * creators within a band. With no map, the performance blend is the whole ranking:
  * cheaper CPM, higher verified median views and higher engagement all rank a
  * creator up. An unknown CPM (no median views) sorts to the bottom of the CPM
  * component rather than being dropped. Deterministic: full ties break on id.

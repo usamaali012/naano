@@ -1,9 +1,13 @@
 import type { MarketplaceCreator } from "@naano/shared";
+import type { CreatorBookingInfo } from "../../lib/stores/bookingsStore";
+import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { Checkbox } from "../ui/Checkbox";
+import { StatusPill } from "../ui/StatusPill";
 import { NetworkBadge, StarIcon } from "./icons";
+import { bookingStatusLabel, bookingStatusTone } from "../../lib/bookingStatus";
 import {
   formatCents,
   formatCompactNumber,
@@ -18,14 +22,8 @@ interface CreatorCardProps {
   shortlisted: boolean;
   onToggleShortlist: (id: string) => void;
   onOpen: (id: string) => void;
-}
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
+  /** A booking already exists for this creator against the active campaign. */
+  booking?: CreatorBookingInfo;
 }
 
 interface Metric {
@@ -40,6 +38,7 @@ export function CreatorCard({
   shortlisted,
   onToggleShortlist,
   onOpen,
+  booking,
 }: CreatorCardProps): JSX.Element {
   // Order is fixed by RECON §4: followers, median views, CPM, post cost.
   const metrics: Metric[] = [
@@ -61,8 +60,19 @@ export function CreatorCard({
           <NetworkBadge network={creator.network} />
         </div>
         <div className="flex items-center gap-s2">
-          {creator.icpFitPct !== null && (
-            <Badge>{creator.icpFitPct}% ICP fit</Badge>
+          {creator.sectorFitPct !== null && (
+            <Badge>{creator.sectorFitPct}% sector fit</Badge>
+          )}
+          {booking && (
+            <StatusPill
+              tone={bookingStatusTone(booking.status)}
+              label={bookingStatusLabel(booking.status)}
+            />
+          )}
+          {booking?.clickCount !== null && booking?.clickCount !== undefined && (
+            <span className="tabular-nums text-label text-text-muted">
+              {booking.clickCount} clicks
+            </span>
           )}
           <button
             type="button"
@@ -83,9 +93,11 @@ export function CreatorCard({
 
       <div className="flex flex-1 flex-col gap-s4 border-t border-border px-s4 pb-s4 pt-s4">
         <div className="flex items-center gap-s3">
-          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary-soft text-card-title text-primary">
-            {initials(creator.displayName)}
-          </span>
+          <Avatar
+            src={creator.avatarUrl}
+            name={creator.displayName}
+            className="h-14 w-14"
+          />
           <div>
             <h3 className="text-card-title text-text">{creator.displayName}</h3>
             <p className="mt-s1 text-label text-text-muted">

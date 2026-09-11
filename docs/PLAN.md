@@ -109,10 +109,11 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   `apps/web/src/lib/format.ts`.
   Notes: carries the ICP fit badge (real per-(creator, campaign) %, top row next
   to Book). The RECON "cloud-image header band" was dropped — no asset, and a
-  flat colour block read as a placeholder against the anti-slop rules; the
-  avatar is a soft-tint initials circle instead. Metric order is exactly
-  followers / median views / CPM / post cost. "View profile" is a plain link,
-  no trailing arrow (DESIGN). Book and View profile both open the profile modal.
+  flat colour block read as a placeholder against the anti-slop rules. The
+  avatar is a real photo (`ui/Avatar`, seeded `avatarUrl`); initials are the
+  fallback for a failed image load. Metric order is exactly followers / median
+  views / CPM / post cost. "View profile" is a plain link, no trailing arrow
+  (DESIGN). Book and View profile both open the profile modal.
 
 - [x] **2.8 Shortlist** — done 2026-09-11, moved to the API 2026-09-11.
   Scope: shortlist store, star toggle persists, Shortlist tab shows saved
@@ -170,14 +171,28 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   Files: `apps/web/src/components/marketplace/modal/ContentTab.tsx`,
   `apps/web/src/components/marketplace/modal/PostCarousel.tsx`.
 
-- [ ] **2.13 Booking rail**
+- [x] **2.13 Booking rail** — done 2026-09-10.
   Scope: "Book this creator", single-post vs bundle-of-5 radio with prices,
   typical reach / estimated CPM / posts analyzed, "How pricing is calculated"
   expander showing `postCost ÷ medianViews × 1000`, CTA "Collaborate with
-  <first name>", "Secure booking · Creator approves first". CTA creates a
-  `Booking` (initiatedBy BRAND) against the active campaign.
-  Files: `apps/web/src/components/marketplace/modal/BookingRail.tsx`,
-  `apps/api/src/bookings/*`, `apps/web/src/lib/api/*`.
+  <first name>". CTA creates a `Booking` (initiatedBy BRAND) against the
+  active campaign. Grew to cover the full loop end to end (both sides, not
+  just the rail) per an explicit ask: real bookings API, creator accept/
+  decline, and brand-side visibility.
+  Files: `apps/api/src/bookings/*` (controller/service/dto/mappers, was an
+  empty stub), `apps/api/src/campaigns/campaigns.service.ts`
+  (`getActiveForCompany`), `packages/shared/src/api.ts`,
+  `apps/web/src/lib/api/*` (+ new `errors.ts`),
+  `apps/web/src/lib/stores/bookingsStore.ts` (new),
+  `apps/web/src/lib/bookingStatus.ts` (new),
+  `apps/web/src/components/marketplace/modal/BookingRail.tsx`,
+  `apps/web/src/components/marketplace/{CreatorCard,CreatorGrid}.tsx`,
+  `apps/web/src/routes/{CreatorsListPage,CreatorHomePage}.tsx`,
+  `apps/web/scripts/shots.mjs`.
+  Notes: see the two 2026-09-10 DECISIONS.md entries for the endpoint list,
+  the company-scoped active-campaign fix, the server-side price derivation,
+  the duplicate-booking guard, and why brand-side visibility is a card badge
+  rather than a new Collaborations screen (that's 4.2).
 
 ---
 
@@ -236,11 +251,31 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   Files: `apps/web/src/routes/CollaborationsPage.tsx`,
   `apps/web/src/components/campaign/CollaborationsTable.tsx`.
 
-- [ ] **4.3 Accept issues a TrackedLink**
+- [x] **4.3 Accept issues a TrackedLink** — done 2026-09-11.
   Scope: accepting a booking mints a `TrackedLink` (slug + resolved
   destinationUrl); link surfaced to the creator.
   Files: `apps/api/src/bookings/bookings.service.ts`,
-  `apps/api/src/tracking/*`.
+  `apps/api/src/bookings/mappers.ts`, `apps/api/src/bookings/dto/*`,
+  `apps/api/src/tracking/slug.ts` (new), `packages/shared/src/entities.ts`,
+  `apps/web/src/lib/trackedLink.ts` (new),
+  `apps/web/src/lib/stores/bookingsStore.ts`,
+  `apps/web/src/components/marketplace/{CreatorCard,CreatorGrid}.tsx`,
+  `apps/web/src/components/marketplace/modal/BookingRail.tsx`,
+  `apps/web/src/routes/CreatorHomePage.tsx`, `apps/web/src/lib/api/fixtures.ts`.
+  Notes: `updateStatus` mints the link in the same `$transaction` as the
+  ACCEPTED write (slug = 12-char base64url, 72 bits, `tracking/slug.ts`);
+  `destinationUrl` copies from the booking's own campaign, never from client
+  input. `Booking` gained `trackedLinkSlug`/`clickCount` (null until a link
+  exists) — cheapest way to carry this without a new type, since
+  `BookingReceived`/brand `listSent` both already return `Booking`. Creator
+  side: each booking card with a link shows it plus a working copy button
+  (`CreatorHomePage`'s new `TrackedLinkRow`). Brand side: `CreatorCard` shows
+  "N clicks" next to the existing booking-status pill — the cheapest surface,
+  no new page, per an explicit ask. Verified end to end against the running
+  API (see the 2026-09-11 DECISIONS.md entry for the actual numbers).
+  Discovered a real blocker while wiring the screenshot fix below: see that
+  DECISIONS.md entry for the `dev/bookings/ensure-invited` addition it
+  required.
 
 - [ ] **4.4 Earnings view**
   Scope: creator-side list of bookings with amounts and payout status.
@@ -278,8 +313,19 @@ Where the UX score is won. The modal is the densest surface; build it properly.
 Reserve three hours minimum.
 
 - [ ] **6.1 Deploy** — API + web + Postgres reachable.
-- [ ] **6.2 Demo entry on `/`** — public home routes into a seeded logged-in
-  feeling brand session.
+- [x] **6.2 Demo entry on `/`** — done 2026-09-11.
+  Scope: public home routes into a seeded logged-in feeling brand session.
+  Files: `apps/web/src/routes/EntryPage.tsx` (new, replaces `PublicHome.tsx`),
+  `apps/web/src/routes/CreatorHomePage.tsx` (new), `apps/web/src/App.tsx`,
+  `apps/web/src/routes/AppShell.tsx`, `apps/web/src/lib/stores/authStore.ts`
+  (new), `apps/web/src/lib/api/*`, `apps/api/src/auth/*`.
+  Notes: two one-click sign-ins (brand = Ledgerly, creator = the seed's index-0
+  creator) do a real `POST /auth/login` + `GET /auth/me` (new, JWT-guarded) and
+  land role-aware — brand on the marketplace, creator on a real "your profile"
+  page (their own `GET /creators/:id`, i.e. exactly what a brand sees). No
+  fake session. `/app` redirects signed-out visitors back to `/`. Shell gained
+  a top bar: signed-in identity + Sign out. Demo password lives only in
+  `EntryPage.tsx` and the seed — not repeated in docs.
 - [ ] **6.3 Walkthrough video + README** — record the core loop; README names
   what was cut and why.
 
@@ -309,6 +355,19 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-11 (Session B) — Merged main (booking loop, tracked links,
+  sector-fit rename, demo entry — 50+ files, see the entries below this one)
+  into the 2.5 filter panel work and re-wired `FilterPanel` into main's
+  current `CreatorsListPage` (booking-store hydration, card status badge,
+  framed loading/error + retry). Re-verified all five filter counts against
+  the current code post-merge — unchanged from the pre-merge numbers (see
+  DECISIONS 2026-09-11). Also fixed a pluralization bug this merge surfaced:
+  `MarketplaceHeader`'s subtitle (now "All {totalCount} creators, ordered
+  by…", renamed from "sector fit" — see the sector-fit-rename entry below)
+  rendered "All 1 creators" for a single-result filter; it now reads "1
+  creator, ordered by…" for the singular case. Superseded my own
+  pre-merge note below about the old "The 1 strongest profiles" copy — that
+  wording no longer exists on main, this is its replacement.
 - 2026-09-11 (Session B) — 2.5 filter panel: industry/country/follower range
   only, price range and all of 2.6 deliberately deferred (see the 2.5/2.6
   lines above). For the next session:
@@ -332,14 +391,134 @@ Notes handed forward between sessions. Newest first.
     range+search query all matched hand-computed expectations in both the
     raw API and the UI, with header count / section subtitle / pagination
     footer agreeing with the grid throughout.
-  - **Pre-existing, not touched:** `MarketplaceHeader`'s section subtitle
-    says "The 1 strongest profiles" for a singular result (no pluralization)
-    — visible more often now that filters commonly narrow to 1, but it
-    predates this slice and isn't in the assigned file list.
   - **Not done:** price range + `PriceHistogram.tsx` (rest of 2.5), all of
     2.6 (max CPM, min median views, min engagement %, posted-recently) — see
     the 2.6 line's note about reusing the follower-range state already in
     the store.
+- 2026-09-11 — TrackedLink on accept (4.3) + two screenshot-suite fixes. For
+  the next session:
+  - **Emma Berg (the demo creator) is structurally unbookable by Ledgerly
+    (the demo brand) for a fresh INVITED row.** Seed already pairs her with
+    every campaign Ledgerly has (LIVE Fintech Trust → PAID, completed Summer
+    Payouts → PAID), and `POST /bookings` 409s on any non-DECLINED booking
+    for the same creator+campaign. A real "brand books Emma" UI flow can
+    never produce an INVITED row for her, no matter how many times you
+    retry. Added a dev-only `POST /dev/bookings/ensure-invited` (guarded by
+    `NonProductionGuard`, same pattern as `/dev/tracked-links`) that no-ops
+    if the creator already has an INVITED booking, else picks a campaign
+    they have zero relationship with yet and creates one there — it does
+    **not** reuse `create()`'s campaign resolution, specifically to avoid
+    landing a second booking in a campaign they're already in. `shots.mjs`
+    calls it before the creator-home shots. If Phase 4.1/4.2 add a real
+    "invite a creator" UI test path, prefer that over this endpoint where
+    possible; this exists because no such path exists yet.
+  - **`CreatorHomePage`'s booking section is now "Your bookings"**, not
+    "Booking requests" — it lists every status (Paid/Live/Declined
+    included), which "requests" never accurately described. Accept/Decline
+    still only render on INVITED rows.
+  - **`Booking` (shared type) gained `trackedLinkSlug` and `clickCount`**
+    (both `| null`). Every booking read (`create`, `listReceived`,
+    `listSent`, `updateStatus`) now selects `trackedLink: { slug, _count:
+    { clickEvents } }` — see `TRACKED_LINK_SELECT` in
+    `bookings.service.ts`. `bookingsStore`'s `byCreatorId` values are now
+    `{ status, clickCount }` (was a bare `BookingStatus`) — anything reading
+    it needs the `.status` accessor now.
+  - **Seed already had TrackedLinks + real ClickEvent counts on the
+    ACCEPTED+ seeded bookings** (`TRACKED_LINK_STATUSES` in `seed.ts`
+    predates this slice) — this slice only had to wire `updateStatus` to do
+    the same thing live, and to surface both sides in the UI. No seed change
+    was needed for the core feature.
+- 2026-09-10 — Booking loop (2.13, done end to end, both sides). For the
+  next session:
+  - **`bookings/` is no longer a stub.** Four routes, all role- and
+    ownership-guarded: `POST /bookings` (COMPANY), `GET /bookings/received`
+    (CREATOR, own profile only), `GET /bookings/sent` (COMPANY, own company,
+    optional `?campaignId`), `PATCH /bookings/:id/status` (CREATOR,
+    INVITED→ACCEPTED|DECLINED only). See DECISIONS.md for the full rationale.
+  - **`CampaignsService.getActive()` is still global** (most recent LIVE
+    across all companies) — only the new `getActiveForCompany(companyId)`
+    is company-scoped, and only bookings use it. The marketplace/shortlist
+    still deliberately have no campaign switcher and still call the global
+    one; don't conflate the two when 3.1 lands real campaign CRUD.
+  - **Card badge, not a Collaborations screen, for brand-side visibility.**
+    `bookingsStore` mirrors `shortlistStore`'s hydrate pattern. When 4.2
+    (Collaborations table) lands, it's additive, not a replacement — the
+    card badge is cheap and stays useful on its own.
+  - **`shots.mjs` deliberately does not exercise booking creation.** Unlike
+    shortlist toggles, a booking POST is not idempotent against the
+    persistent local dev DB (the app-level duplicate guard would 409 on
+    every rerun after the first), so baking it into the canonical suite
+    would make it non-deterministic. The rail's default/idle state (radios
+    + deliverable input) is captured via the existing `modal-rail-bundle`
+    shot instead; the create→accept loop was hand-verified against the
+    running API (see DECISIONS.md).
+  - **`CreatorHomePage`'s "Booking requests" section** lists all of the
+    signed-in creator's bookings (any status), with Accept/Decline shown
+    only on INVITED rows. The seed's demo creator (Emma Berg, index 0)
+    happened to have no INVITED booking at screenshot time, so
+    `creator-booking-requests.png` shows the populated list without the
+    action buttons visible — the accept/decline transition itself was
+    verified via the API, not caught in a screenshot.
+- 2026-09-11 — Third pass: seed cost fix, subtitle fix, and the `/` demo entry
+  (slice 6.2, pulled forward — see its PLAN entry above). For the next session:
+  - **Real auth now exists end to end.** `GET /auth/me` (JWT-guarded) added
+    alongside the working `POST /auth/login`. Web has `authStore` (zustand
+    persist, localStorage `naano.auth`): `signIn(email, password)` does a real
+    login + `/me`, `signOut()` clears it. `apps/web/src/lib/api/http.ts`
+    exports `setApiToken` — call it (the store already does) before any
+    authenticated request. `/app` redirects to `/` when signed out.
+  - **Two real landings.** Brand → `CreatorsListPage` (marketplace). Creator →
+    new `CreatorHomePage` ("your profile", their own `GET /creators/:id`). When
+    Phase 4 (creator side: collaborations, earnings) lands, it likely replaces
+    or extends `CreatorHomePage` rather than starting fresh — the role-aware
+    routing in `App.tsx`'s `AppIndex` is the hook to extend.
+  - **Seed cost.** No more `CLAMP_COST_*`. Post cost is `cpm * medianViews /
+    1000`, nudged a few euros off any round-25 figure or collision
+    (`usedPostCosts` module-level `Set`) — never clamped, never repeated. If a
+    future tier change pushes the cheapest creator under ~€150 or the priciest
+    over ~€2,500, that is the tier bands to revisit, not a clamp to re-add.
+  - **`CreatorCard`'s badge and the marketplace section note both changed
+    wording** this pass (sector fit label from the prior session, "All 40
+    creators, ordered by…" this one) — if either drifts again, check both
+    together, they read as a pair.
+- 2026-09-11 — Second review pass (no new slices):
+  - **`npm run shots`** (`apps/web/scripts/shots.mjs`) regenerates the whole
+    marketplace suite — grid, both modal tabs, booking rail (bundle), error
+    state — wiping `.screenshots/` first so every mtime is from that run. Run it
+    to finish any UI task; don't hand-pick or reuse stale shots. The error shot
+    aborts the API origin so the shell renders with the error panel.
+  - **The card badge is "N% sector fit", not "ICP fit".** It scores
+    `creator.vertical === campaign.targetVertical` — the creator's own sector
+    match, nothing about their audience. The wire field is `sectorFitPct`
+    (was `icpFitPct`) across `@naano/shared`, the API, and the web. Scoring in
+    `audience-fit.ts` is unchanged. The marketplace subtitle already said
+    "sector fit leads".
+  - **LinkedIn only.** Seed no longer produces X creators or X posts (0 of
+    each). `NetworkBadge` and the `Network` enum's `X` value stay for the
+    schema; the seed just never emits them.
+  - **44 distinct surnames**, indexed directly (no `% LAST_NAMES.length`
+    wraparound), so all 40 creators have a unique surname. Avatar gender is
+    still keyed on the first name (`FEMININE_NAMES`), untouched.
+- 2026-09-11 — Screenshot-review fixes (no new slices):
+  - **Avatars are photos.** Seed sets `avatarUrl` on every creator —
+    `randomuser.me/api/portraits/{gender}/{n}.jpg`, portrait number stepped by a
+    value coprime with 100 (40 distinct), gender from `FEMININE_NAMES`. New
+    `components/ui/Avatar.tsx` renders it in the card, modal header, and the
+    recent-post card, with the initials block as the **fallback** (image load
+    failure), not the default. Fixtures got 6 URLs too.
+  - **One modal only.** `CreatorProfileModal` is the sole modal component
+    (tabbed shell + rail); no separate old component exists — the earlier
+    single-column "Pricing / Latest post" layout was the same file before
+    1b43ef2, replaced in place. Nothing reaches an old layout.
+  - **Marketplace loading/error states** are framed panels in the shell now, not
+    bare text: error is "The marketplace didn't load" + a **Try again** button
+    (bumps a `reloadKey` + re-hydrates the shortlist). `/app` index is the only
+    route; there is no `/app/creators`.
+  - **BookingRail pricing is provably consistent.** `Disclosure` is now
+    controlled (`useState` + `onToggle`) so a price-radio re-render can't snap
+    it shut. The rail shows a "Selected €X (N post[s])" row, and the bundle
+    formula spells out the ÷5 step, so radio + selected price + estimated CPM +
+    formula always reconcile.
 - 2026-09-11 — Shortlist moved to the API (campaign-scoped) + modal slices
   2.9(partial)/2.10/2.11. For the next session:
   - **Shortlist is server state now.** `ShortlistItem` model, `GET /campaigns/active`

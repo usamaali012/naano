@@ -1,8 +1,8 @@
 // Shapes for the paginated list envelope every list endpoint returns, plus the
 // per-endpoint request/response contracts shared by the API and the web client.
 
-import type { AudienceSegment, CreatorPost, CreatorProfile } from "./entities";
-import type { CampaignStatus, Vertical } from "./enums";
+import type { AudienceSegment, Booking, CreatorPost, CreatorProfile } from "./entities";
+import type { BookingStatus, CampaignStatus, Role, Vertical } from "./enums";
 
 export interface Paginated<T> {
   items: T[];
@@ -14,6 +14,24 @@ export interface Paginated<T> {
 export interface PageParams {
   page?: number;
   pageSize?: number;
+}
+
+// --- Auth ------------------------------------------------------------------
+
+/** POST /auth/login response. */
+export interface LoginResponse {
+  accessToken: string;
+}
+
+/** GET /auth/me — the signed-in user and which side they belong to. */
+export interface AuthMe {
+  userId: string;
+  email: string;
+  role: Role;
+  companyId: string | null;
+  creatorProfileId: string | null;
+  /** Company name or creator display name, for the app chrome. */
+  displayName: string | null;
 }
 
 // --- Creators -------------------------------------------------------------
@@ -34,10 +52,10 @@ export type CreatorSort =
  * regardless of `maxCpmEur`.
  *
  * `q` is a free-text match over name and headline. `campaignId` names the
- * campaign the list is ranked for: it fills in `icpFitPct` on every row and
+ * campaign the list is ranked for: it fills in `sectorFitPct` on every row and
  * feeds sector fit into `best_match`. Omitted, the API ranks against the most
  * recent live campaign ("Ranked for your company", RECON §4); when no campaign
- * exists at all, `icpFitPct` is null and `best_match` is performance-only.
+ * exists at all, `sectorFitPct` is null and `best_match` is performance-only.
  */
 export interface ListCreatorsParams extends PageParams {
   vertical?: Vertical[];
@@ -56,12 +74,14 @@ export interface ListCreatorsParams extends PageParams {
 }
 
 /**
- * A creator row as the marketplace grid renders it: the profile plus its ICP
- * fit against the ranking campaign. `icpFitPct` is 0..100, or null when no
- * campaign is in context. Never stored — computed per request.
+ * A creator row as the marketplace grid renders it: the profile plus its
+ * sector fit against the ranking campaign — how well the creator's own vertical
+ * matches the campaign's target, not anything about their audience.
+ * `sectorFitPct` is 0..100, or null when no campaign is in context. Never
+ * stored — computed per request.
  */
 export interface MarketplaceCreator extends CreatorProfile {
-  icpFitPct: number | null;
+  sectorFitPct: number | null;
 }
 
 /** GET /creators/:id — the profile plus everything the creator modal renders. */
@@ -87,4 +107,31 @@ export interface CampaignSummary {
 /** Body of POST /campaigns/:campaignId/shortlist. */
 export interface AddToShortlistBody {
   creatorProfileId: string;
+}
+
+// --- Bookings ----------------------------------------------------------------
+
+/** The two rail options; the server, not the client, converts this to cents. */
+export type BookingPackage = "single" | "bundle";
+
+/**
+ * Body of POST /bookings. `agreedPriceCents` is deliberately not accepted from
+ * the client — the server derives it from the creator's own postCostCents /
+ * bundle5PriceCents so the price can't be tampered with in transit.
+ */
+export interface CreateBookingBody {
+  creatorProfileId: string;
+  package: BookingPackage;
+  deliverable: string;
+}
+
+/** Body of PATCH /bookings/:id/status. Only these two transitions exist yet. */
+export interface UpdateBookingStatusBody {
+  status: Extract<BookingStatus, "ACCEPTED" | "DECLINED">;
+}
+
+/** GET /bookings/received — a booking plus who it is from, for the creator. */
+export interface BookingReceived extends Booking {
+  campaignName: string;
+  companyName: string;
 }

@@ -1,10 +1,12 @@
 import type { MarketplaceCreator } from "@naano/shared";
+import type { CreatorBookingInfo } from "../../lib/stores/bookingsStore";
 import { CreatorCard } from "./CreatorCard";
 
 interface CreatorGridProps {
   creators: MarketplaceCreator[];
   selectedIds: Set<string>;
   shortlistIds: Set<string>;
+  bookingById: Record<string, CreatorBookingInfo>;
   onToggleSelect: (id: string) => void;
   onToggleShortlist: (id: string) => void;
   onOpen: (id: string) => void;
@@ -15,6 +17,7 @@ export function CreatorGrid({
   creators,
   selectedIds,
   shortlistIds,
+  bookingById,
   onToggleSelect,
   onToggleShortlist,
   onOpen,
@@ -30,6 +33,7 @@ export function CreatorGrid({
           shortlisted={shortlistIds.has(creator.id)}
           onToggleShortlist={onToggleShortlist}
           onOpen={onOpen}
+          booking={bookingById[creator.id]}
         />
       ))}
     </div>
