@@ -387,6 +387,38 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
   worked (row moved to Accepted). Re-running the same check against an
   already-booked creator correctly still resolves to them (most recent, not
   first match), confirming this works repeatedly, not just once.
+- 2026-09-11 — Seeded campaign `destinationUrl`s changed from
+  `ledgerly.example.com`/`vertice-analytics.example.com` subdomains (neither
+  resolves — confirmed by hand, both DNS-fail) to `example.com` itself
+  (confirmed resolving: 200 on `/`, and a real "Example Domain" page, not a
+  browser error, on any `/lp/...` sub-path even though it 404s). Clicking a
+  tracked link previously hit a browser connection error instead of a landing
+  page — tracking still fired (the `ClickEvent` is written before the 302),
+  but it read as broken. Tracking code (`tracking.service.ts`,
+  `bookings.service.ts`'s accept-time mint) is unchanged, per the ask.
+  **This alone does not fix already-seeded data.** `seed.ts` only runs once,
+  by hand, against an empty database (Session B) — it is not rerun on
+  deploy, so a production database that was already seeded keeps the old
+  broken `Campaign.destinationUrl` values regardless of this code change.
+  Worse, `TrackedLink.destinationUrl` is copied from the campaign once at
+  accept time (`bookings.service.ts`) and never read live afterward, so even
+  a from-scratch reseed of `Campaign` wouldn't retroactively fix
+  `TrackedLink` rows that already exist — and reseeding isn't an option
+  anyway: `seed.ts` has no cleanup step (no `deleteMany`), so rerunning it
+  against a database that already has this data 500s on the first duplicate
+  email; the only remote-safe path per CLAUDE.md is forward-only, no reset.
+  Added `apps/api/prisma/fix-destination-urls.ts`: a one-off, idempotent
+  `updateMany` per exact old→new URL pair, run once against both `Campaign`
+  and `TrackedLink`. Verified locally: fixed 4 campaigns + 107 existing
+  tracked links, a second run matched 0 rows, and `GET /r/<slug>` for a
+  previously-broken link now 302s to a URL that actually resolves. **A
+  production reseed is not needed and would not be safe or sufficient
+  anyway** — what production needs instead is this one-off script, run once
+  by hand the same way `prisma:seed`/`prisma:migrate` are (`railway run`,
+  which injects `DATABASE_URL` into the subprocess without it ever being
+  typed or committed): from `apps/api`, `railway run npx ts-node
+  prisma/fix-destination-urls.ts`. Not run against production from here —
+  the user runs it.
 
 ## Session B
 

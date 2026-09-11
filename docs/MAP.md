@@ -46,7 +46,19 @@ apps/
                            ShortlistItem rows. LinkedIn only — no X creators or
                            posts. Post cost = cpm * medianViews / 1000, no
                            clamp; nudged off round-25s and collisions
-                           (usedPostCosts) so all 40 are distinct.
+                           (usedPostCosts) so all 40 are distinct. Campaign
+                           destinationUrls are example.com paths (resolves) —
+                           not example.com subdomains (don't resolve).
+      fix-destination-urls.ts  One-off, idempotent data fix (not run by
+                           deploy or by seed.ts) for a database that was
+                           already seeded before the example.com fix above:
+                           updates Campaign + TrackedLink destinationUrl by
+                           exact old->new URL pair. Run once by hand via
+                           `railway run`, same pattern as prisma:seed — see
+                           docs/DECISIONS.md for the exact command and why a
+                           reseed can't do this (TrackedLink snapshots its
+                           URL at accept time and seed.ts has no cleanup step,
+                           so it isn't safe to rerun against existing data).
     src/
       main.ts
       app.module.ts
