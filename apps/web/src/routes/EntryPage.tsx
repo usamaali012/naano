@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuthStore } from "../lib/stores/authStore";
+import { Logo } from "../components/ui/Logo";
 
 // Seeded demo brand (apps/api/prisma/seed.ts): Ledgerly owns the live campaign
 // the marketplace ranks against. Same seed password for both sides.
@@ -38,9 +39,7 @@ export function EntryPage(): JSX.Element {
     <div className="grid min-h-screen bg-bg lg:grid-cols-[3fr_2fr]">
       <main className="flex flex-col justify-center gap-s8 px-s8 py-s12 sm:px-s12">
         <div className="flex items-center gap-s2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-control bg-primary text-card-title text-white">
-            n
-          </span>
+          <Logo className="h-8 w-8" />
           <span className="text-card-title text-text">naano</span>
         </div>
 
