@@ -10,7 +10,13 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
-import type { Booking, BookingSent, CreatorCollaboration, CreatorEarnings, Paginated } from "@naano/shared";
+import type {
+  Booking,
+  BrandCollaboration,
+  CreatorCollaboration,
+  CreatorEarnings,
+  Paginated,
+} from "@naano/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -20,6 +26,8 @@ import { BookingsService } from "./bookings.service";
 import { CreateBookingDto } from "./dto/create-booking.dto";
 import { UpdateBookingStatusDto } from "./dto/update-booking-status.dto";
 import { ListBookingsSentDto } from "./dto/list-bookings-sent.dto";
+import { SubmitDraftDto } from "./dto/submit-draft.dto";
+import { MarkPublishedDto } from "./dto/mark-published.dto";
 
 @Controller("bookings")
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -55,7 +63,7 @@ export class BookingsController {
   listSent(
     @Req() req: Request,
     @Query() query: ListBookingsSentDto,
-  ): Promise<Paginated<BookingSent>> {
+  ): Promise<Paginated<BrandCollaboration>> {
     const { sub } = req.user as JwtPayload;
     return this.bookings.listSent(
       sub,
@@ -75,5 +83,48 @@ export class BookingsController {
   ): Promise<Booking> {
     const { sub } = req.user as JwtPayload;
     return this.bookings.updateStatus(sub, id, dto.status);
+  }
+
+  @Post(":id/draft")
+  @Roles("CREATOR")
+  submitDraft(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() dto: SubmitDraftDto,
+  ): Promise<CreatorCollaboration> {
+    const { sub } = req.user as JwtPayload;
+    return this.bookings.submitDraft(sub, id, dto.content);
+  }
+
+  @Post(":id/publish")
+  @Roles("CREATOR")
+  publish(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() dto: MarkPublishedDto,
+  ): Promise<CreatorCollaboration> {
+    const { sub } = req.user as JwtPayload;
+    return this.bookings.publish(sub, id, dto.postUrl);
+  }
+
+  @Post(":id/approve")
+  @Roles("COMPANY")
+  approve(@Req() req: Request, @Param("id") id: string): Promise<BrandCollaboration> {
+    const { sub } = req.user as JwtPayload;
+    return this.bookings.approve(sub, id);
+  }
+
+  @Post(":id/request-changes")
+  @Roles("COMPANY")
+  requestChanges(@Req() req: Request, @Param("id") id: string): Promise<BrandCollaboration> {
+    const { sub } = req.user as JwtPayload;
+    return this.bookings.requestChanges(sub, id);
+  }
+
+  @Post(":id/mark-paid")
+  @Roles("COMPANY")
+  markPaid(@Req() req: Request, @Param("id") id: string): Promise<BrandCollaboration> {
+    const { sub } = req.user as JwtPayload;
+    return this.bookings.markPaid(sub, id);
   }
 }

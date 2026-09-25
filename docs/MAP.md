@@ -59,6 +59,21 @@ apps/
                            reseed can't do this (TrackedLink snapshots its
                            URL at accept time and seed.ts has no cleanup step,
                            so it isn't safe to rerun against existing data).
+      demo-actions.ts     Demo-data top-up for A1's five new lifecycle
+                           statuses (dry-run by default, --apply, refuses
+                           localhost without --local — same shape as
+                           free-creators.ts). Idempotently guarantees the
+                           demo creator has a booking in each of INVITED/
+                           ACCEPTED/SCHEDULED and the demo brand (Ledgerly)
+                           has one, any creator, in each of DRAFT_READY/LIVE
+                           — creating fresh bookings in free campaigns where
+                           possible, converting an existing non-declined
+                           booking in place only when none are free.
+                           ensureChildRows keeps every row internally
+                           consistent with its status (TrackedLink from
+                           ACCEPTED on, Post from DRAFT_READY on,
+                           linkedinUrl/publishedAt from LIVE on, Payout at
+                           PAID) — see docs/DECISIONS.md for the local run.
     src/
       main.ts
       app.module.ts
@@ -132,45 +147,68 @@ apps/
                            from ACCEPTED..LIVE, six-month zero-filled
                            `monthly` keyed on Payout.paidAt (falls back to
                            Booking.createdAt, Booking has no updatedAt).
-                           next-action.ts (new, pure, no Prisma):
-                           nextActionForStatus(status) — INVITED->respond,
-                           ACCEPTED->publish, DRAFT_READY/SCHEDULED->
-                           await_brand, LIVE/PAID/DECLINED->none. money.ts
-                           (new): netCents(agreedPriceCents), the one
-                           COMMISSION_PCT computation both /received and
-                           /earnings call, so the two can't drift. GET
+                           next-action.ts: nextActionFor(status, viewer,
+                           hasDraft) — pure, no Prisma, both roles' full
+                           lifecycle copy (respond/submit_draft/publish/
+                           review_draft/mark_paid/await_brand/await_creator/
+                           none); `hasDraft` (a Post already exists) tells a
+                           first ACCEPTED submission from a resubmit after
+                           request-changes apart. transitions.ts (new): a
+                           pure action->{role,from,to} table for the five
+                           lifecycle actions below (accept/decline predate
+                           this and stay as literals in updateStatus);
+                           wrongStateMessage(action, current) builds the 409
+                           sentence from it. money.ts: netCents
+                           (agreedPriceCents), the one COMMISSION_PCT
+                           computation both /received and /earnings call, so
+                           the two can't drift. Five lifecycle endpoints, all
+                           404-on-not-owned (never 403) same as updateStatus,
+                           409 via transitions.ts on the wrong status: POST
+                           /bookings/:id/draft (CREATOR, ACCEPTED->
+                           DRAFT_READY, upserts Post.content — a resubmit
+                           overwrites), /publish (CREATOR, SCHEDULED->LIVE,
+                           sets Post.linkedinUrl/publishedAt, postUrl
+                           validated by MarkPublishedDto's IsPostUrlConstraint
+                           — https + linkedin.com/www.linkedin.com/x.com/
+                           twitter.com only), /approve (COMPANY,
+                           DRAFT_READY->SCHEDULED), /request-changes
+                           (COMPANY, DRAFT_READY->ACCEPTED), /mark-paid
+                           (COMPANY, LIVE->PAID, upserts Payout with
+                           amountCents: agreedPriceCents — matches how
+                           seed.ts writes it, checked not assumed). GET
                            /bookings/sent (COMPANY, own company, optional
-                           ?campaignId and
-                           ?status — 4.2's Collaborations table; @IsIn-
-                           validated against BookingStatus) returns
-                           BookingSent rows (creatorDisplayName, campaignName,
-                           package), not bare Booking. PATCH
-                           /bookings/:id/status (CREATOR,
+                           ?campaignId and ?status — 4.2's Collaborations
+                           table; @IsIn-validated against BookingStatus) now
+                           returns Paginated<BrandCollaboration> — BookingSent
+                           plus nextAction (viewer "COMPANY") and the
+                           creator's draftContent/postUrl, the brand-side
+                           mirror of listReceived's CreatorCollaboration.
+                           PATCH /bookings/:id/status (CREATOR,
                            INVITED->ACCEPTED|DECLINED — accepting mints the
                            booking's TrackedLink in the same $transaction,
                            destinationUrl from the campaign, never the
-                           client). First feature endpoints behind
-                           JwtAuthGuard+RolesGuard+@Roles; ownership resolved
-                           server-side from the JWT subject, never from a
-                           client-supplied id. Every booking read selects
-                           trackedLink: { slug, _count: { clickEvents } }
-                           (TRACKED_LINK_SELECT) so the wire Booking always
-                           carries trackedLinkSlug/clickCount (null until a
-                           link exists). mappers.ts: toBooking/
-                           toBookingReceived/toBookingSent/
-                           toCreatorCollaboration (wraps toBookingReceived +
-                           next-action.ts + money.ts) — toBookingSent derives
-                           `package` (not a stored column) by comparing
-                           agreedPriceCents to the creator's own
-                           bundle5PriceCents; see docs/DECISIONS.md for why
-                           that's sound and why `deliverable` free text isn't
-                           used instead. dev-bookings.controller.ts adds
-                           a dev-only POST /dev/bookings/ensure-invited
-                           (NonProductionGuard) that guarantees a creator has
-                           one INVITED booking, for the screenshot suite —
-                           see docs/PLAN.md's 2026-09-11 Discovered entry for
-                           why it exists (seed can leave a creator with no
-                           campaign left to be freshly invited into).
+                           client) is unchanged by A1, per the ask. All nine
+                           routes behind JwtAuthGuard+RolesGuard+@Roles;
+                           ownership resolved server-side from the JWT
+                           subject, never from a client-supplied id. Every
+                           booking read selects trackedLink: { slug, _count:
+                           { clickEvents } } (TRACKED_LINK_SELECT) so the
+                           wire Booking always carries trackedLinkSlug/
+                           clickCount (null until a link exists). mappers.ts:
+                           toBooking/toBookingReceived/toBookingSent/
+                           toCreatorCollaboration/toBrandCollaboration (new) —
+                           toBookingSent derives `package` (not a stored
+                           column) by comparing agreedPriceCents to the
+                           creator's own bundle5PriceCents; see
+                           docs/DECISIONS.md for why that's sound and why
+                           `deliverable` free text isn't used instead.
+                           dev-bookings.controller.ts adds a dev-only POST
+                           /dev/bookings/ensure-invited (NonProductionGuard)
+                           that guarantees a creator has one INVITED booking,
+                           for the screenshot suite — see docs/PLAN.md's
+                           2026-09-11 Discovered entry for why it exists
+                           (seed can leave a creator with no campaign left to
+                           be freshly invited into).
       tracking/           GET /r/:slug -> record ClickEvent -> 302. The spine.
                            Fully working, verified end to end. slug.ts:
                            generateTrackedLinkSlug() (9 random bytes,

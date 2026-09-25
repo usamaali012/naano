@@ -1050,3 +1050,102 @@ needs to not lose an hour to.
   before either session starts on its own routes/components, specifically so
   both sessions build against one agreed file instead of two people editing
   it at once.
+- 2026-09-26 — A1, the booking lifecycle on both sides. `apps/api/**` only —
+  `apps/web` and `packages/shared` untouched (the contract from the entry
+  above was already correct for this slice, confirmed while building against
+  it, nothing to flag). Five new endpoints, all under `bookings/`:
+  - **`next-action.ts` rewritten**: `nextActionForStatus(status)` →
+    `nextActionFor(status, viewer, hasDraft)`, still pure. `hasDraft`
+    distinguishes a first ACCEPTED submission from a resubmit after
+    request-changes (both are the same status, different copy) —
+    `mappers.ts` passes `row.post !== null` for it, since a Post only exists
+    once a draft has been submitted at least once.
+  - **New `transitions.ts`**: a pure `action -> {role, from, to}` table for
+    the five new actions (draft, approve, requestChanges, publish, markPaid
+    — accept/decline predate this round and stay as literals in
+    `updateStatus`, unchanged, per the ask). `wrongStateMessage(action,
+    current)` builds the 409 sentence from it (`STATUS_LABEL` +
+    `ACTION_VERB` tables) — one place instead of five inline template
+    strings, and it's what makes `"This booking is live, so it can't be
+    approved."` (the exact example asked for) fall out for free rather than
+    being hand-written.
+  - **Ownership is 404, never 403**, matching the existing `updateStatus`
+    pattern: `bookingOwnedByCreator`/`bookingOwnedByCompany` (new private
+    helpers) resolve the booking and check `creatorProfileId`/
+    `campaign.companyId` against the JWT subject's own profile, 404 on any
+    mismatch so a caller can't distinguish "not yours" from "doesn't exist."
+    Wrong role is 403 via the existing `@Roles` guard, wrong state is 409
+    via `assertTransition`.
+  - **`submitDraft` upserts `Post.content`** — a resubmission after
+    request-changes overwrites it, no version history, matching the ask.
+    `publish` requires the Post row to already exist (it does, by the time a
+    booking reaches SCHEDULED) and sets `linkedinUrl`/`publishedAt`; the URL
+    itself is validated by `MarkPublishedDto`'s custom `IsPostUrlConstraint`
+    (https + host in `{linkedin.com, www.linkedin.com, x.com, twitter.com}`,
+    parsed via `new URL()` rather than a regex) before the service ever sees
+    it. `markPaid` upserts `Payout` with `amountCents: agreedPriceCents` —
+    checked against `seed.ts` before relying on it (`prisma.payout.create`
+    there writes `amountCents: negotiated`, the full agreed price, never a
+    net figure — commission is a render-time-only concept, per
+    `money.ts`/`COMMISSION_PCT`'s own doc comment). Confirmed by reading, not
+    assumed.
+  - **`GET /bookings/sent` widened** from `Paginated<BookingSent>` to
+    `Paginated<BrandCollaboration>` (`toBrandCollaboration`, new in
+    `mappers.ts`, wraps `toBookingSent` + `nextActionFor(status, "COMPANY",
+    hasDraft)` + `draftContent`/`postUrl`) — existing filters
+    (`campaignId`, `status`) and pagination untouched, just the row shape
+    grew, matching `listReceived`'s existing `BookingReceived` →
+    `CreatorCollaboration` widen pattern from the creator-side session.
+  - **New `prisma/demo-actions.ts`** (dry-run by default, `--apply`,
+    refuses localhost without `--local`, same shape as `free-creators.ts`).
+    Tops up, idempotently: the demo creator (`GET /auth/demo-creator`'s own
+    resolution, re-implemented here since the script has no HTTP access)
+    gets >= 1 booking in each of INVITED/ACCEPTED/SCHEDULED; the demo brand
+    (Ledgerly) gets >= 1 booking, any creator, in each of DRAFT_READY/LIVE.
+    Prefers creating a fresh booking in a campaign the target has no
+    non-declined booking in yet (a declined-only campaign counts as free,
+    same rule `POST /bookings` already enforces); falls back to converting
+    an existing non-declined, non-PAID booking in place only when every
+    campaign is already taken. `ensureChildRows` upserts exactly the child
+    rows each status implies (TrackedLink from ACCEPTED on, Post from
+    DRAFT_READY on, `linkedinUrl`/`publishedAt` from LIVE on, Payout at
+    PAID) so a converted row reads as if a real reviewer had walked the
+    whole loop by hand. Run locally with `--local --apply`: the demo creator
+    (Adam Bauer) was missing ACCEPTED and SCHEDULED (had INVITED already, and
+    the brand side already had DRAFT_READY/LIVE rows from the regular seed's
+    random status assignment) — planned and applied 2 new bookings, 0
+    conversions; a second `--apply` run immediately after reported "Nothing
+    to do," confirming idempotency.
+  - **Verified against the running local API (`localhost:3000`), real
+    tokens from `POST /auth/login`, logged below.** Full happy path on one
+    fresh booking (brand → Ruby Holm, created via `POST /bookings` since the
+    demo creator's own campaigns were already full from the demo-data
+    top-up above):
+    ```
+    PATCH  /bookings/:id/status   {status: ACCEPTED}      200  status: ACCEPTED, trackedLinkSlug minted
+    POST   /bookings/:id/draft    {content: "..."}        201  status: DRAFT_READY, draftContent set, nextAction.kind=await_brand (creator view)
+    POST   /bookings/:id/request-changes                  201  status: ACCEPTED, nextAction.label="Waiting for the creator's revised draft." (hasDraft=true)
+    POST   /bookings/:id/draft    {content: "Revised..."} 201  status: DRAFT_READY, draftContent overwritten (old content gone)
+    POST   /bookings/:id/approve                          201  status: SCHEDULED, nextAction.kind=await_creator (brand view)
+    POST   /bookings/:id/publish  {postUrl: linkedin.com}  201  status: LIVE, postUrl set, publishedAt set
+    POST   /bookings/:id/mark-paid                        201  status: PAID, nextAction.kind=none (both views)
+    ```
+    `GET /bookings/earnings` before/after `mark-paid` on a second booking
+    (brand → Zoe Fontaine, walked to LIVE the same way): before —
+    `totalEarnedCents: 26366, inTransitCents: 52126`; after —
+    `totalEarnedCents: 52686, inTransitCents: 25806`. Delta on both sides is
+    exactly `netCents(32900) = 26320` (32900 minus rounded 20%) — total up
+    by it, in-transit down by it, to the cent. Error cases, all on a third
+    booking (brand → Elin Halvorsen) walked to LIVE:
+    `POST .../approve` as the brand → **409** `"This booking is live, so it
+    can't be approved."`; the same call as the creator → **403**
+    `"Forbidden resource"`; `POST .../draft` on Elin's booking authenticated
+    as a different creator (Zoe) → **404** `"No booking \"...\""`;
+    `POST .../publish` with `postUrl: "https://example.com/not-linkedin"` →
+    **400** `["postUrl must be an https link on linkedin.com, x.com or
+    twitter.com"]`. `GET /bookings/sent` and `/bookings/received` both
+    confirmed to carry the new `nextAction` per row (spot-checked LIVE/PAID/
+    ACCEPTED/DECLINED rows on the sent side, LIVE/PAID on the received side
+    — labels and `kind`s matched the table above in every case).
+  - `npx tsc -b --force` on `apps/api` (which also touches `packages/shared`
+    types transitively) — clean, no errors.
