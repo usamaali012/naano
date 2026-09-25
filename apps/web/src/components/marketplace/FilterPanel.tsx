@@ -142,6 +142,7 @@ export function FilterPanel({
           placeholder="%"
           value={minEngagementPct}
           onChange={onMinEngagementChange}
+          max={100}
         />
 
         <label className="flex flex-col gap-s1">
@@ -414,24 +415,44 @@ function PriceRangeFilter({
 }): JSX.Element {
   const [minInput, setMinInput] = useState(minCents !== undefined ? String(minCents / 100) : "");
   const [maxInput, setMaxInput] = useState(maxCents !== undefined ? String(maxCents / 100) : "");
+  // Negative or inverted (min > max) input is kept on screen but never sent —
+  // the committed filter (minCents/maxCents) stays at its last valid value.
+  const [minInvalid, setMinInvalid] = useState(false);
+  const [maxInvalid, setMaxInvalid] = useState(false);
+  const [inverted, setInverted] = useState(false);
 
   useEffect(() => {
     setMinInput(minCents !== undefined ? String(minCents / 100) : "");
+    setMinInvalid(false);
   }, [minCents]);
   useEffect(() => {
     setMaxInput(maxCents !== undefined ? String(maxCents / 100) : "");
+    setMaxInvalid(false);
   }, [maxCents]);
 
   // Debounce so typing a price doesn't fire a request per keystroke. The UI
   // works in whole EUR; the wire format is integer cents.
   useEffect(() => {
     const handle = setTimeout(() => {
-      const nextMinEur = minInput.trim() === "" ? undefined : Number(minInput);
-      const nextMaxEur = maxInput.trim() === "" ? undefined : Number(maxInput);
-      const nextMinCents =
-        nextMinEur !== undefined && !Number.isNaN(nextMinEur) ? Math.round(nextMinEur * 100) : undefined;
-      const nextMaxCents =
-        nextMaxEur !== undefined && !Number.isNaN(nextMaxEur) ? Math.round(nextMaxEur * 100) : undefined;
+      const minEur = minInput.trim() === "" ? undefined : Number(minInput);
+      const maxEur = maxInput.trim() === "" ? undefined : Number(maxInput);
+      const minBad = minEur !== undefined && (Number.isNaN(minEur) || minEur < 0);
+      const maxBad = maxEur !== undefined && (Number.isNaN(maxEur) || maxEur < 0);
+      setMinInvalid(minBad);
+      setMaxInvalid(maxBad);
+      if (minBad || maxBad) {
+        setInverted(false);
+        return;
+      }
+
+      const nextMinCents = minEur !== undefined ? Math.round(minEur * 100) : undefined;
+      const nextMaxCents = maxEur !== undefined ? Math.round(maxEur * 100) : undefined;
+      if (nextMinCents !== undefined && nextMaxCents !== undefined && nextMinCents > nextMaxCents) {
+        setInverted(true);
+        return;
+      }
+      setInverted(false);
+
       if (nextMinCents === minCents && nextMaxCents === maxCents) return;
       onChange(nextMinCents, nextMaxCents);
     }, 250);
@@ -451,6 +472,7 @@ function PriceRangeFilter({
           value={minInput}
           onChange={(event) => setMinInput(event.target.value)}
           className="w-24"
+          invalid={minInvalid || inverted}
         />
         <span className="text-body text-text-muted">–</span>
         <Input
@@ -461,8 +483,10 @@ function PriceRangeFilter({
           value={maxInput}
           onChange={(event) => setMaxInput(event.target.value)}
           className="w-24"
+          invalid={maxInvalid || inverted}
         />
       </div>
+      {inverted && <p className="text-label text-warn">Min price is above max price.</p>}
     </div>
   );
 }
@@ -472,25 +496,39 @@ function DebouncedNumberFilter({
   placeholder,
   value,
   onChange,
+  max,
 }: {
   label: string;
   placeholder: string;
   value: number | undefined;
   onChange: (value: number | undefined) => void;
+  /** Upper bound, e.g. 100 for a percentage. Undefined means no ceiling. */
+  max?: number;
 }): JSX.Element {
   const [input, setInput] = useState(value?.toString() ?? "");
+  // A negative or over-the-ceiling value is kept on screen but never sent —
+  // the committed filter (`value`) stays at its last valid setting.
+  const [invalid, setInvalid] = useState(false);
 
   useEffect(() => {
     setInput(value?.toString() ?? "");
+    setInvalid(false);
   }, [value]);
 
   // Debounce so typing a number doesn't fire a request per keystroke.
   useEffect(() => {
     const handle = setTimeout(() => {
-      const next = input.trim() === "" ? undefined : Number(input);
-      const resolved = next !== undefined && !Number.isNaN(next) ? next : undefined;
-      if (resolved === value) return;
-      onChange(resolved);
+      if (input.trim() === "") {
+        setInvalid(false);
+        if (value !== undefined) onChange(undefined);
+        return;
+      }
+      const next = Number(input);
+      const bad = Number.isNaN(next) || next < 0 || (max !== undefined && next > max);
+      setInvalid(bad);
+      if (bad) return;
+      if (next === value) return;
+      onChange(next);
     }, 250);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -503,10 +541,12 @@ function DebouncedNumberFilter({
         type="number"
         inputMode="numeric"
         min={0}
+        max={max}
         placeholder={placeholder}
         value={input}
         onChange={(event) => setInput(event.target.value)}
         className="w-28"
+        invalid={invalid}
       />
     </label>
   );
