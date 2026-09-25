@@ -20,7 +20,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
     <div className="relative inline-block w-full">
       <select
         ref={ref}
-        className={`w-full appearance-none rounded-control border border-border bg-surface py-s2 pl-s3 pr-8 text-body text-text focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary ${className}`}
+        className={`w-full appearance-none rounded-control border border-border bg-surface py-s3 pl-s4 pr-8 text-body text-text transition-shadow focus:border-primary focus:outline-none focus:shadow-[0_0_0_3px_var(--primary-soft)] ${className}`}
         {...props}
       >
         {options.map((opt) => (

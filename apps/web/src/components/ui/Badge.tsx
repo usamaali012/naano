@@ -6,7 +6,7 @@ import type { HTMLAttributes } from "react";
 export function Badge({ className = "", ...props }: HTMLAttributes<HTMLSpanElement>): JSX.Element {
   return (
     <span
-      className={`inline-flex items-center rounded-control bg-primary-soft px-s2 py-s1 text-label text-primary ${className}`}
+      className={`inline-flex items-center rounded-control bg-primary-soft px-s3 py-s1 text-label font-medium text-primary ${className}`}
       {...props}
     />
   );

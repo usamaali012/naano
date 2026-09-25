@@ -11,9 +11,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 // Border does the work on secondary; hover shifts the border, never lifts or
 // scales. Radius is the single control value. See docs/DESIGN.md.
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-white hover:opacity-90",
-  secondary: "bg-surface text-text border border-border hover:border-primary",
-  ghost: "bg-transparent text-text-muted hover:text-text",
+  primary: "bg-primary text-white hover:bg-primary-hover active:bg-primary-active",
+  secondary:
+    "bg-surface text-text border border-border hover:border-primary hover:text-primary active:bg-primary-soft",
+  ghost: "bg-transparent text-text-muted hover:bg-primary-soft hover:text-primary",
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {

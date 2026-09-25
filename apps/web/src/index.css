@@ -18,6 +18,9 @@
   --text-muted: #7c7264;
   --primary: #7c2d3b;
   --primary-soft: #f4e3e2;
+  /* Derived interaction tints — one place, so no component mixes its own. */
+  --primary-hover: color-mix(in srgb, var(--primary) 88%, black);
+  --primary-active: color-mix(in srgb, var(--primary) 76%, black);
   --success: #16a34a;
   --warn: #d97706;
 
@@ -28,9 +31,12 @@
   /* Depth — used in exactly two places: the profile modal and dropdown menus */
   --shadow-overlay: 0 12px 32px -8px rgb(28 23 18 / 0.18), 0 4px 12px -4px rgb(28 23 18 / 0.1);
 
-  /* Type — IBM Plex Sans, not Inter (loaded in index.html). */
+  /* Type — IBM Plex Sans for body and controls, not Inter. Fraunces for
+     headings only (h1/h2, page/section titles) — see docs/DESIGN.md. Both
+     loaded in index.html. */
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
 }
 
 html {
@@ -44,4 +50,13 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Headings read as an editorial decision, not the sans-everywhere default —
+   only page and section titles take the serif; body, labels and controls
+   stay on the sans. Targets the Tailwind fontSize utilities directly so no
+   component needs a font-family class of its own. */
+.text-page-title,
+.text-section-title {
+  font-family: var(--font-serif);
 }

@@ -22,6 +22,8 @@ export default {
         primary: {
           DEFAULT: "var(--primary)",
           soft: "var(--primary-soft)",
+          hover: "var(--primary-hover)",
+          active: "var(--primary-active)",
         },
         success: "var(--success)",
         warn: "var(--warn)",
@@ -50,6 +52,7 @@ export default {
       },
       fontFamily: {
         sans: "var(--font-sans)",
+        serif: "var(--font-serif)",
       },
       fontSize: {
         label: ["12px", { lineHeight: "16px", fontWeight: "500" }],
