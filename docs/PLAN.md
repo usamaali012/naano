@@ -470,7 +470,17 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   Notes: see docs/DECISIONS.md's "Session: API, round 2" for the full
   verification log (happy path, brand sees the new price/CPM, an existing
   booking's `agreedPriceCents` untouched, 400/403 cases, reset to original).
-- [ ] **A2 Campaigns and budget**
+- [x] **A2 Campaigns and budget** — done 2026-09-26.
+  Scope: `GET /campaigns` (COMPANY, own campaigns only, `Paginated<CampaignOverview>`,
+  LIVE/DRAFT/COMPLETED then newest first, money via one `groupBy` over
+  bookings). `POST /bookings` accepts optional `campaignId` (404 if not
+  owned, 409 if COMPLETED, omitted unchanged). Confirmed `GET /creators?
+  campaignId=` and the shortlist routes already work for any campaign id.
+  Files: `apps/api/src/campaigns/{campaigns.service.ts,campaigns.controller.ts}`,
+  `apps/api/src/bookings/{bookings.service.ts,dto/create-booking.dto.ts}`.
+  Notes: see docs/DECISIONS.md's "Session: API, round 2" for the full
+  verification log, the committed-status set, and why `GET /campaigns/active`
+  being global was noted but not fixed.
 - [ ] **A5 Action count**
 
 ### 7-WEB
