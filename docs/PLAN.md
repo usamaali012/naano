@@ -430,6 +430,20 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-25 — The brief changed: 8x stopped wanting a naano clone and started
+  scoring our own product decisions. A "web" session is reworking
+  `apps/web/**` against that ask, outside this checklist's phase numbering —
+  see docs/DECISIONS.md's "Session: web (own-product redesign)" heading for
+  the running log. First landed: the token layer (2.1's palette/type replaced
+  wholesale) and the marketplace's card grid + profile modal, which are now
+  **deleted** (`CreatorGrid.tsx`, `CreatorCard.tsx`, `CreatorProfileModal.tsx`)
+  and replaced by a comparison list + persistent detail panel
+  (`CreatorComparisonList.tsx`, `CreatorDetailPanel.tsx`). The 2.1/2.4/2.7/
+  2.8/2.9 entries below are left as-written — they are an accurate record of
+  what shipped at the time — but their file references to the grid/card/modal
+  are stale as of this entry; docs/MAP.md's marketplace/ block is the current
+  source of truth, not these checklist lines. Creator Collaborations
+  (organised around Next action) and Earnings are next, not yet started.
 - 2026-09-25 — Creator-side bookings/earnings API session, scoped to
   `docs/RECON-CREATOR.md` + the pre-agreed "Creator side" contract in
   `packages/shared/src/api.ts` (types untouched — flagged nothing wrong with

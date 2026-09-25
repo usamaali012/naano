@@ -64,9 +64,13 @@ of figures that jitter between rows are the fastest way to look unfinished.
 - Fixed left icon rail, 72px, icons only, active item marked with
   `--primary-soft` background.
 - Content max-width 1440px, 32px page padding.
-- Creator grid: 3 columns at desktop, 2 at tablet, 1 at mobile.
-- Tables for collaborations, cards for creators. Do not use cards for tabular
-  data.
+- Marketplace: a comparison list (table, not cards) beside a persistent detail
+  panel, not a card grid plus a modal — updated 2026-09-25, see
+  docs/DECISIONS.md. Comparing creators is the brand's actual job on this
+  screen; a grid you open one card of at a time made that harder, not easier.
+- Tables for anything tabular (collaborations, the marketplace list). Cards
+  are for the persistent detail panel's own content, not for a list of
+  creators to compare.
 
 ## Anti-slop rules
 
