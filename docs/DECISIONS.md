@@ -691,6 +691,54 @@ not edited here) and `docs/RECON-CREATOR.md`.
   render on the new palette/font with no regressions, `--success`/`--warn`
   still read as distinct status colours next to the new primary.
 
+## Session — creator-side bookings/earnings API + search fix
+
+Scope: `docs/RECON-CREATOR.md` + the "Creator side" contract block in
+`packages/shared/src/api.ts` (pre-agreed with the web session, types
+untouched). `apps/api/**` only — no `apps/web` file opened, no schema/seed
+change.
+
+- 2026-09-25 — `NextAction` derivation (`bookings/next-action.ts`, pure, no
+  Prisma) and `netCents` (`bookings/money.ts`, one helper wrapping
+  `COMMISSION_PCT` from `@naano/shared`) landed as separate small files rather
+  than folded into `mappers.ts`, so `GET /bookings/earnings` can reuse
+  `netCents` without importing mapper internals. `consequence` is empty for
+  `await_brand` as well as `none` — it answers "what happens if the creator
+  does nothing," and for `DRAFT_READY`/`SCHEDULED` the next move is the
+  brand's, so the creator's inaction has no consequence to state.
+- 2026-09-25 — `GET /bookings/received` now returns `CreatorCollaboration`
+  (`toCreatorCollaboration` in `mappers.ts`, wraps `toBookingReceived` +
+  `nextActionForStatus` + `netCents`) instead of bare `BookingReceived` — an
+  in-place widen, not a new route, since `CreatorCollaboration extends
+  BookingReceived` in the shared contract.
+- 2026-09-25 — `GET /bookings/earnings` (new, creator-only, own profile via
+  the existing JWT-subject lookup pattern). `inTransitCents` sums
+  `ACCEPTED | DRAFT_READY | SCHEDULED | LIVE` — the literal "ACCEPTED through
+  LIVE" state-progression span, DECLINED excluded despite sitting between
+  ACCEPTED and DRAFT_READY in enum declaration order (it's terminal, not
+  in-flight). Monthly buckets key off `payout.paidAt`, falling back to
+  `booking.createdAt` only as a defensive default — `seed.ts` sets `paidAt`
+  for every PAID booking, so the fallback isn't expected to fire against real
+  data; `Booking` itself carries no better timestamp (no `updatedAt`). No
+  query params, no pagination — verified against the running API as a
+  creator with 3 PAID + 1 SCHEDULED booking: `netCents` on each row matches
+  `agreedPriceCents` minus rounded 20%, `averageCents` rounds
+  `totalEarnedCents / paidCollaborationsCount`, and all six monthly buckets
+  render zero-filled except the current month (seed's `paidAt` is always
+  within the last 6 days, so every PAID booking's earnings land in the
+  current-month bucket — a property of the seed, not a bug in the grouping).
+  403 for a COMPANY token, 401 with none.
+- 2026-09-25 — `GET /creators?q=` now also matches `vertical`
+  (`creators.service.ts`'s `verticalsMatching`): case-insensitive substring
+  against the enum value with `_` read as a space, so `q=fintech` and
+  `q=hr tech` both work without a separate label-mapping table (the web
+  app's `VERTICAL_LABELS` map wasn't reused — it lives in `apps/web`, out of
+  scope for this session, and the raw enum value alone is already readable).
+  Verified against the live seed: `q=fintech` was 1
+  result before this change (name/headline contains only), 5 after (of 40
+  total) — the 4 newly-included rows are exactly the FINTECH-vertical
+  creators whose name/headline never mention the word.
+
 ## Session B
 
 Deploy work on branch `deploy`, running on Railway. New files only

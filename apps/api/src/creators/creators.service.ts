@@ -47,6 +47,18 @@ function toAudienceSegment(row: PrismaAudienceSegment): AudienceSegment {
   };
 }
 
+/**
+ * Verticals whose enum value (read as words, `_` -> space) contains `query`,
+ * case-insensitive — so `q=fintech` also catches creators by vertical, not
+ * just displayName/headline.
+ */
+function verticalsMatching(query: string): Vertical[] {
+  const needle = query.toLowerCase();
+  return Object.values(Vertical).filter((v) =>
+    v.toLowerCase().replace(/_/g, " ").includes(needle),
+  );
+}
+
 function toCreatorPost(row: PrismaCreatorPost): CreatorPost {
   return {
     id: row.id,
@@ -86,6 +98,7 @@ export class CreatorsService {
     const sort: CreatorSort = params.sort ?? "best_match";
 
     const q = params.q?.trim();
+    const qVerticals = q ? verticalsMatching(q) : [];
     const where: Prisma.CreatorProfileWhereInput = {
       vertical: params.vertical?.length
         ? { in: params.vertical as Vertical[] }
@@ -95,6 +108,7 @@ export class CreatorsService {
         ? [
             { displayName: { contains: q, mode: "insensitive" } },
             { headline: { contains: q, mode: "insensitive" } },
+            ...(qVerticals.length ? [{ vertical: { in: qVerticals } }] : []),
           ]
         : undefined,
       postCostCents: range(params.priceMinCents, params.priceMaxCents),

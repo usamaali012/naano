@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
-import type { Booking, BookingReceived, BookingSent, Paginated } from "@naano/shared";
+import type { Booking, BookingSent, CreatorCollaboration, CreatorEarnings, Paginated } from "@naano/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -38,9 +38,16 @@ export class BookingsController {
   listReceived(
     @Req() req: Request,
     @Query() query: PaginationQueryDto,
-  ): Promise<Paginated<BookingReceived>> {
+  ): Promise<Paginated<CreatorCollaboration>> {
     const { sub } = req.user as JwtPayload;
     return this.bookings.listReceived(sub, query.page ?? 1, query.pageSize ?? 20);
+  }
+
+  @Get("earnings")
+  @Roles("CREATOR")
+  earnings(@Req() req: Request): Promise<CreatorEarnings> {
+    const { sub } = req.user as JwtPayload;
+    return this.bookings.earnings(sub);
   }
 
   @Get("sent")

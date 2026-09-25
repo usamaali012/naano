@@ -255,11 +255,18 @@ Where the UX score is won. The modal is the densest surface; build it properly.
 
 ## Phase 4 — creator side
 
-- [ ] **4.1 Bookings state machine + next-action**
+- [x] **4.1 Bookings state machine + next-action** — API done 2026-09-25.
   Scope: accept / decline transitions, `initiatedBy` respected, "Next action"
   derived from status + role.
   Files: `apps/api/src/bookings/bookings.service.ts`,
   `apps/api/src/bookings/next-action.ts`, `packages/shared/src/api.ts`.
+  Notes: accept/decline transitions already existed (2.13/4.3); this pass
+  added `next-action.ts` (pure `nextActionForStatus`) and widened
+  `GET /bookings/received` to return `CreatorCollaboration` (adds
+  `nextAction` + `netCents` per row). See docs/DECISIONS.md for the table and
+  the `consequence`-is-empty-for-`await_brand` reasoning. No web consumer
+  yet — `CreatorHomePage`'s bookings list still reads the old shape; wiring
+  the new fields into the UI is Session B's.
 
 - [x] **4.2 Collaborations table** — done 2026-09-11, in two passes (steps
   1–3, then step 4 once session B's merge landed — see the Discovered
@@ -320,10 +327,15 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   DECISIONS.md entry for the `dev/bookings/ensure-invited` addition it
   required.
 
-- [ ] **4.4 Earnings view**
+- [~] **4.4 Earnings view** — API done 2026-09-25, `EarningsPage.tsx` not
+  built (apps/web is Session B's).
   Scope: creator-side list of bookings with amounts and payout status.
   Files: `apps/web/src/routes/EarningsPage.tsx`,
   `apps/api/src/bookings/*`.
+  Done: `GET /bookings/earnings` (creator-only, own profile, no pagination)
+  returns `CreatorEarnings` — see docs/DECISIONS.md for the query shape and
+  the end-to-end verification against real seed data (3 PAID + 1 SCHEDULED
+  booking on one creator).
 
 ---
 
@@ -418,6 +430,22 @@ show it.
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-25 — Creator-side bookings/earnings API session, scoped to
+  `docs/RECON-CREATOR.md` + the pre-agreed "Creator side" contract in
+  `packages/shared/src/api.ts` (types untouched — flagged nothing wrong with
+  the shape). `apps/api/**` only, no `apps/web` file opened. Four pieces:
+  `next-action.ts` + `money.ts` (new, pure helpers), `GET /bookings/received`
+  widened to `CreatorCollaboration`, new `GET /bookings/earnings`, and the
+  `GET /creators?q=` vertical-matching fix (1 -> 5 of 40 for `q=fintech`, see
+  docs/DECISIONS.md for the exact table/query-shape/verification). Did not
+  touch the schema, did not reseed — used the already-running shared local
+  Postgres (had to restart Docker Desktop + wait out a WAL recovery first,
+  since the container wasn't up at session start; no data was reset or
+  altered, read/verification queries only). `packages/shared` and
+  `apps/api` both typecheck clean. Next for whoever builds the creator UI:
+  `CreatorHomePage`'s bookings list and a new `EarningsPage.tsx` are the two
+  places to wire these up — neither exists in the new shape yet, since that's
+  `apps/web`, out of scope here.
 - 2026-09-11 — Slice 5.4 (attribution by creator) done — see the PLAN entry
   above for the file list. One thing for the next session: this touched
   `fixtures.ts` (one additive `listAttribution` method), done last per this
