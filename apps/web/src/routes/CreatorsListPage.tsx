@@ -6,9 +6,9 @@ import { useShortlistStore } from "../lib/stores/shortlistStore";
 import { useBookingsStore } from "../lib/stores/bookingsStore";
 import { MarketplaceHeader } from "../components/marketplace/MarketplaceHeader";
 import { FilterPanel } from "../components/marketplace/FilterPanel";
-import { CreatorGrid } from "../components/marketplace/CreatorGrid";
+import { CreatorComparisonList } from "../components/marketplace/CreatorComparisonList";
 import { CreatorsPagination } from "../components/marketplace/CreatorsPagination";
-import { CreatorProfileModal } from "../components/marketplace/CreatorProfileModal";
+import { CreatorDetailPanel } from "../components/marketplace/CreatorDetailPanel";
 import { Button } from "../components/ui/Button";
 
 export function CreatorsListPage(): JSX.Element {
@@ -46,7 +46,12 @@ export function CreatorsListPage(): JSX.Element {
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [openCreatorId, setOpenCreatorId] = useState<string | null>(null);
+  // The creator currently filling the persistent detail panel. Falls back to
+  // the first row of whatever is on screen (see `activeCreatorId` below) so
+  // the panel is never empty while the list has results — moving down the
+  // list, paging, or changing a filter swaps the panel in place, with no
+  // open/close step for the brand to perform.
+  const [selectedCreatorId, setSelectedCreatorId] = useState<string | null>(null);
 
   useEffect(() => {
     void hydrateShortlist();
@@ -119,6 +124,13 @@ export function CreatorsListPage(): JSX.Element {
   const displayed = onShortlistTab
     ? creators.filter((creator) => shortlistSet.has(creator.id))
     : creators;
+
+  // Keep the explicit selection if it is still on screen; otherwise default
+  // to the top row so the panel always shows someone once the list has
+  // results, rather than sitting empty until the brand clicks a row.
+  const activeCreatorId = displayed.some((creator) => creator.id === selectedCreatorId)
+    ? selectedCreatorId
+    : (displayed[0]?.id ?? null);
 
   function toggleSelect(id: string): void {
     setSelectedIds((current) => {
@@ -226,35 +238,39 @@ export function CreatorsListPage(): JSX.Element {
               onBrowseAll={() => setTab("all")}
             />
           ) : (
-            <>
-              <CreatorGrid
-                creators={displayed}
-                selectedIds={selectedIds}
-                shortlistIds={shortlistSet}
-                bookingById={bookingById}
-                onToggleSelect={toggleSelect}
-                onToggleShortlist={toggleShortlist}
-                onOpen={setOpenCreatorId}
-              />
-              {!onShortlistTab && (
-                <CreatorsPagination
-                  page={page}
-                  pageSize={pageSize}
-                  total={allTotal}
-                  onPageChange={setPage}
+            <div className="flex flex-col gap-s6 lg:flex-row lg:items-start">
+              <div className="flex min-w-0 flex-1 flex-col gap-s4">
+                <CreatorComparisonList
+                  creators={displayed}
+                  selectedIds={selectedIds}
+                  shortlistIds={shortlistSet}
+                  bookingById={bookingById}
+                  activeId={activeCreatorId}
+                  onToggleSelect={toggleSelect}
+                  onToggleShortlist={toggleShortlist}
+                  onSelect={setSelectedCreatorId}
                 />
-              )}
-            </>
+                {!onShortlistTab && (
+                  <CreatorsPagination
+                    page={page}
+                    pageSize={pageSize}
+                    total={allTotal}
+                    onPageChange={setPage}
+                  />
+                )}
+              </div>
+
+              <div className="w-full shrink-0 lg:sticky lg:top-8 lg:w-[440px]">
+                <CreatorDetailPanel
+                  creatorId={activeCreatorId}
+                  shortlisted={activeCreatorId ? shortlistSet.has(activeCreatorId) : false}
+                  onToggleShortlist={toggleShortlist}
+                />
+              </div>
+            </div>
           )}
         </>
       )}
-
-      <CreatorProfileModal
-        creatorId={openCreatorId}
-        onClose={() => setOpenCreatorId(null)}
-        shortlisted={openCreatorId ? shortlistSet.has(openCreatorId) : false}
-        onToggleShortlist={toggleShortlist}
-      />
     </div>
   );
 }

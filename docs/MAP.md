@@ -303,8 +303,8 @@ apps/
         format.ts         Money/number/percent + verticalLabel helpers.
                            Render-boundary only; formatCpm uses @naano/shared.
         bookingStatus.ts  BookingStatus -> StatusPill tone/label, shared by
-                           CreatorCard, BookingRail's confirmation state, and
-                           CreatorHomePage's bookings list.
+                           CreatorComparisonList, BookingRail's confirmation
+                           state, and CreatorHomePage's bookings list.
         trackedLink.ts    trackedLinkUrl(slug) -> the public GET /r/:slug URL
                            (VITE_API_URL + /r/ + slug), for display and copy.
       routes/             ResultsPage (new, 5.4, brand-only at /app/results,
@@ -361,27 +361,40 @@ apps/
                            multi-select, country dropdown, follower min/max,
                            active-filter chips + Clear all. No price range or
                            performance filters yet (2.5 remainder / 2.6).
-                           CreatorCard (checkbox, network badge, sector-fit
-                           badge, booking StatusPill + "N clicks" once a
-                           booking exists for the active campaign and has a
-                           tracked link, star, Book, 4-metric strip, View
-                           profile). CreatorGrid (3/2/1 cols, threads
-                           bookingById — Record<id, CreatorBookingInfo> —
-                           through). CreatorsPagination (Prev/Next + range).
-                           CreatorProfileModal = two-column shell (tabbed
-                           content + persistent BookingRail aside), from
-                           GET /creators/:id. modal/ has OverviewTab (its post
-                           card is paged — "N of 5", prev/next, resets to
-                           post 1 per creator; 2.12 folded in here rather
-                           than a third tab, see DECISIONS.md), AudienceTab,
-                           BookingRail (real submit: package radio +
-                           deliverable input -> POST /bookings; renders one of
-                           the form / a booked confirmation / an already-booked
-                           notice / a retryable error, see bookingStatus.ts and
+                           A comparison list + persistent detail panel replaced
+                           the card grid + modal 2026-09-25 (own-product
+                           redesign, see DECISIONS.md) — a brand's job here is
+                           comparing creators, which a grid-plus-modal made
+                           one-at-a-time. CreatorComparisonList (a real Table:
+                           checkbox, name + vertical/country, followers, median
+                           views, CPM, post cost, sector fit badge, booking
+                           status pill + "N clicks", star, Book — clicking a row
+                           or Book selects it, threads bookingById same as
+                           before). CreatorsPagination (Prev/Next + range,
+                           unchanged). CreatorDetailPanel = the persistent right
+                           pane (Card primitive): header (avatar, name, role
+                           line, star), Tabs (Overview/Audience), then
+                           BookingRail stacked below the tab content (was a side
+                           column in the old 1080px modal; this pane is ~440px
+                           and sticky, `lg:top-8`, so it stays alongside the
+                           list while it scrolls). `CreatorsListPage` derives
+                           which creator fills the panel — the explicit
+                           selection if still in the current filtered/paged
+                           list, else the top row, so the panel is never empty.
+                           modal/ (name kept, contents relocated into the panel
+                           rather than a dialog) has OverviewTab (its post card
+                           is paged — "N of 5", prev/next, resets to post 1 per
+                           creator; 2.12 folded in here rather than a third tab,
+                           see DECISIONS.md), AudienceTab, BookingRail (real
+                           submit: package radio + deliverable input -> POST
+                           /bookings; renders one of the form / a booked
+                           confirmation / an already-booked notice / a
+                           retryable error, see bookingStatus.ts and
                            lib/api/errors.ts), ReachSparkline (inline-SVG),
-                           audienceSegments.ts (dimension-filter helper).
-                           Two tabs only (Overview, Audience) — no Content
-                           tab. icons.tsx (NetworkBadge, StarIcon).
+                           audienceSegments.ts (dimension-filter helper). Two
+                           tabs only (Overview, Audience) — no Content tab.
+                           icons.tsx (NetworkBadge — no longer used by the list
+                           row, kept for reuse; StarIcon).
         campaign/         CollaborationsTable (new, 4.2): Creator, Campaign,
                            Package, Agreed price, Status, Tracked link (copy
                            button + click count, gated on trackedLinkSlug
