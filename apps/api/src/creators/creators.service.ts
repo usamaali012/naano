@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, Vertical } from "@prisma/client";
 import type {
   AudienceSegment as PrismaAudienceSegment,
@@ -13,6 +13,7 @@ import type {
   ListCreatorsParams,
   MarketplaceCreator,
   Paginated,
+  UpdateMyCardBody,
 } from "@naano/shared";
 import { cpmEur } from "@naano/shared";
 import { PrismaService } from "../prisma/prisma.service";
@@ -211,6 +212,57 @@ export class CreatorsService {
       audienceSegments: row.audienceSegments.map(toAudienceSegment),
       posts: row.posts.map(toCreatorPost),
     };
+  }
+
+  /** The creator profile row for a signed-in CREATOR user. */
+  private async creatorProfileIdForUser(userId: string): Promise<string> {
+    const creator = await this.prisma.creatorProfile.findUnique({ where: { userId } });
+    if (!creator) {
+      throw new NotFoundException("No creator profile for this account");
+    }
+    return creator.id;
+  }
+
+  /**
+   * CREATOR-only: edit the signed-in creator's own headline/prices. At least
+   * one field is required. bundle5PriceCents is checked against
+   * postCostCents *after* merging with the stored values, so a body that only
+   * changes one of the two still validates against the pair that will
+   * actually be persisted. Existing bookings keep their agreedPriceCents —
+   * this never touches Booking rows, only CreatorProfile.
+   */
+  async updateMyCard(userId: string, body: UpdateMyCardBody): Promise<CreatorProfileDetail> {
+    if (
+      body.headline === undefined &&
+      body.postCostCents === undefined &&
+      body.bundle5PriceCents === undefined
+    ) {
+      throw new BadRequestException("Provide at least one field to update.");
+    }
+
+    const creatorProfileId = await this.creatorProfileIdForUser(userId);
+    const existing = await this.prisma.creatorProfile.findUniqueOrThrow({
+      where: { id: creatorProfileId },
+    });
+
+    const postCostCents = body.postCostCents ?? existing.postCostCents;
+    const bundle5PriceCents = body.bundle5PriceCents ?? existing.bundle5PriceCents;
+    if (bundle5PriceCents < postCostCents || bundle5PriceCents > postCostCents * 5) {
+      throw new BadRequestException(
+        "Bundle-of-5 price must be at least the single-post price and at most 5x it.",
+      );
+    }
+
+    await this.prisma.creatorProfile.update({
+      where: { id: creatorProfileId },
+      data: {
+        headline: body.headline,
+        postCostCents: body.postCostCents,
+        bundle5PriceCents: body.bundle5PriceCents,
+      },
+    });
+
+    return this.detail(creatorProfileId);
   }
 
   /**

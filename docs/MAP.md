@@ -101,7 +101,19 @@ apps/
                            MarketplaceCreator (CreatorProfile + sectorFitPct =
                            creator vertical vs campaign target, 0..100).
                            GET /creators/:id returns profile + audienceSegments
-                           + posts (CreatorProfileDetail). Filter/sort DTO in
+                           + posts (CreatorProfileDetail). PATCH /creators/me
+                           (CREATOR, A4, round 2) edits the signed-in creator's
+                           own headline/postCostCents/bundle5PriceCents —
+                           dto/update-my-card.dto.ts validates the per-field
+                           shape (headline 1..160 trimmed, both prices integer
+                           5,000..2,250,000 cents), CreatorsService.updateMyCard
+                           adds "at least one field" and the
+                           bundle5PriceCents-vs-postCostCents cross-check
+                           (evaluated after merging onto the stored row),
+                           returns CreatorProfileDetail. Declared before ":id"
+                           on the controller. Never touches Booking —
+                           agreedPriceCents is fixed at booking time, only
+                           future bookings see a new price. Filter/sort DTO in
                            dto/list-creators.dto.ts. CPM from @naano/shared
                            cpm.ts, never stored. ranking.ts: best_match is
                            fit-band-first then a rank-normalised performance

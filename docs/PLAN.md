@@ -459,7 +459,17 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   Notes: see docs/DECISIONS.md's "Session: API, round 2" for the exact copy
   table, the transitions table, and the full verification log (happy path,
   earnings before/after, 409/403/404/400).
-- [ ] **A4 Card editing**
+- [x] **A4 Card editing** — done 2026-09-26.
+  Scope: `PATCH /creators/me` (CREATOR only), body `UpdateMyCardBody`
+  (headline, postCostCents, bundle5PriceCents — all optional, at least one
+  required), returns `CreatorProfileDetail`. Validates headline 1..160
+  trimmed, both prices integer 5,000..2,250,000 cents, and (after merging
+  with the stored row) `bundle5PriceCents` between `postCostCents` and 5x it.
+  Files: `apps/api/src/creators/{creators.controller.ts,creators.service.ts,
+  dto/update-my-card.dto.ts (new)}`.
+  Notes: see docs/DECISIONS.md's "Session: API, round 2" for the full
+  verification log (happy path, brand sees the new price/CPM, an existing
+  booking's `agreedPriceCents` untouched, 400/403 cases, reset to original).
 - [ ] **A2 Campaigns and budget**
 - [ ] **A5 Action count**
 
@@ -477,6 +487,15 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-26 — A4 (card editing) done, `apps/api/**` only, `packages/shared`
+  untouched (`UpdateMyCardBody` was already right from the round-2 contract).
+  Nothing for the web session to react to type-wise — `PATCH /creators/me`
+  returns `CreatorProfileDetail`, the same shape `GET /creators/:id` already
+  returns, so W4 (card editing UI) can reuse whatever renders that today.
+  One thing worth knowing: a card edit only affects bookings created *after*
+  it — `Booking.agreedPriceCents` is fixed at booking time and this endpoint
+  never touches the `Booking` table, confirmed against a live booking during
+  verification (see DECISIONS.md).
 - 2026-09-26 — A1 (booking lifecycle) done, `apps/api/**` only. Worth
   flagging for whoever builds W1 (the matching web session): `GET
   /bookings/sent` now returns `Paginated<BrandCollaboration>` (was

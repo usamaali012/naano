@@ -1149,3 +1149,30 @@ needs to not lose an hour to.
     — labels and `kind`s matched the table above in every case).
   - `npx tsc -b --force` on `apps/api` (which also touches `packages/shared`
     types transitively) — clean, no errors.
+- 2026-09-26 — A4, a creator edits their own card and price. `apps/api/**`
+  only — `packages/shared` untouched (`UpdateMyCardBody` was already correct
+  from the round-2 contract). New `PATCH /creators/me` (CREATOR-only):
+  `dto/update-my-card.dto.ts` validates the per-field shape (headline trimmed
+  1..160, both prices integer 5,000..2,250,000 cents); `CreatorsService.
+  updateMyCard` adds what a per-field decorator can't express — "at least one
+  field" and the bundle-vs-post cross-check, evaluated *after* merging the
+  patch onto the stored row, so a body that only changes one of the two
+  fields is still checked against the pair that will actually be persisted.
+  Declared on the controller before `:id` (different HTTP verb so there's no
+  real routing collision today, but the ask was explicit and it's one line).
+  Never touches `Booking.agreedPriceCents` — that's fixed at booking time, a
+  card edit only changes what *future* bookings will derive their price from.
+  Verified against the running local API (`localhost:3000`), real tokens
+  from `POST /auth/login`, demo creator Elin Halvorsen
+  (`d2ea60bf9277c86522dca467`, originally `postCostCents: 77600,
+  bundle5PriceCents: 260623`):
+  ```
+  PATCH /creators/me {postCostCents:85000,bundle5PriceCents:340000}  200  as creator — postCostCents/bundle5PriceCents updated
+  GET   /creators?q=Elin Halvorsen                                    200  as brand — same row now reads postCostCents:85000 (CPM follows: 85000/34861*1000 ≈ €24.38, computed not stored)
+  GET   /bookings/received                                            200  as creator — booking cmuhj0d2i000j12qdw6kt9f3f still agreedPriceCents:77600, untouched
+  PATCH /creators/me {bundle5PriceCents:500000}                       400  "Bundle-of-5 price must be at least the single-post price and at most 5x it."
+  PATCH /creators/me {}                                                400  "Provide at least one field to update."
+  PATCH /creators/me {headline:"nope"}                                403  as brand — "Forbidden resource"
+  PATCH /creators/me {postCostCents:77600,bundle5PriceCents:260623}  200  reset to original values
+  ```
+  `npx tsc -b` on `apps/api` — clean, no errors.
