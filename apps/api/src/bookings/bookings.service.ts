@@ -195,6 +195,7 @@ export class BookingsService {
         include: {
           campaign: { include: { company: true } },
           trackedLink: TRACKED_LINK_SELECT,
+          post: true,
         },
       }),
       this.prisma.booking.count({ where: { creatorProfileId } }),

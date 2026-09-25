@@ -1,4 +1,4 @@
-import type { Booking as PrismaBooking, Campaign, Company, CreatorProfile } from "@prisma/client";
+import type { Booking as PrismaBooking, Campaign, Company, CreatorProfile, Post } from "@prisma/client";
 import type { Booking, BookingReceived, BookingSent, CreatorCollaboration } from "@naano/shared";
 import { nextActionForStatus } from "./next-action";
 import { netCents } from "./money";
@@ -37,13 +37,15 @@ export function toBookingReceived(
 
 /** A BookingReceived plus the creator's next action and net earnings. */
 export function toCreatorCollaboration(
-  row: BookingRow & { campaign: Campaign & { company: Company } },
+  row: BookingRow & { campaign: Campaign & { company: Company }; post: Post | null },
 ): CreatorCollaboration {
   const received = toBookingReceived(row);
   return {
     ...received,
     nextAction: nextActionForStatus(received.status),
     netCents: netCents(received.agreedPriceCents),
+    draftContent: row.post?.content ?? null,
+    postUrl: row.post?.linkedinUrl ?? null,
   };
 }
 
