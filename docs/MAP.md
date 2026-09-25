@@ -99,6 +99,10 @@ apps/
                            shortlist/). Filter/sort/page in memory over the
                            ~40-row catalogue after one DB where. Imports
                            CampaignsModule for the active-campaign lookup.
+                           `q` matches displayName, headline, and vertical
+                           (verticalsMatching(): case-insensitive substring
+                           against the enum value, `_` read as a space) —
+                           see docs/DECISIONS.md for the before/after counts.
       campaigns/          CampaignsService.getActive() = the campaign the
                            marketplace ranks for and the shortlist keys to (most
                            recent LIVE, else most recent). GET /campaigns/active
@@ -117,9 +121,26 @@ apps/
                            postCostCents/bundle5PriceCents, 409 on a
                            duplicate non-DECLINED booking for the same
                            creator+campaign). GET /bookings/received
-                           (CREATOR, own profile only, enriched with
-                           campaign/company name). GET /bookings/sent
-                           (COMPANY, own company, optional ?campaignId and
+                           (CREATOR, own profile only) returns
+                           CreatorCollaboration rows — BookingReceived plus a
+                           derived nextAction and netCents, per
+                           docs/RECON-CREATOR.md's Collaborations screen.
+                           GET /bookings/earnings (CREATOR, own profile,
+                           no pagination — a summary) returns CreatorEarnings:
+                           totalEarnedCents/paidCollaborationsCount/
+                           averageCents from PAID bookings, inTransitCents
+                           from ACCEPTED..LIVE, six-month zero-filled
+                           `monthly` keyed on Payout.paidAt (falls back to
+                           Booking.createdAt, Booking has no updatedAt).
+                           next-action.ts (new, pure, no Prisma):
+                           nextActionForStatus(status) — INVITED->respond,
+                           ACCEPTED->publish, DRAFT_READY/SCHEDULED->
+                           await_brand, LIVE/PAID/DECLINED->none. money.ts
+                           (new): netCents(agreedPriceCents), the one
+                           COMMISSION_PCT computation both /received and
+                           /earnings call, so the two can't drift. GET
+                           /bookings/sent (COMPANY, own company, optional
+                           ?campaignId and
                            ?status — 4.2's Collaborations table; @IsIn-
                            validated against BookingStatus) returns
                            BookingSent rows (creatorDisplayName, campaignName,
@@ -136,7 +157,9 @@ apps/
                            (TRACKED_LINK_SELECT) so the wire Booking always
                            carries trackedLinkSlug/clickCount (null until a
                            link exists). mappers.ts: toBooking/
-                           toBookingReceived/toBookingSent — the last derives
+                           toBookingReceived/toBookingSent/
+                           toCreatorCollaboration (wraps toBookingReceived +
+                           next-action.ts + money.ts) — toBookingSent derives
                            `package` (not a stored column) by comparing
                            agreedPriceCents to the creator's own
                            bundle5PriceCents; see docs/DECISIONS.md for why
