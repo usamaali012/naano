@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import type { BookingStatus, CreatorCollaboration, CreatorProfileDetail } from "@naano/shared";
+import type { CreatorProfileDetail } from "@naano/shared";
 import { api } from "../lib/api";
 import { useAuthStore } from "../lib/stores/authStore";
 import { Avatar } from "../components/ui/Avatar";
 import { SegmentedBar } from "../components/ui/SegmentedBar";
-import { CollaborationCard } from "../components/creator/CollaborationCard";
 import { segmentsFor } from "../components/marketplace/modal/audienceSegments";
 import {
   formatCents,
@@ -13,63 +12,16 @@ import {
   verticalLabel,
 } from "../lib/format";
 
-// What a signed-in creator lands on: their own marketplace profile, exactly as
-// a brand sees it. Real data from GET /creators/:id — the creator side proper
-// (collaborations, earnings) is Phase 4.
+// What a signed-in creator lands on: their own marketplace profile, exactly
+// as a brand sees it. Real data from GET /creators/:id. Collaborations and
+// Earnings are their own routes (the rail's other two items) — this page is
+// the profile alone, not a catch-all.
 export function CreatorHomePage(): JSX.Element {
   const me = useAuthStore((state) => state.me);
   const creatorProfileId = me?.creatorProfileId ?? null;
 
   const [detail, setDetail] = useState<CreatorProfileDetail | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
-
-  const [bookings, setBookings] = useState<CreatorCollaboration[]>([]);
-  const [bookingsStatus, setBookingsStatus] = useState<"loading" | "error" | "ready">(
-    "loading",
-  );
-  const [respondingId, setRespondingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!creatorProfileId) {
-      setBookingsStatus("error");
-      return;
-    }
-    let cancelled = false;
-    setBookingsStatus("loading");
-    api
-      .listBookingsReceived({ pageSize: 20 })
-      .then((page) => {
-        if (cancelled) return;
-        setBookings(page.items);
-        setBookingsStatus("ready");
-      })
-      .catch(() => {
-        if (!cancelled) setBookingsStatus("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [creatorProfileId]);
-
-  async function respond(
-    id: string,
-    next: Extract<BookingStatus, "ACCEPTED" | "DECLINED">,
-  ): Promise<void> {
-    setRespondingId(id);
-    try {
-      await api.updateBookingStatus(id, next);
-      // Re-fetch rather than patch the row in place: `updateBookingStatus`
-      // returns a bare Booking, and a status change also changes the row's
-      // derived nextAction (respond -> publish, say) and possibly mints a
-      // trackedLinkSlug — both only the list endpoint recomputes.
-      const page = await api.listBookingsReceived({ pageSize: 20 });
-      setBookings(page.items);
-    } catch {
-      // Leave the row as it was; the buttons re-enable so they can try again.
-    } finally {
-      setRespondingId(null);
-    }
-  }
 
   useEffect(() => {
     if (!creatorProfileId) {
@@ -121,43 +73,6 @@ export function CreatorHomePage(): JSX.Element {
           This is exactly how brands see you in the marketplace.
         </p>
       </div>
-
-      <section className="flex flex-col gap-s4 rounded-card border border-border bg-surface p-s6">
-        <div className="flex flex-col gap-s1">
-          <h2 className="text-card-title text-text">Collaborations</h2>
-          <p className="text-body text-text-muted">
-            Where each one stands, what to do next, and what happens if you
-            leave it alone.
-          </p>
-        </div>
-
-        {bookingsStatus === "loading" && (
-          <p className="text-body text-text-muted">Loading your collaborations…</p>
-        )}
-        {bookingsStatus === "error" && (
-          <p className="text-body text-text-muted">
-            Could not load your collaborations. Reload the page to try again.
-          </p>
-        )}
-        {bookingsStatus === "ready" && bookings.length === 0 && (
-          <p className="text-body text-text-muted">
-            No collaborations yet. Brands will reach out here when they want
-            to work with you.
-          </p>
-        )}
-        {bookingsStatus === "ready" && bookings.length > 0 && (
-          <ul className="flex flex-col gap-s3">
-            {orderByNextAction(bookings).map((booking) => (
-              <CollaborationCard
-                key={booking.id}
-                booking={booking}
-                responding={respondingId === booking.id}
-                onRespond={(id, next) => void respond(id, next)}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
 
       <div className="flex flex-col gap-s6 rounded-card border border-border bg-surface p-s6">
         <div className="flex items-center gap-s4">
@@ -245,16 +160,4 @@ export function CreatorHomePage(): JSX.Element {
       </div>
     </div>
   );
-}
-
-// Consequence is non-empty exactly when the next move is the creator's — put
-// those collaborations first so the screen reads as "here's what needs you,"
-// not a plain reverse-chronological log. Stable sort keeps each group in the
-// server's own createdAt-desc order.
-function orderByNextAction(bookings: CreatorCollaboration[]): CreatorCollaboration[] {
-  return [...bookings].sort((a, b) => {
-    const aActionable = a.nextAction.consequence !== "" ? 0 : 1;
-    const bActionable = b.nextAction.consequence !== "" ? 0 : 1;
-    return aActionable - bActionable;
-  });
 }

@@ -7,6 +7,7 @@ import type {
   CampaignSummary,
   CreateBookingBody,
   CreatorCollaboration,
+  CreatorEarnings,
   CreatorProfileDetail,
   DemoCreatorResponse,
   ListCreatorsParams,
@@ -50,6 +51,13 @@ export interface ApiClient {
    * facts of the creator's Collaborations screen.
    */
   listBookingsReceived(params?: PageParams): Promise<Paginated<CreatorCollaboration>>;
+  /**
+   * Creator-only. Their own money in one response: total earned and average
+   * per deal (PAID, net of commission), what's in transit (accepted through
+   * live), and six months of net earnings, oldest first. No "available to
+   * withdraw" — payment rails are cut.
+   */
+  getEarnings(): Promise<CreatorEarnings>;
   /**
    * Brand-only. Bookings the signed-in company has made, optionally by
    * campaign and/or status — backs the Collaborations table. Rows carry

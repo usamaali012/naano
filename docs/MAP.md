@@ -319,38 +319,50 @@ apps/
                            /auth/demo-creator to resolve which creator email to
                            sign in as (see DECISIONS.md) rather than a
                            hardcoded one. AppShell = the 72px icon rail (DESIGN
-                           §layout, brand-only — see below) + a top bar
-                           (signed-in identity, Sign out); redirects
-                           signed-out /app to /. App.tsx's AppIndex picks the
-                           surface by role: CreatorsListPage (brand) or
-                           CreatorHomePage (creator — their own profile,
-                           "this is how brands see you", from GET /creators/:id,
-                           plus a "Collaborations" section (2026-09-25,
-                           own-product redesign — see DECISIONS.md) reading
-                           GET /bookings/received, now typed CreatorCollaboration
-                           (nextAction + netCents, session A's contract). Rows
-                           render via components/creator/CollaborationCard —
-                           sorted actionable-first (`nextAction.consequence !==
-                           ""`) rather than plain createdAt order, real
-                           Accept/Decline on the "respond" kind, netCents shown
-                           not agreedPriceCents, tracked link + copy button
+                           §layout) + a top bar (signed-in identity, Sign out);
+                           redirects signed-out /app to /. Both sides get a
+                           real three-item rail (2026-09-26, own-product
+                           redesign — see DECISIONS.md): `BRAND_RAIL`
+                           (Marketplace /app, Collaborations
+                           /app/collaborations, Results /app/results) and
+                           `CREATOR_RAIL` (Profile /app, Collaborations
+                           /app/collaborations, Earnings /app/earnings), picked
+                           by role via `showRail`. A creator briefly had no
+                           rail at all (one screen didn't deserve nav chrome);
+                           Earnings made three real destinations, so that
+                           reasoning stopped applying — see DECISIONS.md.
+                           App.tsx's AppIndex picks the index surface by role:
+                           CreatorsListPage (brand) or CreatorHomePage
+                           (creator — their own profile only now, "this is how
+                           brands see you", from GET /creators/:id).
+                           Collaborations lives at one URL, `/app/
+                           collaborations`, role-branched by App.tsx's new
+                           CollaborationsIndex (same pattern as AppIndex): a
+                           brand gets CollaborationsPage (4.2) — every GET
+                           /bookings/sent row via CollaborationsTable, a real
+                           ?status= filter, CreatorsPagination reused
+                           unmodified. A creator gets CreatorCollaborationsPage
+                           (2026-09-25, extracted from CreatorHomePage's old
+                           embedded section) — GET /bookings/received, typed
+                           CreatorCollaboration (nextAction + netCents,
+                           session A's contract), rows via
+                           components/creator/CollaborationCard, sorted
+                           actionable-first (`nextAction.consequence !== ""`),
+                           real Accept/Decline on the "respond" kind, netCents
+                           shown not agreedPriceCents, tracked link + copy
                            (components/creator/TrackedLinkRow) on any row that
-                           has one regardless of nextAction.
-                           CollaborationsPage (new, 4.2) is brand-only at
-                           /app/collaborations (App.tsx's RequireBrand
-                           redirects a creator who reaches the URL back to
-                           /app, since the rail never shows it to them) —
-                           every GET /bookings/sent row via
-                           CollaborationsTable, a real ?status= filter
-                           (dropdown, not RECON's tabs-with-counts — see
-                           DECISIONS.md), and CreatorsPagination reused
-                           unmodified for the pager. The rail (AppShell.tsx)
-                           is now role-aware and every icon routes somewhere
-                           real: brand gets Marketplace (/app) +
-                           Collaborations (/app/collaborations) + Results
-                           (/app/results, 5.4), a creator gets no rail at all
-                           rather than a single permanently-active icon — see
-                           DECISIONS.md.
+                           has one regardless of nextAction. CreatorEarningsPage
+                           (2026-09-26, creator-only at /app/earnings via a new
+                           RequireCreator guard, the mirror of RequireBrand) —
+                           GET /bookings/earnings (session A's contract,
+                           already net of commission), tiles (total earned,
+                           paid collaborations, average per deal, in transit)
+                           + components/creator/EarningsChart (token-only
+                           inline SVG bar chart, no dependency, newest month
+                           solid). No withdraw control. Empty state triggers
+                           on zero paid AND zero in-transit, not zero paid
+                           alone — money already in transit still renders the
+                           normal tiles.
       components/
         ui/               Token-only primitives: Button, Card, Input, Select,
                            Checkbox, Badge, StatusPill, Table (+ THead/TBody/TR/
@@ -422,7 +434,11 @@ apps/
                            plain muted line, deliberately not the same box in a
                            different colour). TrackedLinkRow (moved out of
                            CreatorHomePage.tsx, unchanged behaviour). Consumed
-                           by CreatorHomePage's Collaborations section.
+                           by routes/CreatorCollaborationsPage.tsx (its own
+                           route as of 2026-09-26, was a CreatorHomePage
+                           section). EarningsChart (2026-09-26): token-only
+                           inline SVG bar chart, six months, newest solid —
+                           same restraint as marketplace/modal/ReachSparkline.
 packages/
   shared/                 Wire-safe types (enums.ts, entities.ts, api.ts) hand-kept
                            in sync with prisma/schema.prisma. Imported by both apps.

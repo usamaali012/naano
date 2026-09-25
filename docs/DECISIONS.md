@@ -844,6 +844,74 @@ not edited here) and `docs/RECON-CREATOR.md`.
     plain "Nothing to do." lines; `netCents` values are correct per row
     (€413/€1,204/€356/€340); tracked link + copy renders on the two rows
     that have one (PAID, LIVE) regardless of their next action.
+- 2026-09-26 — Piece 4, the creator's Earnings screen, plus the navigation
+  decision it forced. Read-only against session A's already-built and
+  verified `GET /bookings/earnings` — nothing in `apps/api` touched.
+  - **Navigation decision, made before writing any screen code.** The
+    no-rail call for creators (piece 3's entry above, and the original
+    2026-09-11 "Collaborations + honest rail" entry it references) was
+    reasoned specifically as: a rail holding one permanently-active icon is
+    decoration wearing navigation's clothes, because a creator had exactly
+    one real screen. Earnings makes three (profile, Collaborations,
+    Earnings). That specific reasoning stops applying the moment a second
+    real destination exists, let alone a third — so the rail comes back for
+    creators, real destination for real destination, same shape as the
+    brand's own three-item rail, rather than stacking Earnings as a third
+    section onto an already-two-section profile page that would only keep
+    growing from here. `AppShell.tsx`'s `RAIL` constant split into
+    `BRAND_RAIL`/`CREATOR_RAIL`; `showRail` replaces the old `isBrand` gate
+    on both the `<nav>` and `<main>`'s left margin, so a creator gets the
+    same 72px rail treatment a brand always has.
+  - **Collaborations now has two components behind one URL.** `/app/
+    collaborations` used to be brand-only (`RequireBrand`-gated); it's now
+    role-branched like `AppIndex` already was (`App.tsx`'s new
+    `CollaborationsIndex`) — a brand still gets `CollaborationsPage`
+    (every booking they've made), a creator now gets a real
+    `CreatorCollaborationsPage` (extracted verbatim from `CreatorHomePage`'s
+    old embedded section, not rewritten) instead of being redirected back
+    to `/app`. `/app/earnings` is the mirror of `/app/results`: a new
+    `RequireCreator` guard (brand hitting the URL directly lands back on
+    `/app`, not an error), same shape as the existing `RequireBrand`.
+    `CreatorHomePage.tsx` is profile-only now — Collaborations moving to
+    its own route is what let it drop back to exactly what it was before
+    piece 3 folded a section into it.
+  - **Every figure is already net** — `CreatorEarnings.totalEarnedCents` /
+    `averageCents` / `inTransitCents` come pre-computed from the API
+    (`COMMISSION_PCT` applied server-side, `apps/api/src/bookings/
+    money.ts`); the web side only formats and renders, no second commission
+    calculation to keep in sync with the one in `next-action`/`money.ts`.
+  - **`EarningsChart.tsx`** is a token-only inline SVG bar chart, same
+    restraint as `ReachSparkline` (no axes, no grid, no charting
+    dependency): six bars, the newest solid `--primary`, the rest a lighter
+    `color-mix` tint of it — "here's now, here's the run-up to it," not six
+    equal bars. Month labels are the only text on the chart.
+  - **No withdraw control, no "available to withdraw" balance** — per the
+    explicit ask and this project's own standing rule (a control that
+    renders but does nothing is worse than no control): payment rails are
+    cut, so there is nothing a withdraw button could actually do.
+  - **The empty state triggers on `paidCollaborationsCount === 0 &&
+    inTransitCents === 0`**, not on `paidCollaborationsCount === 0` alone —
+    a creator with money already in transit (accepted, not yet paid) has
+    something real to show even with zero paid history, so that case still
+    renders the normal tiles + chart (honestly reading `€0`/`0` where
+    nothing has happened yet) rather than a message that would contradict
+    the in-transit figure sitting right next to it. Only the fully-empty
+    case (nothing paid, nothing in transit — a creator with no accepted
+    bookings at all) gets the dedicated empty-state panel, linking to
+    Collaborations, so it reads as a finished screen rather than a wall of
+    zeros.
+  - **New files:** `routes/CreatorEarningsPage.tsx`, `routes/
+    CreatorCollaborationsPage.tsx` (the extraction), `components/creator/
+    EarningsChart.tsx`. `ApiClient` gained `getEarnings(): Promise<
+    CreatorEarnings>` (`client.ts`/`http.ts`/`fixtures.ts` — fixtures
+    returns an honest all-zero stub, same "no creator-mode fixture context
+    yet" limitation already noted for `listBookingsReceived`).
+  - Verified live: a creator with mixed history (Adam Bauer — 1 PAID, 1
+    LIVE, 1 DECLINED, 1 INVITED) renders real tiles and a six-bar chart with
+    the current month solid; the rail shows Profile/Collaborations/Earnings
+    for a creator and Marketplace/Collaborations/Results for a brand, each
+    routing correctly; a brand hitting `/app/earnings` directly bounces to
+    `/app`; typechecked clean across the whole change.
 
 ## Session — creator-side bookings/earnings API + search fix
 

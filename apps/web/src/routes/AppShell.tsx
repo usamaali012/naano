@@ -4,14 +4,26 @@ import { Logo } from "../components/ui/Logo";
 
 // Fixed 72px left icon rail, icons only, active item on a --primary-soft
 // background (docs/DESIGN.md §layout). Content is capped at 1440px with 32px
-// padding. Brand-only: every item routes somewhere real. A creator has
-// exactly one screen (their own profile, already reachable at /app) so they
-// get no rail at all rather than a single permanently-active icon — see
-// docs/DECISIONS.md for why that reads as decoration, not navigation.
-const RAIL = [
+// padding. Every item routes somewhere real, for either side.
+//
+// A creator used to get no rail at all — they had exactly one screen (their
+// own profile), and a rail holding a single permanently-active icon is
+// decoration wearing navigation's clothes (see docs/DECISIONS.md). That
+// reasoning stops applying the moment a second real destination exists;
+// Earnings makes three (profile, Collaborations, Earnings), so the rail
+// comes back for creators too, real destination for real destination, same
+// as the brand side. See docs/DECISIONS.md's "web" session entry for why a
+// third stacked section on one ever-growing page was rejected instead.
+const BRAND_RAIL = [
   { key: "marketplace", label: "Marketplace", path: "/app" },
   { key: "collaborations", label: "Collaborations", path: "/app/collaborations" },
   { key: "results", label: "Results", path: "/app/results" },
+];
+
+const CREATOR_RAIL = [
+  { key: "profile", label: "Profile", path: "/app" },
+  { key: "collaborations", label: "Collaborations", path: "/app/collaborations" },
+  { key: "earnings", label: "Earnings", path: "/app/earnings" },
 ];
 
 function RailIcon({ shape }: { shape: string }): JSX.Element {
@@ -20,6 +32,12 @@ function RailIcon({ shape }: { shape: string }): JSX.Element {
       <>
         <circle cx="9" cy="7" r="3" />
         <path d="M3.5 19a5.5 5.5 0 0 1 11 0M15 4.5a3 3 0 0 1 0 5.8M20.5 19a5.5 5.5 0 0 0-4-5.3" />
+      </>
+    ),
+    profile: (
+      <>
+        <circle cx="12" cy="8" r="3.5" />
+        <path d="M5 19.5a7 7 0 0 1 14 0" />
       </>
     ),
     collaborations: (
@@ -33,6 +51,7 @@ function RailIcon({ shape }: { shape: string }): JSX.Element {
         <path d="M4 19V5M4 19h16M8 19v-6M12.5 19V9M17 19v-9" />
       </>
     ),
+    earnings: <circle cx="12" cy="12" r="8" />,
   };
   return (
     <svg
@@ -46,6 +65,19 @@ function RailIcon({ shape }: { shape: string }): JSX.Element {
       aria-hidden="true"
     >
       {paths[shape]}
+      {shape === "earnings" && (
+        <text
+          x="12"
+          y="15.5"
+          textAnchor="middle"
+          fontSize="9"
+          fontWeight="700"
+          stroke="none"
+          fill="currentColor"
+        >
+          €
+        </text>
+      )}
     </svg>
   );
 }
@@ -55,7 +87,8 @@ export function AppShell(): JSX.Element {
   const location = useLocation();
   const me = useAuthStore((state) => state.me);
   const signOut = useAuthStore((state) => state.signOut);
-  const isBrand = me?.role === "COMPANY";
+  const rail = me?.role === "COMPANY" ? BRAND_RAIL : me?.role === "CREATOR" ? CREATOR_RAIL : [];
+  const showRail = rail.length > 0;
 
   function handleSignOut(): void {
     signOut();
@@ -64,10 +97,10 @@ export function AppShell(): JSX.Element {
 
   return (
     <div className="flex min-h-screen bg-bg">
-      {isBrand && (
+      {showRail && (
         <nav className="fixed inset-y-0 left-0 flex w-[72px] flex-col items-center gap-s2 border-r border-border bg-surface py-s4">
           <Logo className="mb-s4 h-8 w-8" />
-          {RAIL.map((item) => {
+          {rail.map((item) => {
             const active = location.pathname === item.path;
             return (
               <button
@@ -93,7 +126,7 @@ export function AppShell(): JSX.Element {
         </nav>
       )}
 
-      <main className={`flex-1 ${isBrand ? "ml-[72px]" : ""}`}>
+      <main className={`flex-1 ${showRail ? "ml-[72px]" : ""}`}>
         {me && (
           <header className="flex items-center justify-end gap-s3 border-b border-border bg-surface px-s8 py-s3">
             <span className="text-label text-text-muted">

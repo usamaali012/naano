@@ -7,6 +7,7 @@ import type {
   CampaignSummary,
   CreateBookingBody,
   CreatorCollaboration,
+  CreatorEarnings,
   CreatorProfileDetail,
   DemoCreatorResponse,
   ListCreatorsParams,
@@ -166,6 +167,9 @@ export const httpClient: ApiClient = {
   },
   listBookingsReceived(params?: PageParams): Promise<Paginated<CreatorCollaboration>> {
     return getJson<Paginated<CreatorCollaboration>>(`/bookings/received${pageQuery(params)}`);
+  },
+  getEarnings(): Promise<CreatorEarnings> {
+    return getJson<CreatorEarnings>("/bookings/earnings");
   },
   listBookingsSent(
     params?: PageParams & { campaignId?: string; status?: BookingStatus },

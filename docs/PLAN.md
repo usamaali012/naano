@@ -329,15 +329,25 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   DECISIONS.md entry for the `dev/bookings/ensure-invited` addition it
   required.
 
-- [~] **4.4 Earnings view** — API done 2026-09-25, `EarningsPage.tsx` not
-  built (apps/web is Session B's).
-  Scope: creator-side list of bookings with amounts and payout status.
-  Files: `apps/web/src/routes/EarningsPage.tsx`,
+- [x] **4.4 Earnings view** — API done 2026-09-25, web done 2026-09-26
+  (own-product redesign).
+  Scope: creator-side earnings summary + six-month chart.
+  Files: `apps/web/src/routes/CreatorEarningsPage.tsx` (not `EarningsPage.tsx`
+  — named for the creator specifically, since it's creator-only),
+  `apps/web/src/components/creator/EarningsChart.tsx`,
   `apps/api/src/bookings/*`.
   Done: `GET /bookings/earnings` (creator-only, own profile, no pagination)
   returns `CreatorEarnings` — see docs/DECISIONS.md for the query shape and
   the end-to-end verification against real seed data (3 PAID + 1 SCHEDULED
-  booking on one creator).
+  booking on one creator). Web side: total earned / paid collaborations /
+  average per deal / in transit as tiles (all already net of commission, no
+  client-side commission math), a token-only inline SVG bar chart (six
+  months, newest solid, no charting dependency), no withdraw control, a real
+  empty state gated on zero-paid-and-zero-in-transit (not zero-paid alone,
+  so money already in transit still shows). Forced a navigation decision —
+  see the 2026-09-26 DECISIONS.md entry: the rail comes back for creators
+  (three real destinations now), Collaborations and Earnings both got their
+  own routes instead of staying sections on the profile page.
 
 ---
 

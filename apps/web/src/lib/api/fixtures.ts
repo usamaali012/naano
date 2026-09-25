@@ -9,6 +9,7 @@ import type {
   CampaignSummary,
   CreateBookingBody,
   CreatorCollaboration,
+  CreatorEarnings,
   CreatorPost,
   CreatorProfileDetail,
   DemoCreatorResponse,
@@ -383,6 +384,19 @@ export const fixturesClient: ApiClient = {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 20;
     return { items: [], total: 0, page, pageSize };
+  },
+
+  // FIXTURE_ME is always the brand — no creator-mode fixture context exists
+  // yet (same limitation as listBookingsReceived above), so this is an
+  // honest zeroed response, not a fabricated one.
+  async getEarnings(): Promise<CreatorEarnings> {
+    return {
+      totalEarnedCents: 0,
+      paidCollaborationsCount: 0,
+      averageCents: 0,
+      inTransitCents: 0,
+      monthly: [],
+    };
   },
 
   async listBookingsSent(
