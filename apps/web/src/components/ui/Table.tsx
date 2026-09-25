@@ -13,7 +13,7 @@ export function Table({ className = "", ...props }: HTMLAttributes<HTMLTableElem
 }
 
 export function THead({ className = "", ...props }: HTMLAttributes<HTMLTableSectionElement>): JSX.Element {
-  return <thead className={`border-b border-border ${className}`} {...props} />;
+  return <thead className={`border-b border-border bg-bg ${className}`} {...props} />;
 }
 
 export function TBody(props: HTMLAttributes<HTMLTableSectionElement>): JSX.Element {

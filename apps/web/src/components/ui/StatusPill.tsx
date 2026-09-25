@@ -28,10 +28,10 @@ export function StatusPill({ tone, label, className = "" }: StatusPillProps): JS
   };
   return (
     <span
-      className={`inline-flex items-center gap-s2 rounded-control px-s2 py-s1 text-label font-medium ${className}`}
+      className={`inline-flex items-center gap-s2 rounded-control px-s3 py-s1 text-label font-medium ${className}`}
       style={style}
     >
-      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
       {label}
     </span>
   );

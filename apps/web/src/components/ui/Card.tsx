@@ -9,7 +9,7 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 export function Card({ className = "", interactive = false, ...props }: CardProps): JSX.Element {
   return (
     <div
-      className={`rounded-card border border-border bg-surface p-s4 ${
+      className={`rounded-card border border-border bg-surface p-s6 ${
         interactive ? "transition-colors hover:border-primary" : ""
       } ${className}`}
       {...props}

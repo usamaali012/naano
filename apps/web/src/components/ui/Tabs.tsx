@@ -1,6 +1,8 @@
-// Controlled tab strip. Active tab: accent text over a 2px accent underline;
-// the rest muted. The container carries the hairline the underline sits on.
-// Optional count renders after the label ("All creators 928"). No icons.
+// Controlled tab strip, styled as a row of chips rather than an underline —
+// the same "active = primary-soft fill" language the icon rail already uses
+// (see docs/DESIGN.md §layout), so the two navigation idioms in the app read
+// as one system instead of two defaults. Optional count renders after the
+// label ("All creators 928"). No icons.
 interface TabItem {
   value: string;
   label: string;
@@ -16,7 +18,7 @@ interface TabsProps {
 
 export function Tabs({ items, value, onChange, className = "" }: TabsProps): JSX.Element {
   return (
-    <div role="tablist" className={`flex gap-s6 border-b border-border ${className}`}>
+    <div role="tablist" className={`flex flex-wrap gap-s2 ${className}`}>
       {items.map((item) => {
         const active = item.value === value;
         return (
@@ -26,10 +28,10 @@ export function Tabs({ items, value, onChange, className = "" }: TabsProps): JSX
             type="button"
             aria-selected={active}
             onClick={() => onChange(item.value)}
-            className={`-mb-px flex items-center gap-s2 border-b-2 pb-s3 pt-s1 text-body transition-colors ${
+            className={`flex items-center gap-s2 rounded-control px-s4 py-s2 text-body transition-colors ${
               active
-                ? "border-primary font-medium text-primary"
-                : "border-transparent text-text-muted hover:text-text"
+                ? "bg-primary-soft font-medium text-primary"
+                : "text-text-muted hover:bg-bg hover:text-text"
             }`}
           >
             {item.label}

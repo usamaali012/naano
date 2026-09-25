@@ -690,6 +690,45 @@ not edited here) and `docs/RECON-CREATOR.md`.
   lives here). Verified live: entry page and the marketplace grid both
   render on the new palette/font with no regressions, `--success`/`--warn`
   still read as distinct status colours next to the new primary.
+- 2026-09-25 — Two corrections to the token pass above, both requested after
+  review: (1) IBM Plex Sans everywhere read as "the default of developer
+  tooling," not a decision — added a second family, Fraunces (serif), for
+  headings only. New `--font-serif` token; base rule in `index.css` targets
+  the `.text-page-title`/`.text-section-title` Tailwind fontSize utilities
+  directly (not every `<h1>`/`<h2>` element), so `h1`/`h2`/page titles go
+  serif and `h3`/card-title-level headings — which repeat many times per
+  screen (a creator name, "Audience composition," a rail label) — stay on
+  the sans, per the ask to keep body and controls neutral. (2) The
+  primitives were re-coloured, not finished — `components/ui/` still read
+  as recoloured Tailwind defaults. Real per-component passes, still 100%
+  token-driven (no new hardcoded value anywhere):
+  - **Button.** Two new derived tokens, `--primary-hover`/`--primary-active`
+    (`color-mix` off `--primary`, defined once in `index.css`, exposed as
+    `bg-primary-hover`/`active` in `tailwind.config.js`) replace the generic
+    `hover:opacity-90`. Secondary/ghost variants gained a real hover
+    treatment too (border+text shift on secondary, a `primary-soft` fill on
+    ghost) instead of a single muted-to-text color change.
+  - **Input/Select.** Dropped the stock `focus:ring-1 focus:ring-primary`
+    (a `border-primary` and a same-color ring stacked is the single most
+    recognizable default-Tailwind focus tell) for a soft halo —
+    `focus:shadow-[0_0_0_3px_var(--primary-soft)]` — and bumped padding from
+    the 8/12px pairing to 12/16px for a less cramped field.
+  - **Table.** `THead` gained `bg-bg` — the header band now reads as a
+    distinct zone from the white body without adding a second border weight
+    (still one hairline, per DESIGN.md).
+  - **Tabs.** Rebuilt from an underline strip to the same "active =
+    `primary-soft` fill" chip language the icon rail already uses
+    (DESIGN.md §layout) — two nav idioms in the app now read as one system
+    instead of two unrelated defaults (underline tabs + filled rail).
+  - **StatusPill/Badge.** Wider horizontal padding, `font-medium` on Badge,
+    a smaller status dot (1.5 vs 2 units) so the label carries more of the
+    weight than the dot.
+  - **Card.** Default padding `p-s4` → `p-s6`. Its only current consumer
+    (`CreatorCard`) already overrides to `!p-0`, so this is free to change
+    now, ahead of piece 2's detail panel becoming the real consumer.
+  Verified live: entry page (serif h1 + serif hero line, sans body),
+  marketplace (chip tabs, haloed filter selects), Collaborations (tinted
+  table header, status pills).
 
 ## Session — creator-side bookings/earnings API + search fix
 
