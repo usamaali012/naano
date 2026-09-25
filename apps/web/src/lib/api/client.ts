@@ -2,11 +2,11 @@ import type {
   AttributionResponse,
   AuthMe,
   Booking,
-  BookingReceived,
   BookingSent,
   BookingStatus,
   CampaignSummary,
   CreateBookingBody,
+  CreatorCollaboration,
   CreatorProfileDetail,
   DemoCreatorResponse,
   ListCreatorsParams,
@@ -43,8 +43,13 @@ export interface ApiClient {
 
   /** Brand-only. Creates a Booking from the signed-in company's active campaign. */
   createBooking(body: CreateBookingBody): Promise<Booking>;
-  /** Creator-only. Bookings addressed to the signed-in creator's own profile. */
-  listBookingsReceived(params?: PageParams): Promise<Paginated<BookingReceived>>;
+  /**
+   * Creator-only. Bookings addressed to the signed-in creator's own profile.
+   * Each row carries a derived `nextAction` (what to do, what happens if they
+   * don't) and `netCents` (their share after commission) — the organising
+   * facts of the creator's Collaborations screen.
+   */
+  listBookingsReceived(params?: PageParams): Promise<Paginated<CreatorCollaboration>>;
   /**
    * Brand-only. Bookings the signed-in company has made, optionally by
    * campaign and/or status — backs the Collaborations table. Rows carry

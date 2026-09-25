@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
-import type { BookingReceived, CreatorProfileDetail } from "@naano/shared";
+import type { BookingStatus, CreatorCollaboration, CreatorProfileDetail } from "@naano/shared";
 import { api } from "../lib/api";
 import { useAuthStore } from "../lib/stores/authStore";
 import { Avatar } from "../components/ui/Avatar";
-import { Button } from "../components/ui/Button";
 import { SegmentedBar } from "../components/ui/SegmentedBar";
-import { StatusPill } from "../components/ui/StatusPill";
+import { CollaborationCard } from "../components/creator/CollaborationCard";
 import { segmentsFor } from "../components/marketplace/modal/audienceSegments";
-import { bookingStatusLabel, bookingStatusTone } from "../lib/bookingStatus";
-import { trackedLinkUrl } from "../lib/trackedLink";
 import {
   formatCents,
   formatCompactNumber,
@@ -26,7 +23,7 @@ export function CreatorHomePage(): JSX.Element {
   const [detail, setDetail] = useState<CreatorProfileDetail | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
 
-  const [bookings, setBookings] = useState<BookingReceived[]>([]);
+  const [bookings, setBookings] = useState<CreatorCollaboration[]>([]);
   const [bookingsStatus, setBookingsStatus] = useState<"loading" | "error" | "ready">(
     "loading",
   );
@@ -54,13 +51,19 @@ export function CreatorHomePage(): JSX.Element {
     };
   }, [creatorProfileId]);
 
-  async function respond(id: string, next: "ACCEPTED" | "DECLINED"): Promise<void> {
+  async function respond(
+    id: string,
+    next: Extract<BookingStatus, "ACCEPTED" | "DECLINED">,
+  ): Promise<void> {
     setRespondingId(id);
     try {
-      const updated = await api.updateBookingStatus(id, next);
-      setBookings((current) =>
-        current.map((b) => (b.id === id ? { ...b, ...updated } : b)),
-      );
+      await api.updateBookingStatus(id, next);
+      // Re-fetch rather than patch the row in place: `updateBookingStatus`
+      // returns a bare Booking, and a status change also changes the row's
+      // derived nextAction (respond -> publish, say) and possibly mints a
+      // trackedLinkSlug — both only the list endpoint recomputes.
+      const page = await api.listBookingsReceived({ pageSize: 20 });
+      setBookings(page.items);
     } catch {
       // Leave the row as it was; the buttons re-enable so they can try again.
     } finally {
@@ -120,68 +123,37 @@ export function CreatorHomePage(): JSX.Element {
       </div>
 
       <section className="flex flex-col gap-s4 rounded-card border border-border bg-surface p-s6">
-        <h2 className="text-card-title text-text">Your bookings</h2>
+        <div className="flex flex-col gap-s1">
+          <h2 className="text-card-title text-text">Collaborations</h2>
+          <p className="text-body text-text-muted">
+            Where each one stands, what to do next, and what happens if you
+            leave it alone.
+          </p>
+        </div>
 
         {bookingsStatus === "loading" && (
-          <p className="text-body text-text-muted">Loading your bookings…</p>
+          <p className="text-body text-text-muted">Loading your collaborations…</p>
         )}
         {bookingsStatus === "error" && (
           <p className="text-body text-text-muted">
-            Could not load your bookings. Reload the page to try again.
+            Could not load your collaborations. Reload the page to try again.
           </p>
         )}
         {bookingsStatus === "ready" && bookings.length === 0 && (
           <p className="text-body text-text-muted">
-            No bookings yet. Brands will reach out here when they want to
-            collaborate with you.
+            No collaborations yet. Brands will reach out here when they want
+            to work with you.
           </p>
         )}
         {bookingsStatus === "ready" && bookings.length > 0 && (
           <ul className="flex flex-col gap-s3">
-            {bookings.map((booking) => (
-              <li
+            {orderByNextAction(bookings).map((booking) => (
+              <CollaborationCard
                 key={booking.id}
-                className="flex flex-col gap-s3 rounded-card border border-border p-s4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="flex flex-col gap-s1">
-                  <div className="flex flex-wrap items-center gap-s2">
-                    <span className="text-card-title text-text">
-                      {booking.companyName}
-                    </span>
-                    <StatusPill
-                      tone={bookingStatusTone(booking.status)}
-                      label={bookingStatusLabel(booking.status)}
-                    />
-                  </div>
-                  <p className="text-label text-text-muted">{booking.campaignName}</p>
-                  <p className="text-body text-text">{booking.deliverable}</p>
-                  <p className="tabular-nums text-label text-text-muted">
-                    {formatCents(booking.agreedPriceCents)}
-                  </p>
-                  {booking.trackedLinkSlug && (
-                    <TrackedLinkRow slug={booking.trackedLinkSlug} />
-                  )}
-                </div>
-                {booking.status === "INVITED" && (
-                  <div className="flex gap-s2">
-                    <Button
-                      size="sm"
-                      disabled={respondingId === booking.id}
-                      onClick={() => void respond(booking.id, "ACCEPTED")}
-                    >
-                      Accept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={respondingId === booking.id}
-                      onClick={() => void respond(booking.id, "DECLINED")}
-                    >
-                      Decline
-                    </Button>
-                  </div>
-                )}
-              </li>
+                booking={booking}
+                responding={respondingId === booking.id}
+                onRespond={(id, next) => void respond(id, next)}
+              />
             ))}
           </ul>
         )}
@@ -275,35 +247,14 @@ export function CreatorHomePage(): JSX.Element {
   );
 }
 
-// The creator's own CTA link for this booking. Copying it is the whole point
-// of the row -- every click on it counts toward the brand's campaign.
-function TrackedLinkRow({ slug }: { slug: string }): JSX.Element {
-  const [copied, setCopied] = useState(false);
-  const url = trackedLinkUrl(slug);
-
-  async function copy(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard access can be denied; the link is still visible to select.
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-s1 border-t border-border pt-s2">
-      <p className="text-label text-text-muted">
-        Your tracked link — share it, every click is counted here.
-      </p>
-      <div className="flex items-center gap-s2">
-        <code className="flex-1 truncate rounded-control border border-border bg-bg px-s3 py-s2 text-label text-text">
-          {url}
-        </code>
-        <Button size="sm" variant="secondary" onClick={() => void copy()}>
-          {copied ? "Copied" : "Copy"}
-        </Button>
-      </div>
-    </div>
-  );
+// Consequence is non-empty exactly when the next move is the creator's — put
+// those collaborations first so the screen reads as "here's what needs you,"
+// not a plain reverse-chronological log. Stable sort keeps each group in the
+// server's own createdAt-desc order.
+function orderByNextAction(bookings: CreatorCollaboration[]): CreatorCollaboration[] {
+  return [...bookings].sort((a, b) => {
+    const aActionable = a.nextAction.consequence !== "" ? 0 : 1;
+    const bActionable = b.nextAction.consequence !== "" ? 0 : 1;
+    return aActionable - bActionable;
+  });
 }

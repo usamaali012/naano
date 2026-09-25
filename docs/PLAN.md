@@ -264,9 +264,11 @@ Where the UX score is won. The modal is the densest surface; build it properly.
   added `next-action.ts` (pure `nextActionForStatus`) and widened
   `GET /bookings/received` to return `CreatorCollaboration` (adds
   `nextAction` + `netCents` per row). See docs/DECISIONS.md for the table and
-  the `consequence`-is-empty-for-`await_brand` reasoning. No web consumer
-  yet — `CreatorHomePage`'s bookings list still reads the old shape; wiring
-  the new fields into the UI is Session B's.
+  the `consequence`-is-empty-for-`await_brand` reasoning. Web side wired in
+  2026-09-25 (own-product redesign, piece 3) — `CreatorHomePage`'s
+  Collaborations section now renders `nextAction`/`netCents` via
+  `components/creator/CollaborationCard.tsx`, sorted actionable-first. See
+  the "web" heading in DECISIONS.md.
 
 - [x] **4.2 Collaborations table** — done 2026-09-11, in two passes (steps
   1–3, then step 4 once session B's merge landed — see the Discovered

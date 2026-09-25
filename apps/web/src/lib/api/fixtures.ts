@@ -4,11 +4,11 @@ import type {
   AudienceSegment,
   AuthMe,
   Booking,
-  BookingReceived,
   BookingSent,
   BookingStatus,
   CampaignSummary,
   CreateBookingBody,
+  CreatorCollaboration,
   CreatorPost,
   CreatorProfileDetail,
   DemoCreatorResponse,
@@ -379,7 +379,7 @@ export const fixturesClient: ApiClient = {
     return booking;
   },
 
-  async listBookingsReceived(params?: PageParams): Promise<Paginated<BookingReceived>> {
+  async listBookingsReceived(params?: PageParams): Promise<Paginated<CreatorCollaboration>> {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 20;
     return { items: [], total: 0, page, pageSize };

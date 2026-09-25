@@ -787,6 +787,63 @@ not edited here) and `docs/RECON-CREATOR.md`.
     fail as written — flagged here rather than fixed, since the ask was
     piece 2 and nothing else. Whoever runs the next full `npm run shots`
     regen needs to rewrite that block against the list + panel first.
+- 2026-09-25 — Piece 3: the creator's Collaborations section, rebuilt around
+  `nextAction` instead of status alone. Read-only against session A's already
+  -built and verified contract: `GET /bookings/received` now returns
+  `CreatorCollaboration` (`BookingReceived` + `nextAction: {kind, label,
+  consequence}` + `netCents`) — nothing in `apps/api` touched.
+  - **The consequence string decides the row's visual register, not the
+    booking status.** `nextAction.consequence` is non-empty exactly for
+    `respond` (INVITED) and `publish` (ACCEPTED) — the two states where the
+    creator's own inaction has a stated cost — and empty for `await_brand`
+    and `none`. `CollaborationCard` branches on that presence: a non-empty
+    consequence gets a `primary-soft`-tinted panel with the label in
+    `font-medium text-primary`, the consequence itself, and (for `respond`
+    only) the real Accept/Decline buttons; an empty one gets a single plain
+    `text-muted` line and nothing else. First pass gave both states the same
+    padded box in a different colour — visually still one thing with two
+    paint jobs, not two different kinds of row — so the box was dropped
+    entirely for the informational case rather than just recoloured again.
+  - **`netCents`, not `agreedPriceCents`, is what renders** ("your net," top
+    -right of each card, `tabular-nums`) — the creator's side of the same
+    commission split the brand's Collaborations table never shows.
+  - **Sorted actionable-first client-side**, not server-side: `orderByNextAction`
+    stable-sorts the already-fetched page by `consequence !== "" ? 0 : 1`,
+    preserving the API's own `createdAt desc` within each group. Only safe
+    because this screen has never paginated its `pageSize: 20` fetch (no
+    `CreatorsPagination` here, unlike the brand's list) — sorting only within
+    a visible page would misrepresent "actionable first" the moment a real
+    pager existed, so this doesn't generalise past this screen as-is.
+  - **`updateBookingStatus`'s response is no longer patched into the row
+    directly.** It returns a bare `Booking`, which has no `nextAction`/
+    `netCents` — patching it in would have frozen the row's next-action
+    label at "Accept or decline" even after a real Accept flipped the status
+    to ACCEPTED (kind should become `publish`). `respond()` now re-fetches
+    `listBookingsReceived` on success instead — same endpoint already in use,
+    no new one, and the only way to get a server-recomputed `nextAction`
+    without duplicating `next-action.ts`'s logic on the web side.
+  - **New files**, mirroring the brand-side `components/campaign/` pattern:
+    `components/creator/CollaborationCard.tsx`, `components/creator/
+    TrackedLinkRow.tsx` (moved out of `CreatorHomePage.tsx` verbatim, now
+    reusable). `CreatorHomePage.tsx`'s section renamed "Your bookings" →
+    "Collaborations"; the profile card below it is untouched.
+  - **`ApiClient.listBookingsReceived` widened** from `Paginated<
+    BookingReceived>` to `Paginated<CreatorCollaboration>` in `client.ts`/
+    `http.ts` (the real endpoint already returns this shape) and `fixtures.ts`
+    (type-only change — it already returned an empty array, since `FIXTURE_ME`
+    is always the brand and there's no creator-mode fixture context yet, per
+    the existing comment there).
+  - **Not touched:** Earnings (piece 4), any nav/routing change (a creator
+    still lands on one route, `/app`, no rail) — RECON-CREATOR.md's ten-item
+    nav is not being reproduced; adding creator navigation was not asked for
+    here and would be a separate, deliberate decision once Earnings exists
+    too.
+  - Verified live (Adam Bauer, the seeded creator with a mixed INVITED/
+    DECLINED/PAID/LIVE history): the one actionable row (INVITED) sorts
+    first with the tinted panel and both buttons; the other three render as
+    plain "Nothing to do." lines; `netCents` values are correct per row
+    (€413/€1,204/€356/€340); tracked link + copy renders on the two rows
+    that have one (PAID, LIVE) regardless of their next action.
 
 ## Session — creator-side bookings/earnings API + search fix
 

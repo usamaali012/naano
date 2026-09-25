@@ -325,10 +325,17 @@ apps/
                            surface by role: CreatorsListPage (brand) or
                            CreatorHomePage (creator — their own profile,
                            "this is how brands see you", from GET /creators/:id,
-                           plus a "Your bookings" section reading
-                           GET /bookings/received with real Accept/Decline and,
-                           per booking with a trackedLinkSlug, a copy-to-
-                           clipboard tracked-link row (TrackedLinkRow)).
+                           plus a "Collaborations" section (2026-09-25,
+                           own-product redesign — see DECISIONS.md) reading
+                           GET /bookings/received, now typed CreatorCollaboration
+                           (nextAction + netCents, session A's contract). Rows
+                           render via components/creator/CollaborationCard —
+                           sorted actionable-first (`nextAction.consequence !==
+                           ""`) rather than plain createdAt order, real
+                           Accept/Decline on the "respond" kind, netCents shown
+                           not agreedPriceCents, tracked link + copy button
+                           (components/creator/TrackedLinkRow) on any row that
+                           has one regardless of nextAction.
                            CollaborationsPage (new, 4.2) is brand-only at
                            /app/collaborations (App.tsx's RequireBrand
                            redirects a creator who reaches the URL back to
@@ -408,6 +415,14 @@ apps/
                            lib/format.ts). No ranking language, no expander —
                            see docs/DECISIONS.md. Metric tiles/charts (5.1-5.3)
                            are still cut.
+        creator/          New 2026-09-25 (own-product redesign). CollaborationCard
+                           (one collaboration, organised around nextAction — an
+                           actionable tinted panel with the label/consequence/
+                           Accept-Decline when consequence is non-empty, else a
+                           plain muted line, deliberately not the same box in a
+                           different colour). TrackedLinkRow (moved out of
+                           CreatorHomePage.tsx, unchanged behaviour). Consumed
+                           by CreatorHomePage's Collaborations section.
 packages/
   shared/                 Wire-safe types (enums.ts, entities.ts, api.ts) hand-kept
                            in sync with prisma/schema.prisma. Imported by both apps.

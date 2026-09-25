@@ -2,11 +2,11 @@ import type {
   AttributionResponse,
   AuthMe,
   Booking,
-  BookingReceived,
   BookingSent,
   BookingStatus,
   CampaignSummary,
   CreateBookingBody,
+  CreatorCollaboration,
   CreatorProfileDetail,
   DemoCreatorResponse,
   ListCreatorsParams,
@@ -164,8 +164,8 @@ export const httpClient: ApiClient = {
       body: JSON.stringify(body),
     });
   },
-  listBookingsReceived(params?: PageParams): Promise<Paginated<BookingReceived>> {
-    return getJson<Paginated<BookingReceived>>(`/bookings/received${pageQuery(params)}`);
+  listBookingsReceived(params?: PageParams): Promise<Paginated<CreatorCollaboration>> {
+    return getJson<Paginated<CreatorCollaboration>>(`/bookings/received${pageQuery(params)}`);
   },
   listBookingsSent(
     params?: PageParams & { campaignId?: string; status?: BookingStatus },
