@@ -657,6 +657,40 @@ Append `YYYY-MM-DD — what changed and why` as you go. One line each.
     `lastClickAt` is always `null` there since fixtures never simulate a
     real `/r/:slug` click.
 
+## Session: web (own-product redesign)
+
+The brief changed: 8x stopped wanting a naano clone and started scoring our
+own interface and product decisions. This session owns `apps/web/**`
+end to end (including `lib/api/*`); session A owns all of `apps/api`. Working
+against the "Creator side" contract in `packages/shared/src/api.ts` (agreed,
+not edited here) and `docs/RECON-CREATOR.md`.
+
+- 2026-09-25 — Token layer: ground moved from naano's cool grey (`#F7F8FA`) to
+  a warm off-white (`#FAF6EF`), ink to a warm near-black (`#1C1712`), and
+  `--primary` from naano's own `#2563EB` to an oxblood `#7C2D3B` — a
+  distinctive, non-generic accent that still reads as confident B2B, and
+  distinct from `--success` (green) and `--warn` (amber) so status pills stay
+  legible against it. Type moved from Inter to IBM Plex Sans, loaded via a
+  real Google Fonts `<link>` in `index.html` (Inter was never actually
+  fetched anywhere before this — the old `--font-sans` just named it and fell
+  through to the system-ui fallback, so this is the first session where the
+  declared typeface and the rendered one are the same font). Both the
+  favicon and `theme-color` in `index.html` are hardcoded hex by necessity
+  (a data-URI SVG can't reference a CSS custom property) — updated to match
+  the new primary per `ui/Logo.tsx`'s existing "change both together" note.
+  Scope was `index.css` + `index.html` only, no component touched: every
+  primitive in `components/ui/` was already 100% token-driven (verified by
+  reading all fourteen before editing), so the new palette and typeface
+  cascade through every existing screen with zero component edits. Also
+  fixed `apps/web/.env`'s `VITE_API_URL` — it pointed at `:3001`, the running
+  local API is on `:3000` (confirmed via `curl .../health`) — a stale local
+  value unrelated to this slice, not a structural change. `docs/DESIGN.md`'s
+  token/type tables updated in place to match (they are the literal visual
+  spec, not history, so they carry the new values; the running rationale
+  lives here). Verified live: entry page and the marketplace grid both
+  render on the new palette/font with no regressions, `--success`/`--warn`
+  still read as distinct status colours next to the new primary.
+
 ## Session B
 
 Deploy work on branch `deploy`, running on Railway. New files only

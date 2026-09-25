@@ -13,24 +13,30 @@ inventing something.
 Define these once as CSS custom properties. Never hardcode a colour in a
 component.
 
+Updated 2026-09-25 (see docs/DECISIONS.md, "web" session token pass, for the
+reasoning): the brief stopped asking for a naano clone and started scoring our
+own product decisions, so the palette moved off naano's own cool-grey/blue and
+off Inter, deliberately.
+
 ```
---bg:          #F7F8FA   page background, cool grey
+--bg:          #FAF6EF   page background, warm off-white
 --surface:     #FFFFFF   cards, tables, modals
---border:      #E8EAEE   hairlines, 1px, never heavier
---text:        #0F1729   primary text
---text-muted:  #6B7280   labels, secondary
---primary:     #2563EB   the blue. Buttons, active nav, links, focus.
---primary-soft:#EFF4FF   badge and pill backgrounds
+--border:      #E6DDCF   hairlines, 1px, never heavier
+--text:        #1C1712   primary text, warm near-black
+--text-muted:  #7C7264   labels, secondary
+--primary:     #7C2D3B   oxblood. Buttons, active nav, links, focus.
+--primary-soft:#F4E3E2   badge and pill backgrounds
 --success:     #16A34A   active status only
 --warn:        #D97706   blocked status only
 ```
 
-One accent colour, and it is the blue. Status colours appear only inside status
-pills, never as decoration.
+One accent colour, and it is the oxblood. Status colours appear only inside
+status pills, never as decoration.
 
 ## Type
 
-One family: Inter, system fallback. No second display face.
+One family: IBM Plex Sans (loaded via Google Fonts in index.html), system
+fallback. No second display face.
 
 ```
 page title    30px / 600 / -0.02em
