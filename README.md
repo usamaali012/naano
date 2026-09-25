@@ -172,14 +172,17 @@ to keep and what to cut, and saying why out loud rather than just not
 building it.
 
 **Kept, because they're the actual job:**
-- **Collaborations**: every booking addressed to the creator, with the
-  Next action above and their net earnings, not the brand's gross.
-- **Earnings**: a real `GET /bookings/earnings`: total earned and average
-  per deal (PAID bookings, net of commission), what's in transit (accepted
-  through live, not yet paid), and a six-month chart. No "available to
-  withdraw": payment rails are cut, and a balance you can't withdraw is a
-  control that does nothing, which this project's own standing rule
-  already forbids.
+- **Collaborations — built.** A creator's page organises every booking
+  addressed to them around `nextAction`, not status alone: what to do next
+  is the organising fact of the row, not naano's column six, and the
+  creator sees their own `netCents`, not the brand's gross agreed price.
+- **Earnings — kept, not yet screened.** The API is real and verified:
+  `GET /bookings/earnings` returns total earned and average per deal (PAID
+  bookings, net of commission), what's in transit (accepted through live,
+  not yet paid), and a six-month chart. `apps/web` has no screen for it
+  yet. No "available to withdraw" either way: payment rails are cut, and a
+  balance you can't withdraw is a control that does nothing, which this
+  project's own standing rule already forbids.
 - **The creator's own profile**: what a brand sees when they look at this
   creator, audience breakdown, recent posts, pricing. Already built before
   this recon. The real product has this too, as My card ("Your creator
@@ -288,16 +291,14 @@ or wasn't started.
 
 ## What is not finished, honestly
 
-**Re-check this one before submitting, it may already be wrong.** The
-creator side has a real API and, as of this writing, an unbuilt UI. The
-recon is no longer a guess (`docs/RECON-CREATOR.md`), and
-`GET /bookings/received` / `GET /bookings/earnings` are built and verified
-against real data. But `apps/web` still shows a creator their bookings
-folded into their profile page, not the dedicated Collaborations and
-Earnings screens the API is ready for, and that is actively being built by
-a parallel session as this line is written. Check the live site before
-trusting this paragraph; by the time anyone reads it, the screens may
-already exist.
+**Earnings still isn't built.** Collaborations is: a creator's page shows
+every booking addressed to them organised around `nextAction`, not a
+status pill — accept/decline stays real, the tracked link and copy button
+stay on any row that has one, and the creator sees `netCents`, their own
+share after commission, not the brand's gross agreed price. Earnings has
+the same real, verified API behind it (`GET /bookings/earnings`: total
+earned, average per deal, what's in transit, a six-month chart) but no
+`apps/web` screen yet.
 
 **Sector fit is narrower than it looks.** The badge scores the creator's
 own vertical against the campaign's target vertical. It is not derived
