@@ -172,17 +172,18 @@ to keep and what to cut, and saying why out loud rather than just not
 building it.
 
 **Kept, because they're the actual job:**
-- **Collaborations — built.** A creator's page organises every booking
+- **Collaborations, built.** A creator's page organises every booking
   addressed to them around `nextAction`, not status alone: what to do next
   is the organising fact of the row, not naano's column six, and the
   creator sees their own `netCents`, not the brand's gross agreed price.
-- **Earnings — kept, not yet screened.** The API is real and verified:
-  `GET /bookings/earnings` returns total earned and average per deal (PAID
-  bookings, net of commission), what's in transit (accepted through live,
-  not yet paid), and a six-month chart. `apps/web` has no screen for it
-  yet. No "available to withdraw" either way: payment rails are cut, and a
-  balance you can't withdraw is a control that does nothing, which this
-  project's own standing rule already forbids.
+- **Earnings, built.** Four tiles, all net of commission: total earned,
+  paid collaborations, average per deal, and what's in transit (accepted
+  through live, not yet paid). Below them, a six-month chart of net
+  earnings, drawn as a token-only inline SVG bar chart, no charting
+  dependency, the same restraint as the marketplace's reach sparkline. No
+  "available to withdraw" balance and no withdraw control: payment rails
+  are cut, and a balance you can't withdraw is a control that does
+  nothing, which this project's own standing rule already forbids.
 - **The creator's own profile**: what a brand sees when they look at this
   creator, audience breakdown, recent posts, pricing. Already built before
   this recon. The real product has this too, as My card ("Your creator
@@ -214,10 +215,21 @@ building it.
 - **Messages**: already on this project's standing cut list; a real
   brand-to-creator thread system is out of scope for a demo this size.
 
-Ten nav items become three real destinations: the creator's profile,
-Collaborations, Earnings, ordered by what the creator came to do, which is
-RECON-CREATOR's own second complaint about the real product's nav, resolved
-by not repeating it.
+Ten nav items become three real destinations, and the product now shows
+exactly that: a signed-in creator's rail carries three icons, Profile,
+Collaborations, Earnings, the same 72px shape as the brand's own
+three-item rail, ordered by what the creator came to do rather than by
+what naano wants to grow. That is RECON-CREATOR's own second complaint
+about the real product's nav, resolved by not repeating it.
+
+The rail wasn't always there for creators. Earlier in this build, a
+creator had exactly one real screen, their own profile, so the rail was
+removed entirely rather than ship it holding a single permanently-active
+icon: navigation with one destination is decoration wearing navigation's
+clothes. That call was correct for the product as it stood then. It
+stopped being correct the moment Earnings gave creators a second and
+third destination, so the rail came back, not because the earlier
+decision was wrong, but because the product underneath it had changed.
 
 ## What shipped first
 
@@ -290,15 +302,6 @@ anything is worse than no control. Everything above either doesn't render,
 or wasn't started.
 
 ## What is not finished, honestly
-
-**Earnings still isn't built.** Collaborations is: a creator's page shows
-every booking addressed to them organised around `nextAction`, not a
-status pill — accept/decline stays real, the tracked link and copy button
-stay on any row that has one, and the creator sees `netCents`, their own
-share after commission, not the brand's gross agreed price. Earnings has
-the same real, verified API behind it (`GET /bookings/earnings`: total
-earned, average per deal, what's in transit, a six-month chart) but no
-`apps/web` screen yet.
 
 **Sector fit is narrower than it looks.** The badge scores the creator's
 own vertical against the campaign's target vertical. It is not derived
