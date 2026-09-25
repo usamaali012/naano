@@ -22,6 +22,12 @@ export function CreatorsListPage(): JSX.Element {
     country,
     minFollowers,
     maxFollowers,
+    priceMinCents,
+    priceMaxCents,
+    maxCpmEur,
+    minMedianViews,
+    minEngagementPct,
+    postedWithinDays,
     setPage,
     setSort,
     setQuery,
@@ -29,6 +35,12 @@ export function CreatorsListPage(): JSX.Element {
     setVerticals,
     setCountry,
     setFollowerRange,
+    setPriceRange,
+    setMaxCpmEur,
+    setMinMedianViews,
+    setMinEngagementPct,
+    setPostedWithinDays,
+    clearPerformanceFilters,
   } = useCreatorsStore();
 
   const shortlistIds = useShortlistStore((state) => state.ids);
@@ -84,6 +96,12 @@ export function CreatorsListPage(): JSX.Element {
           country,
           minFollowers,
           maxFollowers,
+          priceMinCents,
+          priceMaxCents,
+          maxCpmEur,
+          minMedianViews,
+          minEngagementPct,
+          postedWithinDays,
         });
 
     request
@@ -111,6 +129,12 @@ export function CreatorsListPage(): JSX.Element {
     country,
     minFollowers,
     maxFollowers,
+    priceMinCents,
+    priceMaxCents,
+    maxCpmEur,
+    minMedianViews,
+    minEngagementPct,
+    postedWithinDays,
     reloadKey,
   ]);
 
@@ -171,6 +195,17 @@ export function CreatorsListPage(): JSX.Element {
           minFollowers={minFollowers}
           maxFollowers={maxFollowers}
           onFollowerRangeChange={setFollowerRange}
+          priceMinCents={priceMinCents}
+          priceMaxCents={priceMaxCents}
+          onPriceRangeChange={setPriceRange}
+          maxCpmEur={maxCpmEur}
+          onMaxCpmChange={setMaxCpmEur}
+          minMedianViews={minMedianViews}
+          onMinMedianViewsChange={setMinMedianViews}
+          minEngagementPct={minEngagementPct}
+          onMinEngagementChange={setMinEngagementPct}
+          postedWithinDays={postedWithinDays}
+          onPostedWithinChange={setPostedWithinDays}
         />
       )}
 
@@ -224,7 +259,13 @@ export function CreatorsListPage(): JSX.Element {
                 vertical.length > 0 ||
                 country !== undefined ||
                 minFollowers !== undefined ||
-                maxFollowers !== undefined
+                maxFollowers !== undefined ||
+                priceMinCents !== undefined ||
+                priceMaxCents !== undefined ||
+                maxCpmEur !== undefined ||
+                minMedianViews !== undefined ||
+                minEngagementPct !== undefined ||
+                postedWithinDays !== undefined
               }
               onClearQuery={() => {
                 setQueryInput("");
@@ -234,6 +275,7 @@ export function CreatorsListPage(): JSX.Element {
                 setVerticals([]);
                 setCountry(undefined);
                 setFollowerRange(undefined, undefined);
+                clearPerformanceFilters();
               }}
               onBrowseAll={() => setTab("all")}
             />

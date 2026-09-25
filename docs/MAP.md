@@ -249,19 +249,28 @@ apps/
                            removeFromShortlist, createBooking /
                            listBookingsReceived / listBookingsSent /
                            updateBookingStatus, listAttribution (5.4,
-                           brand-only). http.ts maps every list param,
-                           including the vertical/country/follower-range
-                           filters FilterPanel (2.5) surfaces, and exports
-                           setApiToken (Bearer header for authed calls);
-                           request() throws errors.ts's ApiError (carries the
-                           HTTP status) so callers can special-case a status
-                           (e.g. 409 already-booked) instead of one generic
-                           failure message. fixtures.ts mirrors all of it —
-                           in-memory shortlist + bookings, plus the same
-                           vertical/country/follower-range filtering as
-                           http.ts (kept in sync since 2.5) — FIXTURE_ME is
-                           always the brand, so the creator-side booking
-                           methods have no real fixture context yet.
+                           brand-only). http.ts maps every ListCreatorsParams
+                           field onto the query string (creatorsQuery()) —
+                           already covered every filter FilterPanel (W3) now
+                           surfaces before W3 touched this file, so W3 changed
+                           nothing here — and exports setApiToken (Bearer
+                           header for authed calls); request() throws
+                           errors.ts's ApiError (carries the HTTP status) so
+                           callers can special-case a status (e.g. 409
+                           already-booked) instead of one generic failure
+                           message. fixtures.ts mirrors most of it — in-memory
+                           shortlist + bookings, plus the same vertical/
+                           country/follower-range/price/CPM/median-views/
+                           engagement filtering as http.ts (kept in sync since
+                           2.5, extended for W3) — FIXTURE_ME is always the
+                           brand, so the creator-side booking methods have no
+                           real fixture context yet. postedWithinDays is the
+                           one W3 filter fixtures.ts can't mirror:
+                           FIXTURE_CREATORS carries no per-post publish date
+                           (posts are only synthesized on demand in
+                           getCreator()), so that filter is a no-op in
+                           fixtures mode — verified against the real API
+                           instead.
                            listBookingsSent (4.2) returns BookingSent
                            (creatorDisplayName/campaignName/package added)
                            and takes an optional status, both wired in
@@ -274,9 +283,14 @@ apps/
                            {token, me}, persist -> localStorage naano.auth;
                            signIn does a real login + /me, signOut clears it.
                            creatorsStore.ts: grid page/sort/q/tab state, plus
-                           filter state (vertical[], country, minFollowers,
-                           maxFollowers) from 2.5 — each setter resets page
-                           to 1 like the others. shortlistStore.ts:
+                           every ListCreatorsParams filter FilterPanel (W3)
+                           surfaces — vertical[], country, minFollowers,
+                           maxFollowers, priceMinCents, priceMaxCents,
+                           maxCpmEur, minMedianViews, minEngagementPct,
+                           postedWithinDays — each setter resets page to 1 like
+                           the others; clearPerformanceFilters() resets the six
+                           row-two fields in one call for FilterPanel's Clear
+                           all / the empty state's Clear filters. shortlistStore.ts:
                            {campaignId, ids, status} — hydrates from the API,
                            optimistic writes, no localStorage.
                            bookingsStore.ts: {campaignId, byCreatorId,
@@ -376,10 +390,27 @@ apps/
                            with counts, search, sort-by, section header — "Best
                            match first" / "All N creators, ordered by…" (singular:
                            "1 creator, ordered by…"), true at any catalogue size).
-                           FilterPanel (2.5, partial): industry searchable
-                           multi-select, country dropdown, follower min/max,
-                           active-filter chips + Clear all. No price range or
-                           performance filters yet (2.5 remainder / 2.6).
+                           FilterPanel (W3, 2026-09-26, complete — see
+                           docs/DECISIONS.md "Session: web, round 2"): one panel,
+                           two rows, every filter the API supports. Row one:
+                           industry searchable multi-select, country dropdown,
+                           follower min/max. Row two, same visual weight: price
+                           range (EUR in the UI, cents on the wire), max CPM
+                           (EUR), min median views, min engagement (%), posted
+                           within (any/7/30/90 days, a Select). No Apply button —
+                           every control applies the way the existing filters do,
+                           number inputs debounced 250ms like the search box.
+                           Active-filter chips (one per filter, including each
+                           selected industry) + one Clear all, unchanged pattern.
+                           One line of copy under the panel — "Filters hide
+                           creators. They don't change the sector fit score." —
+                           verified true against ranking.ts/audience-fit.ts
+                           before writing it: `where` narrows the candidate set,
+                           sectorFitPct is computed from scoreAudienceFit on
+                           whatever survives the filter, so filtering never
+                           touches the formula. naano itself splits this one list
+                           across two panels (RECON.md "Filters") — deliberately
+                           not followed here.
                            A comparison list + persistent detail panel replaced
                            the card grid + modal 2026-09-25 (own-product
                            redesign, see DECISIONS.md) — a brand's job here is

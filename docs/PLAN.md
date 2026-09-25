@@ -454,7 +454,7 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
 
 ### 7-WEB
 
-- [ ] **W3 One filter panel**
+- [x] **W3 One filter panel** — done 2026-09-26.
 - [ ] **W1 Lifecycle**
 - [ ] **W4 Card editing**
 - [ ] **W2 Campaign switcher and budget bar**

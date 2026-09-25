@@ -260,7 +260,17 @@ export const fixturesClient: ApiClient = {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 20;
     const q = params?.q?.trim().toLowerCase();
-    const { vertical, country, minFollowers, maxFollowers } = params ?? {};
+    const {
+      vertical,
+      country,
+      minFollowers,
+      maxFollowers,
+      priceMinCents,
+      priceMaxCents,
+      maxCpmEur,
+      minMedianViews,
+      minEngagementPct,
+    } = params ?? {};
 
     let rows = [...FIXTURE_CREATORS];
     if (q) {
@@ -282,6 +292,27 @@ export const fixturesClient: ApiClient = {
     if (maxFollowers !== undefined) {
       rows = rows.filter((c) => c.followerCount <= maxFollowers);
     }
+    if (priceMinCents !== undefined) {
+      rows = rows.filter((c) => c.postCostCents >= priceMinCents);
+    }
+    if (priceMaxCents !== undefined) {
+      rows = rows.filter((c) => c.postCostCents <= priceMaxCents);
+    }
+    if (maxCpmEur !== undefined) {
+      rows = rows.filter((c) => {
+        const cpm = (c.postCostCents / c.medianViews) * 1000;
+        return cpm === 0 || cpm / 100 <= maxCpmEur;
+      });
+    }
+    if (minMedianViews !== undefined) {
+      rows = rows.filter((c) => c.medianViews >= minMedianViews);
+    }
+    if (minEngagementPct !== undefined) {
+      rows = rows.filter((c) => c.engagementRate >= minEngagementPct / 100);
+    }
+    // postedWithinDays has no fixture equivalent — FIXTURE_CREATORS carries no
+    // per-post publish date (posts are only synthesized in getCreator), so the
+    // fixture client cannot mirror this filter. Verified against the real API.
     rows.sort(SORTERS[params?.sort ?? "best_match"]);
 
     const start = (page - 1) * pageSize;

@@ -1050,3 +1050,74 @@ needs to not lose an hour to.
   before either session starts on its own routes/components, specifically so
   both sessions build against one agreed file instead of two people editing
   it at once.
+
+## Session: web, round 2
+
+- 2026-09-26 — **W3, one filter panel.** naano splits filtering one list
+  across two panels — inline industry/country/price, then a separate
+  "Performance filters" panel with its own Apply button (RECON.md
+  "Filters"). The API (`apps/api/src/creators/creators.service.ts`) already
+  took every filter — `priceMinCents`/`priceMaxCents`, `maxCpmEur`,
+  `minMedianViews`, `minFollowers`/`maxFollowers`, `minEngagementPct`,
+  `postedWithinDays` — the web side exposed three. Folded the rest into
+  `FilterPanel.tsx`'s existing panel as a second row (price range, max CPM,
+  min median views, min engagement, posted within), same visual weight as
+  row one, no second panel and no Apply button — every control applies the
+  way industry/country/followers already do, number inputs debounced 250ms
+  same as the search box and the follower-range fields. Price is the one
+  unit conversion: the UI takes and shows whole EUR, the wire and the chip
+  math both work in cents (`Math.round(eur * 100)`), same split as
+  `formatCents` elsewhere.
+- `packages/shared/src/api.ts`'s `ListCreatorsParams` and `http.ts`'s
+  `creatorsQuery()` already covered every field before this session opened
+  either file (both landed with the round-2 contract pass / were already
+  correct) — W3 touched neither. `apps/web/src/lib/stores/creatorsStore.ts`
+  gained the six new filter fields plus their setters and one
+  `clearPerformanceFilters()` (used by both FilterPanel's Clear all and the
+  empty state's Clear filters, so the two can't drift), same page-resets-to-1
+  pattern as every existing setter. `fixtures.ts` extended to mirror
+  price/CPM/median-views/engagement filtering — `postedWithinDays` is the one
+  filter it can't mirror: `FIXTURE_CREATORS` carries no per-post publish date
+  (posts are only synthesized on demand inside `getCreator()`), so that
+  filter is a no-op there. Not a real gap: verification ran against the real
+  API (`VITE_API_URL` at `:3000`), not fixtures mode.
+- **The copy line** — "Filters hide creators. They don't change the sector
+  fit score." — was checked against `apps/web` and the ranking code it calls
+  before writing it, per the brief. `creators.service.ts.list()` builds a
+  Prisma `where` from every filter param, fetches `rows`, *then* computes
+  `fitById` via `scoreAudienceFit(row, { targetVertical })` over whatever
+  `rows` survived the `where` (`audience-fit.ts`: vertical match 0.7 +
+  follower tier 0.3, keyed only on the creator's own vertical/followers and
+  the campaign's `targetVertical` — nothing filter-shaped in the formula).
+  `bestMatchOrder()` (`ranking.ts`) then sorts by that same `fitById` map.
+  So filtering narrows the candidate set the fit score gets computed over,
+  but never touches the formula itself — the claim holds, confirmed by
+  reading, not assumed.
+- **Verification**: against the real API (`apps/api` already running on
+  `:3000`, unmodified — this session opened no `apps/api` file per the
+  brief's file boundary). For each new filter: set it alone, confirmed the
+  network request carried the right param
+  (`maxCpmEur=15`, `priceMinCents=10000&priceMaxCents=50000`,
+  `minEngagementPct=3`, `postedWithinDays=90`) and the list shrank (40 → 2 on
+  `maxCpmEur=15`, 40 → 21 on the €100–€500 price band). Combined `maxCpmEur`
+  + `postedWithinDays` + `minEngagementPct` in one request, all three params
+  present together, chips for all three, list still correct. Clear all reset
+  every input and chip and returned to 40. One unrelated hiccup mid-session:
+  the already-running `apps/api` dev process died on its own
+  (`ERR_CONNECTION_REFUSED`, not triggered by anything W3 touched) —
+  restarted with `npm run dev:api` (not an edit to `apps/api/**`, just
+  running its existing script) and verification continued.
+- **`npm run shots`**: ran it per the brief; it fails as flagged in this
+  file's "Piece 2" entry above (2026-09-25) —
+  `scripts/shots.mjs`'s brand block still waits on `[role="dialog"]`
+  against the grid/modal UI that piece deleted, and that rewrite was
+  explicitly deferred to "whoever runs the next full `npm run shots`
+  regen," not scoped to W3 (CLAUDE.md rule 3: one task per session, don't
+  refactor adjacent code you weren't asked to touch). Did the anti-slop
+  check manually instead — a full-page 1440px screenshot of `/app` with all
+  ten filter controls visible: one panel, two same-weight rows, no second
+  "Performance filters" panel, no Apply button, tabular-nums columns hold,
+  nothing competing for focal point. `scripts/shots.mjs` still needs that
+  rewrite before its next regen; flagged again here, not fixed, since W3 is
+  web-filters-only.
+  it at once.
