@@ -98,6 +98,20 @@ export interface CreatorProfileDetail extends CreatorProfile {
   posts: CreatorPost[];
 }
 
+/**
+ * Body of PATCH /creators/me (CREATOR). Every field optional; at least one
+ * required. Returns CreatorProfileDetail. Existing bookings keep their
+ * agreedPriceCents; a new price only affects bookings made after it.
+ */
+export interface UpdateMyCardBody {
+  /** 1..160 chars, trimmed. */
+  headline?: string;
+  /** Integer, 5_000..2_250_000. */
+  postCostCents?: number;
+  /** Integer, >= postCostCents and <= 5 * postCostCents (after applying both fields). */
+  bundle5PriceCents?: number;
+}
+
 // --- Campaigns / shortlist ---------------------------------------------------
 
 /**
@@ -117,6 +131,23 @@ export interface AddToShortlistBody {
   creatorProfileId: string;
 }
 
+/**
+ * One row of GET /campaigns (COMPANY): the signed-in company's own campaigns,
+ * with money against budget. Ordering: LIVE first, then DRAFT, then
+ * COMPLETED, newest first within each. Paginated.
+ */
+export interface CampaignOverview extends CampaignSummary {
+  budgetCents: number;
+  /** sum of agreedPriceCents, INVITED. */
+  pendingCents: number;
+  /** sum of agreedPriceCents, ACCEPTED through PAID. */
+  committedCents: number;
+  /** PAID only, a subset of committedCents. */
+  paidCents: number;
+  /** non-declined bookings. */
+  bookingsCount: number;
+}
+
 // --- Bookings ----------------------------------------------------------------
 
 /** The two rail options; the server, not the client, converts this to cents. */
@@ -131,6 +162,11 @@ export interface CreateBookingBody {
   creatorProfileId: string;
   package: BookingPackage;
   deliverable: string;
+  /**
+   * Must belong to the signed-in company (404 otherwise); a COMPLETED
+   * campaign is 409. Omitted means the active campaign, exactly as today.
+   */
+  campaignId?: string;
 }
 
 /** Body of PATCH /bookings/:id/status. Only these two transitions exist yet. */
@@ -153,6 +189,46 @@ export interface BookingSent extends Booking {
   creatorDisplayName: string;
   campaignName: string;
   package: BookingPackage;
+}
+
+/**
+ * GET /bookings/sent now returns Paginated<BrandCollaboration>, a superset
+ * of BookingSent, so existing callers keep compiling.
+ */
+export interface BrandCollaboration extends BookingSent {
+  /** Computed for the brand as viewer. */
+  nextAction: NextAction;
+  draftContent: string | null;
+  postUrl: string | null;
+}
+
+/**
+ * Five lifecycle endpoints. Wrong state is 409, wrong role is 403, someone
+ * else's booking is 404.
+ *
+ * POST /bookings/:id/draft            CREATOR  ACCEPTED -> DRAFT_READY   returns CreatorCollaboration
+ * POST /bookings/:id/publish          CREATOR  SCHEDULED -> LIVE         returns CreatorCollaboration
+ * POST /bookings/:id/approve          COMPANY  DRAFT_READY -> SCHEDULED  returns BrandCollaboration
+ * POST /bookings/:id/request-changes  COMPANY  DRAFT_READY -> ACCEPTED   returns BrandCollaboration
+ * POST /bookings/:id/mark-paid        COMPANY  LIVE -> PAID              returns BrandCollaboration
+ */
+export interface SubmitDraftBody {
+  /** 1..3000 chars, trimmed. */
+  content: string;
+}
+
+/** https URL on linkedin.com, x.com or twitter.com. */
+export interface MarkPublishedBody {
+  postUrl: string;
+}
+
+/**
+ * GET /bookings/action-count, either role: how many bookings are waiting on
+ * the signed-in user. Counts rows whose nextAction.consequence is non-empty
+ * for that viewer.
+ */
+export interface ActionCount {
+  count: number;
 }
 
 // --- Analytics ---------------------------------------------------------------
@@ -208,8 +284,16 @@ export const COMMISSION_PCT = 20;
  */
 export interface NextAction {
   /** Machine key, so the UI can render the right control. */
-  kind: "respond" | "publish" | "await_brand" | "none";
-  /** Imperative, addressed to the creator. "Accept or decline." */
+  kind:
+    | "respond" // INVITED: viewer must accept or decline.
+    | "submit_draft" // ACCEPTED: creator must submit a draft.
+    | "publish" // SCHEDULED: creator must publish the live post.
+    | "review_draft" // DRAFT_READY: brand must approve or request changes.
+    | "mark_paid" // LIVE: brand must mark the booking paid.
+    | "await_brand" // Creator is waiting on the brand's next move.
+    | "await_creator" // Brand is waiting on the creator's next move.
+    | "none"; // Nothing pending for this viewer.
+  /** Imperative, addressed to whichever role is viewing. "Accept or decline." */
   label: string;
   /** What happens if they do nothing. Empty string when nothing is pending. */
   consequence: string;
@@ -221,6 +305,10 @@ export interface CreatorCollaboration extends BookingReceived {
   nextAction: NextAction;
   /** What the creator receives after COMMISSION_PCT. */
   netCents: number;
+  /** The draft the creator submitted (Post.content), or null before one exists. */
+  draftContent: string | null;
+  /** The published post URL, or null until the creator marks it live. */
+  postUrl: string | null;
 }
 
 /** One month of the creator's earnings chart, oldest first. */

@@ -1037,3 +1037,16 @@ needs to not lose an hour to.
   run`, which injects the connection string into the subprocess without it
   ever being typed, printed, or committed anywhere. `prisma migrate deploy`
   is run the same way, forward-only.
+
+## Session: API, round 2
+
+- 2026-09-26 — The brief changed again: "an interface I designed myself, on
+  my own backend, real database, no mock data," five features today, split
+  across an API session and a web session working in parallel. Wrote the
+  shared contract first (`packages/shared/src/api.ts`) — widened `NextAction`,
+  `CreatorCollaboration.draftContent`/`postUrl`, the new `BrandCollaboration`,
+  `SubmitDraftBody`/`MarkPublishedBody`, `UpdateMyCardBody`,
+  `CampaignOverview`, `CreateBookingBody.campaignId`, and `ActionCount` —
+  before either session starts on its own routes/components, specifically so
+  both sessions build against one agreed file instead of two people editing
+  it at once.

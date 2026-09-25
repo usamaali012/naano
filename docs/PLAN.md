@@ -438,6 +438,30 @@ show it.
 
 ---
 
+## Phase 7, round 2 (own product)
+
+The brief changed again: 8x wants "an interface I designed myself, on my own
+backend, real database, no mock data." Five features land today, split across
+two parallel sessions against one shared contract in `packages/shared/src/api.ts`.
+
+### 7-API
+
+- [x] **7.0 Contract** — done 2026-09-26.
+- [ ] **A1 Lifecycle**
+- [ ] **A4 Card editing**
+- [ ] **A2 Campaigns and budget**
+- [ ] **A5 Action count**
+
+### 7-WEB
+
+- [ ] **W3 One filter panel**
+- [ ] **W1 Lifecycle**
+- [ ] **W4 Card editing**
+- [ ] **W2 Campaign switcher and budget bar**
+- [ ] **W5 Rail badge**
+
+---
+
 ## Discovered
 
 Notes handed forward between sessions. Newest first.
