@@ -4,10 +4,13 @@
 //   npm run dev            # in another terminal (api + web)
 //   npm run shots --workspace=apps/web
 //
-// Writes the entry page, the brand marketplace (grid + both modal tabs +
-// booking rail), the creator home, and the marketplace error state into
-// apps/web/.screenshots/, wiping the folder first so every mtime is from this
-// run. Each side signs in for real from the entry page.
+// Writes the entry page, the brand marketplace (comparison list + persistent
+// detail panel, a selected row, the filter panel with a filter set), brand
+// Collaborations, Results, the creator's Profile/Collaborations/Earnings, and
+// the marketplace error state into apps/web/.screenshots/, wiping the folder
+// first so every mtime is from this run. Each side signs in for real from the
+// entry page. Every wait is on a real selector, response, or visible text —
+// no fixed timeouts standing in for "probably done by now".
 import { mkdir, rm, readdir, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -62,26 +65,40 @@ async function signIn(page, side) {
   await context.close();
 }
 
-// --- brand: grid + modal ----------------------------------------------------
+// --- brand: marketplace (comparison list + persistent detail panel) --------
 {
   const { context, page } = await newContext();
   await signIn(page, "brand");
+
+  // The list is loaded once its first row's Book action is on screen; the
+  // detail panel fills with the top row automatically (no open/close step),
+  // so its Overview tab is the signal the panel itself is ready too.
+  await page.getByRole("button", { name: "Book", exact: true }).first().waitFor();
+  await page.getByRole("tab", { name: "Overview" }).waitFor();
   await page.waitForTimeout(1500); // avatar images
-  await shot(page, "creators-grid");
+  await shot(page, "marketplace");
 
-  await page.getByRole("button", { name: "Book", exact: true }).first().click();
-  await page.waitForSelector('[role="dialog"]');
-  await page.waitForTimeout(900);
-  await shot(page, "modal-overview");
+  // Select a different row — the panel swaps in place. Wait on the real
+  // GET /creators/:id response the click triggers, not a timeout.
+  const rows = page.locator("tbody tr");
+  await Promise.all([
+    page.waitForResponse(
+      (res) =>
+        res.request().method() === "GET" && /\/creators\/[^/?]+$/.test(new URL(res.url()).pathname),
+    ),
+    rows.nth(1).click(),
+  ]);
+  await page.getByRole("tab", { name: "Overview" }).waitFor();
+  await shot(page, "marketplace-detail-panel");
 
-  await page.getByText("How pricing is calculated").click();
-  await page.getByRole("button", { name: /Bundle of 5/ }).click();
-  await page.waitForTimeout(250);
-  await shot(page, "modal-rail-bundle");
-
-  await page.getByRole("tab", { name: "Audience" }).click();
-  await page.waitForTimeout(350);
-  await shot(page, "modal-audience");
+  // One filter set (W3 — the row-two performance filters share the panel
+  // with row one). Max CPM's placeholder ("EUR") is unique on the page.
+  await Promise.all([
+    page.waitForResponse((res) => res.url().includes("maxCpmEur=30")),
+    page.getByPlaceholder("EUR").fill("30"),
+  ]);
+  await page.getByRole("button", { name: /Remove Max .*CPM filter/ }).waitFor();
+  await shot(page, "marketplace-filters");
   await context.close();
 }
 
@@ -97,13 +114,32 @@ async function signIn(page, side) {
   await context.close();
 }
 
+// --- brand: results ------------------------------------------------------------
+{
+  const { context, page } = await newContext();
+  await signIn(page, "brand");
+  await page.getByRole("button", { name: "Results" }).click();
+  await page.waitForURL("**/app/results");
+  // Either a real attribution table or one of its two empty states — all
+  // three are legitimate rendered states, so wait for whichever lands.
+  await page
+    .locator("table")
+    .or(page.getByText("Clicks are tracked once a creator accepts a booking."))
+    .or(page.getByText(/No clicks yet\./))
+    .first()
+    .waitFor();
+  await page.waitForTimeout(300);
+  await shot(page, "results");
+  await context.close();
+}
+
 // --- ensure the demo creator (Emma Berg) has a pending invite ---------------
-// So creator-booking-requests.png shows an INVITED row with Accept/Decline
-// visible. Seed's random status assignment already pairs Emma with every
-// campaign her one demo brand (Ledgerly) has, all non-INVITED -- so a normal
-// POST /bookings from the UI would always 409. dev/bookings/ensure-invited
-// is a no-op if Emma already has an INVITED booking (any campaign), so
-// reruns stay stable.
+// So creator-collaborations.png shows an actionable INVITED row with
+// Accept/Decline visible. Seed's random status assignment already pairs Emma
+// with every campaign her one demo brand (Ledgerly) has, all non-INVITED --
+// so a normal POST /bookings from the UI would always 409.
+// dev/bookings/ensure-invited is a no-op if Emma already has an INVITED
+// booking (any campaign), so reruns stay stable.
 {
   const emmaRes = await fetch(`${API}/creators?q=${encodeURIComponent("Emma Berg")}&pageSize=1`);
   const emma = (await emmaRes.json()).items[0];
@@ -114,17 +150,47 @@ async function signIn(page, side) {
   });
 }
 
-// --- creator home ---------------------------------------------------------
+// --- creator: profile ---------------------------------------------------------
 {
   const { context, page } = await newContext();
   await signIn(page, "creator");
-  await page.waitForTimeout(1200);
-  await shot(page, "creator-home");
+  await page.getByRole("heading", { name: "Your profile" }).waitFor();
+  await page.waitForTimeout(1200); // avatar + post images
+  await shot(page, "creator-profile");
+  await context.close();
+}
 
-  const requests = page.getByRole("heading", { name: "Your bookings" });
-  await requests.scrollIntoViewIfNeeded();
+// --- creator: collaborations --------------------------------------------------
+{
+  const { context, page } = await newContext();
+  await signIn(page, "creator");
+  await page.getByRole("button", { name: "Collaborations" }).click();
+  await page.waitForURL("**/app/collaborations");
+  // Either a rendered collaboration card or the empty state.
+  await page
+    .getByText("No collaborations yet.")
+    .or(page.locator("li").first())
+    .first()
+    .waitFor();
   await page.waitForTimeout(300);
-  await shot(page, "creator-booking-requests", { fullPage: false });
+  await shot(page, "creator-collaborations");
+  await context.close();
+}
+
+// --- creator: earnings ----------------------------------------------------
+{
+  const { context, page } = await newContext();
+  await signIn(page, "creator");
+  await page.getByRole("button", { name: "Earnings" }).click();
+  await page.waitForURL("**/app/earnings");
+  // Either the metric tiles or the "no earnings yet" empty state.
+  await page
+    .getByText("Total earned")
+    .or(page.getByText("No earnings yet"))
+    .first()
+    .waitFor();
+  await page.waitForTimeout(300);
+  await shot(page, "creator-earnings");
   await context.close();
 }
 
@@ -146,6 +212,6 @@ await browser.close();
 const files = (await readdir(OUT)).filter((f) => f.endsWith(".png")).sort();
 for (const f of files) {
   const s = await stat(path.join(OUT, f));
-  console.log(`${f.padEnd(24)} ${s.mtime.toISOString()}`);
+  console.log(`${f.padEnd(28)} ${s.mtime.toISOString()}`);
 }
 console.log(errors.length ? `\nCONSOLE/PAGE ERRORS:\n${errors.join("\n")}` : "\nno console/page errors");

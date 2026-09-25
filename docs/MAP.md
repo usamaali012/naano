@@ -214,23 +214,45 @@ apps/
                            in apps/web/.screenshots/ (gitignored). Dev server
                            must be up. From Git-Bash prefix MSYS_NO_PATHCONV=1.
       shots.mjs            `npm run shots --workspace=apps/web` — the full
-                           marketplace suite (grid, both modal tabs, booking
-                           rail, collaborations, creator home + bookings,
-                           error state). Wipes
-                           .screenshots/ first, prints mtimes. Run it to
-                           finish any UI change. Before the creator-home
-                           shots it calls the dev-only POST
+                           suite, rewritten 2026-09-26 (see docs/DECISIONS.md
+                           "Session: web, round 2") against the current UI:
+                           entry-page, marketplace (comparison list +
+                           persistent detail panel, default state),
+                           marketplace-detail-panel (a second row selected),
+                           marketplace-filters (the one filter panel, W3, with
+                           Max CPM set and its chip showing), collaborations
+                           (brand), results, creator-profile,
+                           creator-collaborations, creator-earnings,
+                           error-state. Wipes .screenshots/ first, prints
+                           mtimes. Run it to finish any UI change. Every wait
+                           is on a real selector/response/visible text, never
+                           a fixed timeout standing in for "probably done" —
+                           row selection waits on the GET /creators/:id
+                           response it triggers, the filter chip waits on the
+                           network request carrying maxCpmEur, Results/
+                           Collaborations/Earnings each wait on whichever of
+                           their real states (table/cards vs. empty state)
+                           actually renders. Before the creator-collaborations
+                           shot it calls the dev-only POST
                            /dev/bookings/ensure-invited directly (no browser)
-                           so creator-booking-requests.png always has an
-                           INVITED row with Accept/Decline visible — see
-                           docs/PLAN.md's 2026-09-11 Discovered entry for why
-                           a normal booking-creation UI flow can't guarantee
-                           that. Still does not drive a real booking
-                           creation through the UI (that mutation is not
-                           idempotent against the persistent local dev DB —
-                           see docs/PLAN.md's 2026-09-10 Discovered entry);
-                           the rail's idle state is covered by
-                           modal-rail-bundle instead.
+                           so an INVITED row exists somewhere in the data —
+                           see docs/PLAN.md's 2026-09-11 Discovered entry for
+                           why a normal booking-creation UI flow can't
+                           guarantee that; note the signed-in demo creator
+                           ("Continue as a creator") isn't guaranteed to be
+                           the same creator ensure-invited targeted (Emma
+                           Berg) — that resolution is GET /auth/demo-creator's
+                           logic (apps/api), unchanged by this rewrite. Still
+                           does not drive a real booking creation through the
+                           UI (that mutation is not idempotent against the
+                           persistent local dev DB — see docs/PLAN.md's
+                           2026-09-10 Discovered entry). Pre-2026-09-25 shot
+                           names (creators-grid, modal-overview, modal-rail-
+                           bundle, modal-audience, creator-home, creator-
+                           booking-requests) no longer exist — that UI
+                           (card grid + profile modal) was deleted; see
+                           docs/DECISIONS.md's 2026-09-25 and 2026-09-26
+                           entries for the history.
     tailwind.config.js    Maps Tailwind utilities onto the CSS custom properties
                            in src/index.css via var(). No raw hex/px in configs
                            or components.
@@ -384,8 +406,14 @@ apps/
                            (styled <details> + chevron, controlled), Avatar
                            (initials always render underneath; the <img> paints
                            over them once loaded and is removed on error — no
-                           empty circle while a slow photo loads). None hardcode
-                           a colour, radius or spacing value.
+                           empty circle while a slow photo loads). Input takes
+                           an optional `invalid` boolean (2026-09-26, W3 input
+                           guards — see docs/DECISIONS.md "Session: web, round
+                           2"): swaps the border/focus-ring token from
+                           --primary to --warn, the same token status pills
+                           already use for a blocked state. FilterPanel is its
+                           first consumer. None hardcode a colour, radius or
+                           spacing value.
         marketplace/      MarketplaceHeader (title/explainer, All+Shortlist tabs
                            with counts, search, sort-by, section header — "Best
                            match first" / "All N creators, ordered by…" (singular:
@@ -411,6 +439,23 @@ apps/
                            touches the formula. naano itself splits this one list
                            across two panels (RECON.md "Filters") — deliberately
                            not followed here.
+                           Input guards (2026-09-26, see docs/DECISIONS.md
+                           "Session: web, round 2"): price min/max, max CPM,
+                           min median views and min engagement all reject a
+                           negative value client-side (the native `min={0}`
+                           attribute doesn't block typing, only nudging);
+                           min engagement additionally rejects >100
+                           (DebouncedNumberFilter's optional `max` prop).
+                           PriceRangeFilter additionally rejects an inverted
+                           range (min > max) with one inline `text-warn` line
+                           under the inputs, "Min price is above max price." —
+                           no request sent for any of these until the value is
+                           fixed, the typed text stays on screen, the field
+                           gets Input's `invalid` styling, and the committed
+                           filter (so any chip) stays at its last valid
+                           setting. No guard on followers (out of W3/this
+                           fix's scope) or on posted-within (a Select, not
+                           free text).
                            A comparison list + persistent detail panel replaced
                            the card grid + modal 2026-09-25 (own-product
                            redesign, see DECISIONS.md) — a brand's job here is

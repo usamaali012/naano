@@ -1120,4 +1120,84 @@ needs to not lose an hour to.
   nothing competing for focal point. `scripts/shots.mjs` still needs that
   rewrite before its next regen; flagged again here, not fixed, since W3 is
   web-filters-only.
-  it at once.
+- 2026-09-26 — **Fix 1: filter panel input guards.** The W3 number inputs
+  (`FilterPanel.tsx`) accepted a negative value or an inverted price range
+  and silently sent it — `min={0}` on an `<input type="number">` blocks the
+  spinner, not typing, so `-5` still reached `Number(input)` and, for
+  example, `priceMinCents: -500` went straight onto the query string (the
+  API's Prisma `range()` helper then builds a `gte: -500`, which every row
+  satisfies — not an empty list, but not what the brand typed either).
+  `DebouncedNumberFilter` (max CPM, min median views, min engagement) now
+  takes an optional `max` prop and rejects `NaN`/negative/over-max in the
+  debounce handler itself, before it ever calls `onChange`: on a bad value it
+  sets local `invalid` state and returns, so the committed filter (and any
+  chip) stays exactly where it was. `PriceRangeFilter` does the same for
+  negative min/max, plus a third check — parses both sides, and if
+  `minCents > maxCents` sets an `inverted` flag instead of sending, with one
+  inline line under the inputs ("Min price is above max price.",
+  `text-label text-warn`, the same token `BookingRail`'s retryable-error line
+  and `EntryPage`'s inline error already use — no new token). Added `invalid`
+  as a boolean prop on the `Input` primitive itself (`ui/Input.tsx`) rather
+  than fighting Tailwind class-order to override `border-border` from a
+  call-site className: it swaps `border-border`/`focus:border-primary` for
+  `border-warn`/`focus:border-warn` and sets `aria-invalid`. Reused token,
+  no new colour. The typed text is never wiped in any of these cases — only
+  the local input string state changes on keystroke; the prop-driven sync
+  effect that would overwrite it only fires when the *committed* value
+  changes, and an invalid value never commits. Followers (`FollowerRangeFilter`)
+  and posted-within (a `Select`, not free text) were out of scope and
+  untouched. Verified against the real API (`:3000`): `-5` in Max CPM sent no
+  request and produced no chip; `150` in Min engagement, same; price min
+  `500` / max `100` showed the inline message and sent nothing; correcting
+  all three in one pass produced one request carrying
+  `priceMinCents=10000&priceMaxCents=50000&maxCpmEur=25&minEngagementPct=3`
+  and three chips.
+- 2026-09-26 — **Fix 2: `npm run shots` works again.** Rewrote
+  `scripts/shots.mjs` end to end against the UI that actually exists (flagged
+  broken twice already — the 2026-09-25 "Piece 2" entry and this file's W3
+  entry above — both explicitly deferred it). The old suite's brand block
+  clicked "Book" and `waitForSelector('[role="dialog"]')`: both the grid and
+  the modal were deleted in the 2026-09-25 redesign, replaced by
+  `CreatorComparisonList` + the persistent `CreatorDetailPanel`. New shot
+  list: `entry-page`, `marketplace` (list + panel, default first-row
+  selection), `marketplace-detail-panel` (a second row clicked, panel
+  swapped), `marketplace-filters` (Max CPM set to 30, its chip visible — the
+  one-panel W3 filter set the brief asked this fix to also cover),
+  `collaborations` (brand), `results` (new — 5.4 had no shot before this),
+  `creator-profile`, `creator-collaborations`, `creator-earnings`,
+  `error-state`. Every wait is on something real, never a fixed timeout:
+  clicking a row waits on the `GET /creators/:id` response that click
+  triggers (`page.waitForResponse`, run in parallel with the click via
+  `Promise.all` so the response can't fire before the listener attaches);
+  setting Max CPM waits on the response whose URL contains `maxCpmEur=30`;
+  Results/Collaborations/Earnings each wait on a `.or()`-combined locator
+  covering whichever of their real states (a table/cards vs. one of their
+  empty states) actually renders, since both are legitimate and neither is
+  forced. The `ensure-invited` dev-endpoint call survives (same reasoning as
+  before — seed's random status assignment means a fresh POST /bookings
+  could always 409), now feeding `creator-collaborations` instead of the
+  deleted `creator-home`/`creator-booking-requests`. One thing discovered,
+  not fixed here (out of scope — apps/api is off limits this session): the
+  creator `ensure-invited` targets (Emma Berg, by name) is not guaranteed to
+  be the same creator `GET /auth/demo-creator` signs "Continue as a creator"
+  into (whoever Ledgerly *most recently* booked) — this run signed in as Elin
+  Halvorsen, so `creator-collaborations.png` shows two informational cards,
+  not the actionable Accept/Decline state. The shot still correctly shows the
+  current `CollaborationCard` UI against real data; only the specific
+  actionable-state coverage is a pre-existing gap, flagged for whoever next
+  touches `GET /auth/demo-creator` or `ensure-invited`. Verified: `npm run
+  shots` against the real API (`:3000`) finished clean, wrote all ten files,
+  the only console output was the `ERR_FAILED` lines the deliberate
+  `page.route(...).abort()` in the `error-state` block always produces (same
+  as the old suite). Opened `marketplace.png`, `marketplace-filters.png`, and
+  `creator-collaborations.png` — all three render the current UI correctly.
+- **Incidental, both fixes**: the already-running `apps/api` dev process
+  died on its own again mid-session (`ERR_CONNECTION_REFUSED`, unrelated to
+  either fix, same as the hiccup logged in the W3 entry above) — restarted
+  with `npm run dev:api` (not an edit to `apps/api/**`) both times
+  verification needed it back.
+- Also fixed while reading this file for the required-reading step: the W3
+  entry above had ended with a stray duplicated "it at once." (an artifact of
+  that session's own edit tool call landing after, not instead of, the
+  original text it was appending to) — removed; no content change, only the
+  leftover fragment.
