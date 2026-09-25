@@ -184,3 +184,65 @@ export interface AttributionRow {
 export interface AttributionResponse extends Paginated<AttributionRow> {
   hasAnyClicks: boolean;
 }
+
+// --- Creator side ------------------------------------------------------------
+//
+// These types are the contract between the API session and the web session.
+// They were agreed before either started so neither blocks on the other: the
+// API builds them, the web app builds against them (through the fixture client
+// first if the endpoints are not live yet). Do not change a shape here without
+// telling the other session.
+
+/**
+ * naano's cut, as a whole percentage. The real product shows a creator their
+ * net and a brand their gross, so there is a commission between the two, but
+ * it never states the rate. A flat rate is the honest placeholder: it is one
+ * constant, it is named, and it is not presented as naano's real number.
+ */
+export const COMMISSION_PCT = 20;
+
+/**
+ * What the creator should do next with a booking. Derived from status, never
+ * stored. naano surfaces this as column six of a table; here it is the
+ * organising idea of the creator's screen, which is the product decision.
+ */
+export interface NextAction {
+  /** Machine key, so the UI can render the right control. */
+  kind: "respond" | "publish" | "await_brand" | "none";
+  /** Imperative, addressed to the creator. "Accept or decline." */
+  label: string;
+  /** What happens if they do nothing. Empty string when nothing is pending. */
+  consequence: string;
+}
+
+/** GET /bookings/received — one row of the creator's Collaborations screen. */
+export interface CreatorCollaboration extends BookingReceived {
+  /** Derived per row, never stored. */
+  nextAction: NextAction;
+  /** What the creator receives after COMMISSION_PCT. */
+  netCents: number;
+}
+
+/** One month of the creator's earnings chart, oldest first. */
+export interface EarningsMonth {
+  /** ISO year-month, e.g. "2026-09". */
+  month: string;
+  netCents: number;
+}
+
+/**
+ * GET /bookings/earnings — the creator's money in one response.
+ * Deliberately has no "available to withdraw": payment rails are cut, and a
+ * balance you cannot withdraw is a control that does nothing.
+ */
+export interface CreatorEarnings {
+  /** PAID bookings only, net of commission. */
+  totalEarnedCents: number;
+  paidCollaborationsCount: number;
+  /** totalEarnedCents / paidCollaborationsCount, or 0 when there are none. */
+  averageCents: number;
+  /** ACCEPTED through LIVE: agreed, not yet paid. Net of commission. */
+  inTransitCents: number;
+  /** Six months, oldest first, including the current one. */
+  monthly: EarningsMonth[];
+}
