@@ -3,12 +3,46 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import type { Booking, BookingReceived, BookingSent, BookingStatus, Paginated } from "@naano/shared";
+import type {
+  Booking,
+  BookingSent,
+  BookingStatus,
+  CreatorCollaboration,
+  CreatorEarnings,
+  EarningsMonth,
+  Paginated,
+} from "@naano/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { CampaignsService } from "../campaigns/campaigns.service";
 import { generateTrackedLinkSlug } from "../tracking/slug";
 import { CreateBookingDto } from "./dto/create-booking.dto";
-import { toBooking, toBookingReceived, toBookingSent } from "./mappers";
+import { toBooking, toBookingSent, toCreatorCollaboration } from "./mappers";
+import { netCents } from "./money";
+
+/** ACCEPTED through LIVE: the creator has agreed but hasn't been paid yet. */
+const IN_TRANSIT_STATUSES: readonly BookingStatus[] = [
+  "ACCEPTED",
+  "DRAFT_READY",
+  "SCHEDULED",
+  "LIVE",
+];
+
+const MONTHLY_WINDOW = 6;
+
+function monthKey(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Six months oldest first, including the current one, zero-filled up front. */
+function emptyMonths(): EarningsMonth[] {
+  const now = new Date();
+  const months: EarningsMonth[] = [];
+  for (let i = MONTHLY_WINDOW - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    months.push({ month: monthKey(d), netCents: 0 });
+  }
+  return months;
+}
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -140,12 +174,16 @@ export class BookingsService {
     return toBooking(booking);
   }
 
-  /** Creator-only: bookings addressed to the signed-in creator's own profile. */
+  /**
+   * Creator-only: bookings addressed to the signed-in creator's own profile,
+   * as the Collaborations screen renders them — Next action and net earnings
+   * derived per row, never stored.
+   */
   async listReceived(
     userId: string,
     page = 1,
     pageSize = DEFAULT_PAGE_SIZE,
-  ): Promise<Paginated<BookingReceived>> {
+  ): Promise<Paginated<CreatorCollaboration>> {
     const creatorProfileId = await this.creatorProfileIdForUser(userId);
 
     const [rows, total] = await Promise.all([
@@ -162,7 +200,51 @@ export class BookingsService {
       this.prisma.booking.count({ where: { creatorProfileId } }),
     ]);
 
-    return { items: rows.map(toBookingReceived), total, page, pageSize };
+    return { items: rows.map(toCreatorCollaboration), total, page, pageSize };
+  }
+
+  /**
+   * Creator-only, own profile only: the creator's money in one response.
+   * PAID bookings drive totalEarnedCents/paidCollaborationsCount/averageCents
+   * and the monthly chart; ACCEPTED..LIVE bookings drive inTransitCents. No
+   * pagination — this is a summary, not a list.
+   */
+  async earnings(userId: string): Promise<CreatorEarnings> {
+    const creatorProfileId = await this.creatorProfileIdForUser(userId);
+
+    const [paidBookings, inTransitBookings] = await Promise.all([
+      this.prisma.booking.findMany({
+        where: { creatorProfileId, status: "PAID" },
+        include: { payout: true },
+      }),
+      this.prisma.booking.findMany({
+        where: { creatorProfileId, status: { in: [...IN_TRANSIT_STATUSES] } },
+      }),
+    ]);
+
+    const totalEarnedCents = paidBookings.reduce(
+      (sum, b) => sum + netCents(b.agreedPriceCents),
+      0,
+    );
+    const paidCollaborationsCount = paidBookings.length;
+    const averageCents =
+      paidCollaborationsCount > 0
+        ? Math.round(totalEarnedCents / paidCollaborationsCount)
+        : 0;
+    const inTransitCents = inTransitBookings.reduce(
+      (sum, b) => sum + netCents(b.agreedPriceCents),
+      0,
+    );
+
+    const monthly = emptyMonths();
+    const byMonth = new Map(monthly.map((m) => [m.month, m]));
+    for (const booking of paidBookings) {
+      const paidAt = booking.payout?.paidAt ?? booking.createdAt;
+      const bucket = byMonth.get(monthKey(paidAt));
+      if (bucket) bucket.netCents += netCents(booking.agreedPriceCents);
+    }
+
+    return { totalEarnedCents, paidCollaborationsCount, averageCents, inTransitCents, monthly };
   }
 
   /**
