@@ -447,8 +447,29 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
 ### 7-API
 
 - [x] **7.0 Contract** — done 2026-09-26.
-- [ ] **A1 Lifecycle**
-- [ ] **A4 Card editing**
+- [x] **A1 Lifecycle** — done 2026-09-26.
+  Scope: five new endpoints (draft, publish, approve, request-changes,
+  mark-paid), `next-action.ts` widened to `nextActionFor(status, viewer,
+  hasDraft)`, new `transitions.ts`, `GET /bookings/sent` widened to
+  `Paginated<BrandCollaboration>`, new `prisma/demo-actions.ts`.
+  Files: `apps/api/src/bookings/{next-action.ts,transitions.ts (new),
+  mappers.ts,bookings.service.ts,bookings.controller.ts,
+  dto/submit-draft.dto.ts (new),dto/mark-published.dto.ts (new)}`,
+  `apps/api/prisma/demo-actions.ts` (new).
+  Notes: see docs/DECISIONS.md's "Session: API, round 2" for the exact copy
+  table, the transitions table, and the full verification log (happy path,
+  earnings before/after, 409/403/404/400).
+- [x] **A4 Card editing** — done 2026-09-26.
+  Scope: `PATCH /creators/me` (CREATOR only), body `UpdateMyCardBody`
+  (headline, postCostCents, bundle5PriceCents — all optional, at least one
+  required), returns `CreatorProfileDetail`. Validates headline 1..160
+  trimmed, both prices integer 5,000..2,250,000 cents, and (after merging
+  with the stored row) `bundle5PriceCents` between `postCostCents` and 5x it.
+  Files: `apps/api/src/creators/{creators.controller.ts,creators.service.ts,
+  dto/update-my-card.dto.ts (new)}`.
+  Notes: see docs/DECISIONS.md's "Session: API, round 2" for the full
+  verification log (happy path, brand sees the new price/CPM, an existing
+  booking's `agreedPriceCents` untouched, 400/403 cases, reset to original).
 - [ ] **A2 Campaigns and budget**
 - [ ] **A5 Action count**
 
@@ -466,6 +487,31 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-26 — A4 (card editing) done, `apps/api/**` only, `packages/shared`
+  untouched (`UpdateMyCardBody` was already right from the round-2 contract).
+  Nothing for the web session to react to type-wise — `PATCH /creators/me`
+  returns `CreatorProfileDetail`, the same shape `GET /creators/:id` already
+  returns, so W4 (card editing UI) can reuse whatever renders that today.
+  One thing worth knowing: a card edit only affects bookings created *after*
+  it — `Booking.agreedPriceCents` is fixed at booking time and this endpoint
+  never touches the `Booking` table, confirmed against a live booking during
+  verification (see DECISIONS.md).
+- 2026-09-26 — A1 (booking lifecycle) done, `apps/api/**` only. Worth
+  flagging for whoever builds W1 (the matching web session): `GET
+  /bookings/sent` now returns `Paginated<BrandCollaboration>` (was
+  `BookingSent`) — same widen pattern `listReceived` already went through
+  for the creator side, so `apps/web`'s `ApiClient.listBookingsSent` and
+  `fixtures.ts` need the same type-only bump `CreatorCollaboration` got.
+  `NextAction.kind` gained no new values (the shared type already had all
+  eight) — only the copy and the `hasDraft`-driven branching changed, so any
+  web code switching on `kind` doesn't need new cases, just needs to render
+  the two new kinds it likely hasn't hit yet in practice (`submit_draft`,
+  `review_draft`, `mark_paid`) if it wasn't already handling them generically.
+  `prisma/demo-actions.ts` was run once locally (`--local --apply`) — the
+  local dev database now has a few extra demo bookings (Ruby Holm, Zoe
+  Fontaine, Elin Halvorsen each got one, walked through the full lifecycle
+  during verification) beyond what `demo-actions.ts` itself planned; harmless
+  demo data, not something a future session needs to clean up.
 - 2026-09-25 — The brief changed: 8x stopped wanting a naano clone and started
   scoring our own product decisions. A "web" session is reworking
   `apps/web/**` against that ask, outside this checklist's phase numbering —

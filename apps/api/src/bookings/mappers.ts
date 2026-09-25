@@ -1,6 +1,6 @@
 import type { Booking as PrismaBooking, Campaign, Company, CreatorProfile, Post } from "@prisma/client";
-import type { Booking, BookingReceived, BookingSent, CreatorCollaboration } from "@naano/shared";
-import { nextActionForStatus } from "./next-action";
+import type { Booking, BookingReceived, BookingSent, BrandCollaboration, CreatorCollaboration } from "@naano/shared";
+import { nextActionFor } from "./next-action";
 import { netCents } from "./money";
 
 type BookingTrackedLink = { slug: string; _count: { clickEvents: number } } | null;
@@ -42,7 +42,7 @@ export function toCreatorCollaboration(
   const received = toBookingReceived(row);
   return {
     ...received,
-    nextAction: nextActionForStatus(received.status),
+    nextAction: nextActionFor(received.status, "CREATOR", row.post !== null),
     netCents: netCents(received.agreedPriceCents),
     draftContent: row.post?.content ?? null,
     postUrl: row.post?.linkedinUrl ?? null,
@@ -66,5 +66,18 @@ export function toBookingSent(
     creatorDisplayName: row.creatorProfile.displayName,
     campaignName: row.campaign.name,
     package: row.agreedPriceCents === row.creatorProfile.bundle5PriceCents ? "bundle" : "single",
+  };
+}
+
+/** A BookingSent plus the brand's next action and the creator's draft/post. */
+export function toBrandCollaboration(
+  row: BookingRow & { campaign: Campaign; creatorProfile: CreatorProfile; post: Post | null },
+): BrandCollaboration {
+  const sent = toBookingSent(row);
+  return {
+    ...sent,
+    nextAction: nextActionFor(sent.status, "COMPANY", row.post !== null),
+    draftContent: row.post?.content ?? null,
+    postUrl: row.post?.linkedinUrl ?? null,
   };
 }

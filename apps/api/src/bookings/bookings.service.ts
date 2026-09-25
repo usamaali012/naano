@@ -5,8 +5,8 @@ import {
 } from "@nestjs/common";
 import type {
   Booking,
-  BookingSent,
   BookingStatus,
+  BrandCollaboration,
   CreatorCollaboration,
   CreatorEarnings,
   EarningsMonth,
@@ -16,8 +16,9 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CampaignsService } from "../campaigns/campaigns.service";
 import { generateTrackedLinkSlug } from "../tracking/slug";
 import { CreateBookingDto } from "./dto/create-booking.dto";
-import { toBooking, toBookingSent, toCreatorCollaboration } from "./mappers";
+import { toBooking, toBrandCollaboration, toCreatorCollaboration } from "./mappers";
 import { netCents } from "./money";
+import { TRANSITIONS, wrongStateMessage, type BookingAction } from "./transitions";
 
 /** ACCEPTED through LIVE: the creator has agreed but hasn't been paid yet. */
 const IN_TRANSIT_STATUSES: readonly BookingStatus[] = [
@@ -250,7 +251,9 @@ export class BookingsService {
 
   /**
    * Brand-only: every booking the signed-in company has made, optionally by
-   * campaign and/or status. Backs the Collaborations table.
+   * campaign and/or status. Backs the Collaborations table — rows carry the
+   * brand's own next action plus the creator's draft/post, same as
+   * `listReceived` does for the creator side.
    */
   async listSent(
     userId: string,
@@ -258,7 +261,7 @@ export class BookingsService {
     pageSize = DEFAULT_PAGE_SIZE,
     campaignId?: string,
     status?: BookingStatus,
-  ): Promise<Paginated<BookingSent>> {
+  ): Promise<Paginated<BrandCollaboration>> {
     const companyId = await this.companyIdForUser(userId);
     if (campaignId) {
       await this.campaigns.assertExists(campaignId);
@@ -280,12 +283,13 @@ export class BookingsService {
           trackedLink: TRACKED_LINK_SELECT,
           campaign: true,
           creatorProfile: true,
+          post: true,
         },
       }),
       this.prisma.booking.count({ where }),
     ]);
 
-    return { items: rows.map(toBookingSent), total, page, pageSize };
+    return { items: rows.map(toBrandCollaboration), total, page, pageSize };
   }
 
   /**
@@ -333,5 +337,155 @@ export class BookingsService {
     ]);
 
     return toBooking({ ...updated, trackedLink: { slug, _count: { clickEvents: 0 } } });
+  }
+
+  /**
+   * A booking owned by the signed-in creator, or 404 (never 403 — same
+   * probing concern as `updateStatus`). Carries what every lifecycle write
+   * on the creator side needs: current status (to check the transition) and
+   * whether a Post already exists (to tell a first draft from a resubmit).
+   */
+  private async bookingOwnedByCreator(userId: string, bookingId: string) {
+    const creatorProfileId = await this.creatorProfileIdForUser(userId);
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { post: true },
+    });
+    if (!booking || booking.creatorProfileId !== creatorProfileId) {
+      throw new NotFoundException(`No booking "${bookingId}"`);
+    }
+    return booking;
+  }
+
+  /** Same as `bookingOwnedByCreator`, for the brand side. */
+  private async bookingOwnedByCompany(userId: string, bookingId: string) {
+    const companyId = await this.companyIdForUser(userId);
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { campaign: true, post: true },
+    });
+    if (!booking || booking.campaign.companyId !== companyId) {
+      throw new NotFoundException(`No booking "${bookingId}"`);
+    }
+    return booking;
+  }
+
+  /** 409s with a readable sentence when the booking isn't in the state this action expects. */
+  private assertTransition(action: BookingAction, status: BookingStatus): void {
+    if (status !== TRANSITIONS[action].from) {
+      throw new ConflictException(wrongStateMessage(action, status));
+    }
+  }
+
+  private async creatorCollaborationById(bookingId: string): Promise<CreatorCollaboration> {
+    const row = await this.prisma.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+      include: {
+        campaign: { include: { company: true } },
+        trackedLink: TRACKED_LINK_SELECT,
+        post: true,
+      },
+    });
+    return toCreatorCollaboration(row);
+  }
+
+  private async brandCollaborationById(bookingId: string): Promise<BrandCollaboration> {
+    const row = await this.prisma.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+      include: {
+        campaign: true,
+        creatorProfile: true,
+        trackedLink: TRACKED_LINK_SELECT,
+        post: true,
+      },
+    });
+    return toBrandCollaboration(row);
+  }
+
+  /**
+   * Creator-only: submit (or resubmit, after a request-changes) the post
+   * draft. `Post.content` is upserted — a resubmission overwrites whatever
+   * was there, it doesn't version it.
+   */
+  async submitDraft(userId: string, bookingId: string, content: string): Promise<CreatorCollaboration> {
+    const booking = await this.bookingOwnedByCreator(userId, bookingId);
+    this.assertTransition("draft", booking.status);
+
+    await this.prisma.$transaction([
+      this.prisma.booking.update({ where: { id: bookingId }, data: { status: TRANSITIONS.draft.to } }),
+      this.prisma.post.upsert({
+        where: { bookingId },
+        create: { bookingId, content },
+        update: { content },
+      }),
+    ]);
+
+    return this.creatorCollaborationById(bookingId);
+  }
+
+  /**
+   * Creator-only: publish the approved draft. Sets the post live — the
+   * client-supplied URL has already been validated (https, linkedin.com/
+   * x.com/twitter.com only) by `MarkPublishedDto` before this runs.
+   */
+  async publish(userId: string, bookingId: string, postUrl: string): Promise<CreatorCollaboration> {
+    const booking = await this.bookingOwnedByCreator(userId, bookingId);
+    this.assertTransition("publish", booking.status);
+
+    await this.prisma.$transaction([
+      this.prisma.booking.update({ where: { id: bookingId }, data: { status: TRANSITIONS.publish.to } }),
+      this.prisma.post.update({
+        where: { bookingId },
+        data: { linkedinUrl: postUrl, publishedAt: new Date() },
+      }),
+    ]);
+
+    return this.creatorCollaborationById(bookingId);
+  }
+
+  /** Brand-only: approve the creator's draft. */
+  async approve(userId: string, bookingId: string): Promise<BrandCollaboration> {
+    const booking = await this.bookingOwnedByCompany(userId, bookingId);
+    this.assertTransition("approve", booking.status);
+
+    await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: TRANSITIONS.approve.to },
+    });
+    return this.brandCollaborationById(bookingId);
+  }
+
+  /** Brand-only: send the draft back to the creator for changes. */
+  async requestChanges(userId: string, bookingId: string): Promise<BrandCollaboration> {
+    const booking = await this.bookingOwnedByCompany(userId, bookingId);
+    this.assertTransition("requestChanges", booking.status);
+
+    await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: TRANSITIONS.requestChanges.to },
+    });
+    return this.brandCollaborationById(bookingId);
+  }
+
+  /**
+   * Brand-only: record that the creator has been paid. Payout matches how
+   * the seed writes it — `amountCents` is the full `agreedPriceCents`, not
+   * the creator's net; the commission is applied at render time only (see
+   * `money.ts`), never stored.
+   */
+  async markPaid(userId: string, bookingId: string): Promise<BrandCollaboration> {
+    const booking = await this.bookingOwnedByCompany(userId, bookingId);
+    this.assertTransition("markPaid", booking.status);
+
+    await this.prisma.$transaction([
+      this.prisma.booking.update({ where: { id: bookingId }, data: { status: TRANSITIONS.markPaid.to } }),
+      this.prisma.payout.upsert({
+        where: { bookingId },
+        create: { bookingId, amountCents: booking.agreedPriceCents, status: "PAID", paidAt: new Date() },
+        update: { amountCents: booking.agreedPriceCents, status: "PAID", paidAt: new Date() },
+      }),
+    ]);
+
+    return this.brandCollaborationById(bookingId);
   }
 }
