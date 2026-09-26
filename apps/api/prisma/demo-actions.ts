@@ -18,6 +18,19 @@
  *   - the demo brand (Ledgerly) has >= 1 booking, with any creator, in each
  *     of DRAFT_READY and LIVE.
  *
+ * A2 (docs/DECISIONS.md "Session: API, round 2") added the campaign
+ * switcher and budget bar. Freshly seeded, "Fintech Trust Campaign" reads as
+ * permanently over budget (committed > budgetCents, zero INVITED money) and
+ * there is nothing else non-COMPLETED to switch to — a demo of the new UI
+ * needs a campaign under budget with real pending money, and a second
+ * non-LIVE campaign in the switcher. This script also guarantees, idempotently:
+ *   - "Fintech Trust Campaign".budgetCents is at least 2,500,000 (bumped up
+ *     only, never down, if it's currently lower).
+ *   - Ledgerly has a DRAFT campaign named "Payroll Compliance Series"
+ *     (matched on companyId + name; created only if missing).
+ *   - "Fintech Trust Campaign" has >= 1 INVITED booking, any creator that
+ *     doesn't already have a non-declined booking there.
+ *
  * Every booking this script creates or converts gets the child rows its
  * status implies — TrackedLink from ACCEPTED on, a Post with content from
  * DRAFT_READY on, Post.linkedinUrl/publishedAt from LIVE on — exactly what
@@ -47,7 +60,7 @@
  *   npx ts-node prisma/demo-actions.ts --local --apply
  */
 import { randomBytes } from "node:crypto";
-import { BookingStatus, Prisma, PrismaClient } from "@prisma/client";
+import { BookingStatus, CampaignStatus, Prisma, PrismaClient, Vertical } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -93,6 +106,23 @@ const BRAND_TARGETS: readonly BookingStatus[] = [BookingStatus.DRAFT_READY, Book
 /** Same status ordering a demo should prefer landing fresh bookings in — live first, draft next, completed last. */
 const CAMPAIGN_STATUS_PRIORITY: Record<string, number> = { LIVE: 0, DRAFT: 1, COMPLETED: 2 };
 
+const FINTECH_TRUST_CAMPAIGN_NAME = "Fintech Trust Campaign";
+const FINTECH_TRUST_MIN_BUDGET_CENTS = 2_500_000;
+
+const PAYROLL_CAMPAIGN_NAME = "Payroll Compliance Series";
+const PAYROLL_CAMPAIGN = {
+  objective:
+    "Position Ledgerly's payroll compliance tooling for HR platforms evaluating a compliant payout layer.",
+  brief:
+    "Explain payroll compliance guardrails — tax withholding, worker classification, audit trails — through HR-tech and compliance-focused creators.",
+  keyMessages: "Automated tax withholding, worker classification checks, audit-ready trail.",
+  guidelines:
+    "Don't claim compliance with any specific state or local regulation by name. Keep tone practitioner, not legal advice.",
+  destinationUrl: "https://example.com/lp/payroll-compliance",
+  budgetCents: 1_200_000,
+  targetVertical: Vertical.HR_TECH,
+} as const;
+
 function trackedLinkSlug(): string {
   return randomBytes(9).toString("base64url");
 }
@@ -137,6 +167,25 @@ interface PlannedConversion {
   destinationUrl: string;
   agreedPriceCents: number;
   status: BookingStatus;
+}
+
+interface PlannedBudgetUpdate {
+  description: string;
+  campaignId: string;
+  budgetCents: number;
+}
+
+interface PlannedCampaignCreate {
+  description: string;
+  companyId: string;
+  name: string;
+  objective: string;
+  brief: string;
+  keyMessages: string;
+  guidelines: string;
+  destinationUrl: string;
+  budgetCents: number;
+  targetVertical: Vertical;
 }
 
 /**
@@ -243,6 +292,34 @@ async function main(): Promise<void> {
 
   const newBookings: PlannedBooking[] = [];
   const conversions: PlannedConversion[] = [];
+  const budgetUpdates: PlannedBudgetUpdate[] = [];
+  const campaignCreates: PlannedCampaignCreate[] = [];
+
+  // --- A2 demo top-up: budget headroom + a second non-LIVE campaign -------
+  const fintechTrust = ledgerlyCampaigns.find((c) => c.name === FINTECH_TRUST_CAMPAIGN_NAME);
+  if (!fintechTrust) {
+    throw new Error(
+      `${demoBrand.name} has no campaign named "${FINTECH_TRUST_CAMPAIGN_NAME}". Is this the right database?`,
+    );
+  }
+  if (fintechTrust.budgetCents < FINTECH_TRUST_MIN_BUDGET_CENTS) {
+    budgetUpdates.push({
+      description: `"${fintechTrust.name}" — budgetCents ${fintechTrust.budgetCents} -> ${FINTECH_TRUST_MIN_BUDGET_CENTS}`,
+      campaignId: fintechTrust.id,
+      budgetCents: FINTECH_TRUST_MIN_BUDGET_CENTS,
+    });
+  }
+
+  if (!ledgerlyCampaigns.some((c) => c.name === PAYROLL_CAMPAIGN_NAME)) {
+    campaignCreates.push({
+      description:
+        `create "${PAYROLL_CAMPAIGN_NAME}" (DRAFT, ${demoBrand.name}, ` +
+        `targetVertical ${PAYROLL_CAMPAIGN.targetVertical}, budgetCents ${PAYROLL_CAMPAIGN.budgetCents})`,
+      companyId: demoBrand.id,
+      name: PAYROLL_CAMPAIGN_NAME,
+      ...PAYROLL_CAMPAIGN,
+    });
+  }
   // (campaignId:creatorId) pairs this run has already claimed, so two
   // targets in the same run never plan into the same free slot twice.
   const reserved = new Set<string>();
@@ -359,14 +436,62 @@ async function main(): Promise<void> {
     });
   }
 
-  if (newBookings.length === 0 && conversions.length === 0) {
+  // --- "Fintech Trust Campaign": >= 1 INVITED booking, any free creator ---
+  // Same "one non-declined booking per creator+campaign" rule as everywhere
+  // else here — reuses brandBookings/brandBlockedPairs (already scoped to
+  // every Ledgerly campaign, Fintech Trust included) and the shared
+  // `reserved` set so this never double-books a creator the loop above just
+  // claimed for the same campaign.
+  const fintechHasInvited = brandBookings.some(
+    (b) => b.campaignId === fintechTrust.id && b.status === "INVITED",
+  );
+  if (!fintechHasInvited) {
+    const creator = allCreators.find(
+      (c) =>
+        !brandBlockedPairs.has(`${fintechTrust.id}:${c.id}`) &&
+        !reserved.has(`${fintechTrust.id}:${c.id}`),
+    );
+    if (!creator) {
+      throw new Error(
+        `No free creator for a fresh INVITED booking in "${fintechTrust.name}" — every creator already has a non-declined booking there.`,
+      );
+    }
+    reserved.add(`${fintechTrust.id}:${creator.id}`);
+    // unshift, not push: resolveDemoCreator() picks whoever the brand most
+    // recently booked, by createdAt. Writing this one first in the apply
+    // transaction (below) keeps it from becoming "the most recent booking"
+    // and shifting who counts as the demo creator on the *next* run —
+    // exactly the CREATOR_TARGETS/BRAND_TARGETS bookings already do, so this
+    // doesn't disturb whatever stability that mechanism already has.
+    newBookings.unshift({
+      description: `${creator.displayName} — new INVITED booking in "${fintechTrust.name}" (${demoBrand.name})`,
+      campaignId: fintechTrust.id,
+      destinationUrl: fintechTrust.destinationUrl,
+      creatorProfileId: creator.id,
+      postCostCents: costByCreatorId.get(creator.id) ?? 20_000,
+      status: BookingStatus.INVITED,
+    });
+  }
+
+  if (
+    newBookings.length === 0 &&
+    conversions.length === 0 &&
+    budgetUpdates.length === 0 &&
+    campaignCreates.length === 0
+  ) {
     console.log("Nothing to do. Every target status already has a real row.");
     return;
   }
 
-  console.log(`${APPLY ? "Applying" : "Would apply"} ${newBookings.length + conversions.length} change(s):`);
-  for (const b of newBookings) console.log(`  [new]     ${b.description}`);
-  for (const c of conversions) console.log(`  [convert] ${c.description}`);
+  console.log(
+    `${APPLY ? "Applying" : "Would apply"} ${
+      newBookings.length + conversions.length + budgetUpdates.length + campaignCreates.length
+    } change(s):`,
+  );
+  for (const u of budgetUpdates) console.log(`  [budget]   ${u.description}`);
+  for (const c of campaignCreates) console.log(`  [campaign] ${c.description}`);
+  for (const b of newBookings) console.log(`  [new]      ${b.description}`);
+  for (const c of conversions) console.log(`  [convert]  ${c.description}`);
 
   if (!APPLY) {
     console.log("");
@@ -375,6 +500,27 @@ async function main(): Promise<void> {
   }
 
   await prisma.$transaction(async (tx) => {
+    for (const u of budgetUpdates) {
+      await tx.campaign.update({ where: { id: u.campaignId }, data: { budgetCents: u.budgetCents } });
+    }
+
+    for (const c of campaignCreates) {
+      await tx.campaign.create({
+        data: {
+          companyId: c.companyId,
+          name: c.name,
+          objective: c.objective,
+          brief: c.brief,
+          keyMessages: c.keyMessages,
+          guidelines: c.guidelines,
+          destinationUrl: c.destinationUrl,
+          budgetCents: c.budgetCents,
+          status: CampaignStatus.DRAFT,
+          targetVertical: c.targetVertical,
+        },
+      });
+    }
+
     for (const plan of newBookings) {
       const booking = await tx.booking.create({
         data: {
@@ -399,7 +545,10 @@ async function main(): Promise<void> {
   });
 
   console.log("");
-  console.log(`Done. ${newBookings.length} new booking(s), ${conversions.length} conversion(s).`);
+  console.log(
+    `Done. ${budgetUpdates.length} budget update(s), ${campaignCreates.length} new campaign(s), ` +
+      `${newBookings.length} new booking(s), ${conversions.length} conversion(s).`,
+  );
 }
 
 main()

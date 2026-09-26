@@ -1270,3 +1270,68 @@ needs to not lose an hour to.
     GET  /campaigns/<temp DRAFT, non-active>/shortlist                             200  {items:[],total:0} — works for a non-active campaign
     ```
   - `npx tsc -b --force` on `apps/api` — clean, no errors.
+- 2026-09-26 — A2 demo-data follow-up, `apps/api/prisma/demo-actions.ts` only
+  (no route changed — this is data maintenance, not a new endpoint). The real
+  A2 verification above used a temp Prisma-created campaign specifically
+  *because* the seed leaves Ledgerly with only one LIVE campaign (already
+  over its own budget: committed ~1,829,575 against budgetCents 1,500,000)
+  and one COMPLETED one — the new campaign switcher / budget bar has nothing
+  to switch to and a permanent over-budget warning on every fresh reseed.
+  Extended `demo-actions.ts` with three more idempotent guarantees, same
+  dry-run-by-default / `--local` / `--apply` guards as the existing
+  booking-lifecycle top-up:
+  1. **`"Fintech Trust Campaign"`'s `budgetCents` is bumped to at least
+     2,500,000** (`FINTECH_TRUST_MIN_BUDGET_CENTS`) — only up, checked with a
+     plain `<` so a database someone already fixed by hand isn't touched
+     again.
+  2. **Ledgerly gets a DRAFT campaign `"Payroll Compliance Series"`** if one
+     doesn't already exist for that `companyId` + name (`budgetCents
+     1,200,000`, `targetVertical HR_TECH`, `destinationUrl
+     https://example.com/lp/payroll-compliance` — same path pattern every
+     other seeded campaign uses) — a second non-LIVE row for the switcher to
+     show, with realistic objective/brief/keyMessages/guidelines text
+     matching the existing campaigns' tone (see `PAYROLL_CAMPAIGN` in the
+     script).
+  3. **`"Fintech Trust Campaign"` gets >= 1 fresh INVITED booking**
+     (BRAND-initiated, `agreedPriceCents` from the chosen creator's own
+     `postCostCents`) if it doesn't have one already — picks any creator with
+     no existing non-declined booking in that campaign, same rule `POST
+     /bookings` and the rest of this script already enforce.
+  - **The identity-shift gotcha this surfaced:** `resolveDemoCreator()`
+    (pre-existing, unchanged) picks "whoever the demo brand most recently
+    booked" — the single most-recently-created `Booking` row, company-wide.
+    The first version of guarantee 3 `.push()`ed its new INVITED booking onto
+    the end of `newBookings`, so it was written *last* inside the apply
+    transaction and became the new "most recent" — meaning the *next* run's
+    `resolveDemoCreator()` resolved to that random creator instead of
+    whoever it resolved to before, and `CREATOR_TARGETS` then had to top up
+    INVITED/ACCEPTED/SCHEDULED for *them* too, one extra cycle deep. Caught
+    this because the ask's own acceptance check (dry run → apply → dry run
+    reporting nothing to do) failed on the first attempt — a second dry run
+    immediately after the single `--apply` found two more bookings pending.
+    Fixed by `.unshift()`ing the new INVITED plan instead of `.push()`ing it,
+    so it's written *first* in the transaction and the existing
+    `CREATOR_TARGETS`/`BRAND_TARGETS` bookings (whichever of those two loops
+    actually writes something this run) stays the most recent one, same as
+    before this slice touched the file at all — this addition doesn't change
+    which creator the *next* run resolves as "the demo creator," it only
+    matters for *this* run's own plan.
+  - **Verified against the local dev database (`--local`):**
+    ```
+    npx ts-node prisma/demo-actions.ts --local            dry run: 6 changes — budget bump, new "Payroll Compliance Series", 4 bookings (2 pre-existing-mechanism top-ups for the then-current demo creator Nils Nilsson, 1 brand DRAFT_READY, 1 new Fintech Trust INVITED for Mateo Kowalski)
+    npx ts-node prisma/demo-actions.ts --local --apply     applied all 6
+    npx ts-node prisma/demo-actions.ts --local             dry run: found 2 MORE changes (Mateo Kowalski ACCEPTED + SCHEDULED) — the identity-shift gotcha above, not yet fixed at this point
+    ```
+    Fixed the ordering (`.unshift`), then converged:
+    ```
+    npx ts-node prisma/demo-actions.ts --local --apply     applied the 2 pending (Mateo Kowalski's own CREATOR_TARGETS top-up — legitimate, pre-existing mechanism, unrelated to the ordering fix itself)
+    npx ts-node prisma/demo-actions.ts --local             "Nothing to do. Every target status already has a real row." — ran twice more to confirm it stays that way
+    ```
+    `GET /campaigns` as Ledgerly (`growth@ledgerly.example.com`), real token:
+    ```
+    Fintech Trust Campaign   LIVE      budgetCents 2,500,000  pendingCents 36,200   committedCents 1,965,075  paidCents 758,993   bookingsCount 35   (under budget, pendingCents > 0)
+    Payroll Compliance Series  DRAFT   budgetCents 1,200,000  pendingCents 0        committedCents 36,200     paidCents 0         bookingsCount 1
+    Summer Payouts Push     COMPLETED  budgetCents 900,000    pendingCents 0        committedCents 1,529,940  paidCents 1,447,040 bookingsCount 31
+    ```
+    Hand-checked Fintech Trust's row against `GET /bookings/sent?campaignId=<fintech>&pageSize=100` (38 rows, one page) the same way as the A2 entry above: INVITED 36,200; {ACCEPTED, DRAFT_READY, SCHEDULED, LIVE, PAID} sum 47,200 + 52,600 + 182,452 + 923,830 + 758,993 = **1,965,075**; PAID alone **758,993**; non-DECLINED count 38 − 3 declined = **35** — exact match on all four figures again.
+  - `npx tsc -b --force` on `apps/api` — clean, no errors.
