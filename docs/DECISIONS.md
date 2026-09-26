@@ -1335,6 +1335,75 @@ needs to not lose an hour to.
     ```
     Hand-checked Fintech Trust's row against `GET /bookings/sent?campaignId=<fintech>&pageSize=100` (38 rows, one page) the same way as the A2 entry above: INVITED 36,200; {ACCEPTED, DRAFT_READY, SCHEDULED, LIVE, PAID} sum 47,200 + 52,600 + 182,452 + 923,830 + 758,993 = **1,965,075**; PAID alone **758,993**; non-DECLINED count 38 − 3 declined = **35** — exact match on all four figures again.
   - `npx tsc -b --force` on `apps/api` — clean, no errors.
+- 2026-09-26 — A5, how many bookings are waiting on the signed-in user.
+  `apps/api/**` only — `packages/shared` untouched (`ActionCount` was already
+  correct from the round-2 contract).
+  - **New `GET /bookings/action-count`** (either role). The actionable-status
+    set is derived, not hardcoded: new `actionable-statuses.ts` iterates every
+    `BookingStatus` (from Prisma's own generated enum object, `Object.values`,
+    not a hand-copied literal array — so it can't silently miss a status
+    added later) crossed with both `hasDraft` values, calls `nextActionFor`,
+    and keeps a status if either call returns a non-empty `consequence`. This
+    made `actionableStatusesFor("CREATOR")` = `[INVITED, ACCEPTED, SCHEDULED]`
+    and `actionableStatusesFor("COMPANY")` = `[DRAFT_READY, LIVE]` fall out of
+    the existing `next-action.ts` table instead of being retyped by hand —
+    the count can never drift from what "Next action" shows on `/received`/
+    `/sent`, because it reads the same function.
+  - **`BookingsService.actionCount(userId, role)`**: one `prisma.booking.count`
+    scoped exactly like `listReceived` (`creatorProfileId`) for a CREATOR or
+    `listSent` (`campaign: { companyId }`) for a COMPANY, `status: { in:
+    actionableStatusesFor(viewer) }`. The controller reads `role` off the JWT
+    payload (`@Roles("CREATOR", "COMPANY")`) rather than needing two routes.
+  - **Declared before every `:id` route** in `bookings.controller.ts` (as the
+    third `@Get`, after `received`/`earnings`, before `sent` and every
+    `PATCH|POST :id/...` route) — no real collision today since GET has no
+    other path-param route, but the ask was explicit, same "one line, no
+    reason not to" call as A4's controller ordering.
+  - **Verified against the running local API (`localhost:3000`)**, real
+    tokens from `POST /auth/login` (Ledgerly = brand, Mateo Kowalski =
+    creator):
+    ```
+    GET /bookings/action-count                    as creator   200  {count: 3}
+    GET /bookings/action-count                    as brand     200  {count: 17}
+    GET /bookings/received?pageSize=100           as creator   200  6 rows total, 3 with non-empty nextAction.consequence — matches
+    GET /bookings/sent?pageSize=100                as brand     200  71 rows total, 17 with non-empty nextAction.consequence — matches
+    POST /bookings/:id/draft (ACCEPTED -> DRAFT_READY, an actionable creator row going to a non-actionable one)
+                                                    as creator   201  status DRAFT_READY, nextAction.kind await_brand
+    GET /bookings/action-count                    as creator   200  {count: 2} — dropped by exactly one
+    ```
+  - `npx tsc -b --force` on `apps/api` — clean, no errors.
+- 2026-09-26 — A6, bookings that need the viewer sort before everything else,
+  across pages, not just within one loaded page. `apps/api/**` only.
+  - **Problem**: both list endpoints ordered `createdAt desc` only, so an
+    actionable row past page 1 was invisible, and the rail badge (which
+    counts across all pages via A5's `action-count`) could disagree with what
+    a page showed.
+  - **`actionableFirst(rows, actionableStatuses)`**, new in
+    `actionable-statuses.ts` next to `actionableStatusesFor` (same file,
+    since the sort and the status set must never drift apart): a pure
+    `Array.sort` — rows whose status is in the derived actionable set first,
+    `createdAt desc` within each group. Both `listReceived` and `listSent`
+    call `actionableStatusesFor(viewer)` for the set, so the order and A5's
+    count read the exact same derivation and can't disagree by construction.
+  - **Prisma can't order by a computed flag**, so both methods now follow
+    `campaigns.service.ts`'s `list()` pattern: `findMany` with `select: {id,
+    status, createdAt}` for the full scoped set (no `skip`/`take`), sort in
+    memory with `actionableFirst`, slice the page's ids, then a second
+    `findMany({ where: { id: { in: pageIds } } })` with the real `include` to
+    load full rows — reordered afterward via a `Map`, since Prisma's `in`
+    doesn't preserve the given id order. `listSent`'s existing `campaignId`/
+    `status` filters are applied to the first (id-only) query, same as
+    before.
+  - **Verified against the running local API (`localhost:3000`)**, real
+    tokens from `POST /auth/login` (Ledgerly = brand, Mateo Kowalski =
+    creator), `pageSize=5` walked across every page:
+    ```
+    CREATOR /bookings/received   6 rows total, 2 pages — 1 actionable (SCHEDULED), sorted first on page 1; action-count {count: 1} — matches
+    COMPANY /bookings/sent       71 rows total, 15 pages — 18 actionable, all sorted before every non-actionable row across all 15 pages; action-count {count: 18} — matches
+    GET /bookings/sent?campaignId=<fintech>   38 rows — filter still scopes correctly with the new ordering
+    GET /bookings/sent?status=LIVE            16 rows — filter still scopes correctly with the new ordering
+    ```
+  - `npx tsc --noEmit` on `apps/api` — clean, no errors.
 
 ## Session: web, round 2
 

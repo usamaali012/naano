@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type {
+  ActionCount,
   Booking,
   BookingStatus,
   BrandCollaboration,
@@ -11,10 +12,12 @@ import type {
   CreatorEarnings,
   EarningsMonth,
   Paginated,
+  Role,
 } from "@naano/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { CampaignsService } from "../campaigns/campaigns.service";
 import { generateTrackedLinkSlug } from "../tracking/slug";
+import { actionableFirst, actionableStatusesFor } from "./actionable-statuses";
 import { CreateBookingDto } from "./dto/create-booking.dto";
 import { toBooking, toBrandCollaboration, toCreatorCollaboration } from "./mappers";
 import { netCents } from "./money";
@@ -192,7 +195,13 @@ export class BookingsService {
   /**
    * Creator-only: bookings addressed to the signed-in creator's own profile,
    * as the Collaborations screen renders them — Next action and net earnings
-   * derived per row, never stored.
+   * derived per row, never stored. Rows this viewer can act on (per
+   * `actionableStatusesFor`, the same set `/bookings/action-count` uses) sort
+   * before everything else, createdAt desc within each group, so an
+   * actionable row is never buried on a later page. Prisma can't order by
+   * that derived flag, so — same pattern as `campaigns.service.ts`'s
+   * `list()` — fetch every id with status and createdAt, sort in memory,
+   * slice the page, then load full rows for just those ids.
    */
   async listReceived(
     userId: string,
@@ -201,22 +210,28 @@ export class BookingsService {
   ): Promise<Paginated<CreatorCollaboration>> {
     const creatorProfileId = await this.creatorProfileIdForUser(userId);
 
-    const [rows, total] = await Promise.all([
-      this.prisma.booking.findMany({
-        where: { creatorProfileId },
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        include: {
-          campaign: { include: { company: true } },
-          trackedLink: TRACKED_LINK_SELECT,
-          post: true,
-        },
-      }),
-      this.prisma.booking.count({ where: { creatorProfileId } }),
-    ]);
+    const all = await this.prisma.booking.findMany({
+      where: { creatorProfileId },
+      select: { id: true, status: true, createdAt: true },
+    });
+    const sorted = actionableFirst(all, actionableStatusesFor("CREATOR"));
 
-    return { items: rows.map(toCreatorCollaboration), total, page, pageSize };
+    const total = sorted.length;
+    const start = (page - 1) * pageSize;
+    const pageIds = sorted.slice(start, start + pageSize).map((b) => b.id);
+
+    const rows = await this.prisma.booking.findMany({
+      where: { id: { in: pageIds } },
+      include: {
+        campaign: { include: { company: true } },
+        trackedLink: TRACKED_LINK_SELECT,
+        post: true,
+      },
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const ordered = pageIds.map((id) => byId.get(id)!);
+
+    return { items: ordered.map(toCreatorCollaboration), total, page, pageSize };
   }
 
   /**
@@ -264,10 +279,35 @@ export class BookingsService {
   }
 
   /**
+   * Either role: how many of the signed-in user's bookings have a non-empty
+   * `nextAction.consequence` for them — i.e. how many rows in `/received` or
+   * `/sent` are actually actionable right now. Scoped identically to whichever
+   * of those two this viewer would see, so the count can never disagree with
+   * the rows: one `count` query, `status` restricted to
+   * `actionableStatusesFor`'s derived set instead of a hardcoded list.
+   */
+  async actionCount(userId: string, role: Role): Promise<ActionCount> {
+    if (role === "CREATOR") {
+      const creatorProfileId = await this.creatorProfileIdForUser(userId);
+      const count = await this.prisma.booking.count({
+        where: { creatorProfileId, status: { in: actionableStatusesFor("CREATOR") } },
+      });
+      return { count };
+    }
+
+    const companyId = await this.companyIdForUser(userId);
+    const count = await this.prisma.booking.count({
+      where: { campaign: { companyId }, status: { in: actionableStatusesFor("COMPANY") } },
+    });
+    return { count };
+  }
+
+  /**
    * Brand-only: every booking the signed-in company has made, optionally by
    * campaign and/or status. Backs the Collaborations table — rows carry the
    * brand's own next action plus the creator's draft/post, same as
-   * `listReceived` does for the creator side.
+   * `listReceived` does for the creator side, including the actionable-first
+   * ordering (see that method's doc comment for why and how).
    */
   async listSent(
     userId: string,
@@ -287,23 +327,29 @@ export class BookingsService {
       ...(status ? { status } : {}),
     };
 
-    const [rows, total] = await Promise.all([
-      this.prisma.booking.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        include: {
-          trackedLink: TRACKED_LINK_SELECT,
-          campaign: true,
-          creatorProfile: true,
-          post: true,
-        },
-      }),
-      this.prisma.booking.count({ where }),
-    ]);
+    const all = await this.prisma.booking.findMany({
+      where,
+      select: { id: true, status: true, createdAt: true },
+    });
+    const sorted = actionableFirst(all, actionableStatusesFor("COMPANY"));
 
-    return { items: rows.map(toBrandCollaboration), total, page, pageSize };
+    const total = sorted.length;
+    const start = (page - 1) * pageSize;
+    const pageIds = sorted.slice(start, start + pageSize).map((b) => b.id);
+
+    const rows = await this.prisma.booking.findMany({
+      where: { id: { in: pageIds } },
+      include: {
+        trackedLink: TRACKED_LINK_SELECT,
+        campaign: true,
+        creatorProfile: true,
+        post: true,
+      },
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const ordered = pageIds.map((id) => byId.get(id)!);
+
+    return { items: ordered.map(toBrandCollaboration), total, page, pageSize };
   }
 
   /**
