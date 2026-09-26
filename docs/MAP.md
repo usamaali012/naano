@@ -320,7 +320,10 @@ apps/
                            getActiveCampaign, listShortlist / addToShortlist /
                            removeFromShortlist, createBooking /
                            listBookingsReceived / listBookingsSent /
-                           updateBookingStatus, listAttribution (5.4,
+                           updateBookingStatus, submitDraft / markPublished /
+                           approveDraft / requestChanges / markPaid (W1, the
+                           five lifecycle actions — see docs/DECISIONS.md
+                           "Session: web, round 2"), listAttribution (5.4,
                            brand-only). http.ts maps every ListCreatorsParams
                            field onto the query string (creatorsQuery()) —
                            already covered every filter FilterPanel (W3) now
@@ -330,22 +333,33 @@ apps/
                            errors.ts's ApiError (carries the HTTP status) so
                            callers can special-case a status (e.g. 409
                            already-booked) instead of one generic failure
-                           message. fixtures.ts mirrors most of it — in-memory
-                           shortlist + bookings, plus the same vertical/
-                           country/follower-range/price/CPM/median-views/
-                           engagement filtering as http.ts (kept in sync since
-                           2.5, extended for W3) — FIXTURE_ME is always the
-                           brand, so the creator-side booking methods have no
-                           real fixture context yet. postedWithinDays is the
-                           one W3 filter fixtures.ts can't mirror:
-                           FIXTURE_CREATORS carries no per-post publish date
-                           (posts are only synthesized on demand in
-                           getCreator()), so that filter is a no-op in
+                           message. request() also reads a Nest ValidationPipe
+                           error's message as either a string or a string
+                           array (W1 fix — a 400 like MarkPublishedDto's
+                           non-LinkedIn check came back as an array and fell
+                           through to a generic fallback before this). fixtures.ts
+                           mirrors most of it — in-memory shortlist + bookings,
+                           plus the same vertical/country/follower-range/price/
+                           CPM/median-views/engagement filtering as http.ts
+                           (kept in sync since 2.5, extended for W3) —
+                           FIXTURE_ME is always the brand, so
+                           listBookingsReceived still returns nothing real, but
+                           the five W1 lifecycle actions now mutate
+                           fixtureBookings correctly regardless of viewer (no
+                           role check in fixtures) via a duplicated
+                           fixtureNextAction/fixtureNetCents that mirror
+                           apps/api/src/bookings/next-action.ts and money.ts by
+                           hand — keep the two in sync if A1's copy changes.
+                           postedWithinDays is the one W3 filter fixtures.ts
+                           can't mirror: FIXTURE_CREATORS carries no per-post
+                           publish date (posts are only synthesized on demand
+                           in getCreator()), so that filter is a no-op in
                            fixtures mode — verified against the real API
                            instead.
-                           listBookingsSent (4.2) returns BookingSent
-                           (creatorDisplayName/campaignName/package added)
-                           and takes an optional status, both wired in
+                           listBookingsSent returns Paginated<BrandCollaboration>
+                           (widened again for W1 — creatorDisplayName/
+                           campaignName/package from 4.2, nextAction/
+                           draftContent/postUrl from A1/W1), wired in
                            client.ts/http.ts/fixtures.ts — see
                            docs/DECISIONS.md for the package-derivation
                            reasoning (real API) vs. the plain pass-through
@@ -540,31 +554,56 @@ apps/
                            tabs only (Overview, Audience) — no Content tab.
                            icons.tsx (NetworkBadge — no longer used by the list
                            row, kept for reuse; StarIcon).
-        campaign/         CollaborationsTable (new, 4.2): Creator, Campaign,
-                           Package, Agreed price, Status, Tracked link (copy
-                           button + click count, gated on trackedLinkSlug
-                           existing rather than on status === ACCEPTED, since
-                           seed can place a booking straight at
-                           SCHEDULED/LIVE/PAID with a link already minted).
-                           Brief form, campaign list, status pills still land
-                           with the rest of the campaign flow.
+        campaign/         CollaborationsTable (4.2, widened for W1
+                           2026-09-26): Creator, Campaign, Package, Agreed
+                           price, Status, Tracked link (copy button + click
+                           count, gated on trackedLinkSlug existing rather
+                           than on status === ACCEPTED, since seed can place a
+                           booking straight at SCHEDULED/LIVE/PAID with a link
+                           already minted), plus a new Next action column —
+                           same tinted-panel-vs-plain-line rule as the
+                           creator's CollaborationCard. review_draft shows the
+                           draft text (line-clamp-3) then Approve/Ask for
+                           changes; mark_paid shows a link to postUrl (the
+                           live post, not the tracked link) then "Mark as paid
+                           (amount)" plus the fixed "Payment rails aren't
+                           built..." line. Takes bookings pre-sorted
+                           actionable-first (CollaborationsPage's own
+                           orderByNextAction) plus busyId/errors maps so a row
+                           mid-action disables just itself and a failure shows
+                           inline on that row. Brief form, campaign list,
+                           status pills still land with the rest of the
+                           campaign flow.
         dashboard/        AttributionTable (5.4): Creator, Accepted bookings,
                            Clicks, Last click (formatRelativeTime, new in
                            lib/format.ts). No ranking language, no expander —
                            see docs/DECISIONS.md. Metric tiles/charts (5.1-5.3)
                            are still cut.
-        creator/          New 2026-09-25 (own-product redesign). CollaborationCard
+        creator/          New 2026-09-25 (own-product redesign), lifecycle
+                           controls added for W1 (2026-09-26). CollaborationCard
                            (one collaboration, organised around nextAction — an
-                           actionable tinted panel with the label/consequence/
-                           Accept-Decline when consequence is non-empty, else a
-                           plain muted line, deliberately not the same box in a
-                           different colour). TrackedLinkRow (moved out of
-                           CreatorHomePage.tsx, unchanged behaviour). Consumed
-                           by routes/CreatorCollaborationsPage.tsx (its own
-                           route as of 2026-09-26, was a CreatorHomePage
-                           section). EarningsChart (2026-09-26): token-only
-                           inline SVG bar chart, six months, newest solid —
-                           same restraint as marketplace/modal/ReachSparkline.
+                           actionable tinted panel with the label/consequence
+                           when consequence is non-empty, else a plain muted
+                           line, deliberately not the same box in a different
+                           colour). The panel now branches on nextAction.kind:
+                           respond (Accept/Decline, unchanged), submit_draft
+                           (a textarea seeded from draftContent so a resubmit
+                           after request-changes starts from the old text, a
+                           live N / 3000 count, "Send for review"), publish
+                           (TrackedLinkRow + a plain URL Input + "Mark as
+                           published", no client-side domain check — the
+                           400 from a non-LinkedIn URL is a real round trip).
+                           Takes busy/error per row from
+                           CreatorCollaborationsPage, which replaces a row in
+                           place with the full returned CreatorCollaboration
+                           on submitDraft/markPublished (both return the
+                           recomputed nextAction, no refetch needed) but still
+                           refetches after respond (updateBookingStatus only
+                           returns a bare Booking). TrackedLinkRow (moved out
+                           of CreatorHomePage.tsx, unchanged behaviour).
+                           EarningsChart (2026-09-26): token-only inline SVG
+                           bar chart, six months, newest solid — same
+                           restraint as marketplace/modal/ReachSparkline.
 packages/
   shared/                 Wire-safe types (enums.ts, entities.ts, api.ts) hand-kept
                            in sync with prisma/schema.prisma. Imported by both apps.

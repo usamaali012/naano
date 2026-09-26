@@ -1,3 +1,4 @@
+import { COMMISSION_PCT } from "@naano/shared";
 import type {
   AttributionResponse,
   AttributionRow,
@@ -6,6 +7,7 @@ import type {
   Booking,
   BookingSent,
   BookingStatus,
+  BrandCollaboration,
   CampaignSummary,
   CreateBookingBody,
   CreatorCollaboration,
@@ -16,6 +18,7 @@ import type {
   ListCreatorsParams,
   LoginResponse,
   MarketplaceCreator,
+  NextAction,
   PageParams,
   Paginated,
   UpdateBookingStatusBody,
@@ -61,11 +64,126 @@ function shortlistSet(campaignId: string): Set<string> {
 // In-memory bookings for the session. FIXTURE_ME is always the brand (no
 // creator-mode fixture context yet), so listBookingsReceived has nothing to
 // return, but creating/listing/updating on the brand side works the same way
-// the real API does. Stored as BookingSent (a superset of Booking) so
-// listBookingsSent can return the real shape Collaborations needs;
-// createBooking still returns it as the Booking the interface promises.
-let fixtureBookings: BookingSent[] = [];
+// the real API does. Stored as BookingSent plus the two lifecycle fields
+// (draftContent/postUrl) neither BookingSent nor Booking carry, so the five
+// lifecycle actions below have somewhere to write — createBooking still
+// returns it as the Booking the interface promises.
+interface FixtureBooking extends BookingSent {
+  draftContent: string | null;
+  postUrl: string | null;
+}
+let fixtureBookings: FixtureBooking[] = [];
 let fixtureBookingSeq = 0;
+
+// Mirrors apps/api/src/bookings/next-action.ts — fixtures have no server to
+// ask, so the same status+viewer+hasDraft table is duplicated here (same
+// pattern as SORTERS mirroring ranking.ts). Keep the two in sync by hand.
+function fixtureNextAction(
+  status: BookingStatus,
+  viewer: "CREATOR" | "COMPANY",
+  hasDraft: boolean,
+): NextAction {
+  if (viewer === "CREATOR") {
+    switch (status) {
+      case "INVITED":
+        return {
+          kind: "respond",
+          label: "Accept or decline this invitation.",
+          consequence: "Nothing moves until you respond. The brand's invitation stays pending.",
+        };
+      case "ACCEPTED":
+        return {
+          kind: "submit_draft",
+          label: hasDraft
+            ? "The brand asked for changes. Revise your draft and send it again."
+            : "Write your post and send it to the brand for review.",
+          consequence: "The brand can't approve anything until your draft arrives.",
+        };
+      case "DRAFT_READY":
+        return { kind: "await_brand", label: "Wait for the brand to review your draft.", consequence: "" };
+      case "SCHEDULED":
+        return {
+          kind: "publish",
+          label: "Your draft is approved. Publish it with your tracked link, then add the post URL here.",
+          consequence: "The brand can't pay you until the post is live.",
+        };
+      case "LIVE":
+        return { kind: "await_brand", label: "Wait for the brand to confirm payment.", consequence: "" };
+      case "PAID":
+      case "DECLINED":
+        return { kind: "none", label: "Nothing to do.", consequence: "" };
+    }
+  }
+  switch (status) {
+    case "INVITED":
+      return { kind: "await_creator", label: "Waiting for the creator to accept.", consequence: "" };
+    case "ACCEPTED":
+      return {
+        kind: "await_creator",
+        label: hasDraft ? "Waiting for the creator's revised draft." : "Waiting for the creator's draft.",
+        consequence: "",
+      };
+    case "DRAFT_READY":
+      return {
+        kind: "review_draft",
+        label: "Review the draft. Approve it or ask for changes.",
+        consequence: "The creator can't publish until you decide.",
+      };
+    case "SCHEDULED":
+      return { kind: "await_creator", label: "Waiting for the creator to publish.", consequence: "" };
+    case "LIVE":
+      return {
+        kind: "mark_paid",
+        label: "The post is live. Record that you've paid the creator.",
+        consequence: "The creator's earnings stay in transit until you confirm.",
+      };
+    case "PAID":
+    case "DECLINED":
+      return { kind: "none", label: "Nothing to do.", consequence: "" };
+  }
+}
+
+/** What the creator receives after COMMISSION_PCT, rounded to whole cents. Mirrors apps/api/src/bookings/money.ts. */
+function fixtureNetCents(agreedPriceCents: number): number {
+  return agreedPriceCents - Math.round((agreedPriceCents * COMMISSION_PCT) / 100);
+}
+
+function toCreatorCollaboration(booking: FixtureBooking): CreatorCollaboration {
+  return {
+    id: booking.id,
+    campaignId: booking.campaignId,
+    creatorProfileId: booking.creatorProfileId,
+    agreedPriceCents: booking.agreedPriceCents,
+    status: booking.status,
+    initiatedBy: booking.initiatedBy,
+    deliverable: booking.deliverable,
+    deadline: booking.deadline,
+    createdAt: booking.createdAt,
+    trackedLinkSlug: booking.trackedLinkSlug,
+    clickCount: booking.clickCount,
+    campaignName: booking.campaignName,
+    companyName: FIXTURE_ME.displayName ?? "",
+    nextAction: fixtureNextAction(booking.status, "CREATOR", booking.draftContent !== null),
+    netCents: fixtureNetCents(booking.agreedPriceCents),
+    draftContent: booking.draftContent,
+    postUrl: booking.postUrl,
+  };
+}
+
+function toBrandCollaboration(booking: FixtureBooking): BrandCollaboration {
+  return {
+    ...booking,
+    nextAction: fixtureNextAction(booking.status, "COMPANY", booking.draftContent !== null),
+    draftContent: booking.draftContent,
+    postUrl: booking.postUrl,
+  };
+}
+
+function findFixtureBooking(id: string): FixtureBooking {
+  const booking = fixtureBookings.find((b) => b.id === id);
+  if (!booking) throw new ApiError(404, `No booking "${id}"`);
+  return booking;
+}
 
 // Static stand-in for the API — the hedge in CLAUDE.md. Same shape as the live
 // payload so swapping VITE_API_MODE is the only change. Figures follow the
@@ -390,7 +508,7 @@ export const fixturesClient: ApiClient = {
       throw new ApiError(409, `${creator.displayName} is already booked for this campaign`);
     }
 
-    const booking: BookingSent = {
+    const booking: FixtureBooking = {
       id: `fixture-booking-${fixtureBookingSeq++}`,
       campaignId: FIXTURE_CAMPAIGN.id,
       creatorProfileId: creator.id,
@@ -406,6 +524,8 @@ export const fixturesClient: ApiClient = {
       creatorDisplayName: creator.displayName,
       campaignName: FIXTURE_CAMPAIGN.name,
       package: body.package,
+      draftContent: null,
+      postUrl: null,
     };
     fixtureBookings = [booking, ...fixtureBookings];
     return booking;
@@ -432,7 +552,7 @@ export const fixturesClient: ApiClient = {
 
   async listBookingsSent(
     params?: PageParams & { campaignId?: string; status?: BookingStatus },
-  ): Promise<Paginated<BookingSent>> {
+  ): Promise<Paginated<BrandCollaboration>> {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 20;
     let rows = fixtureBookings;
@@ -443,15 +563,19 @@ export const fixturesClient: ApiClient = {
       rows = rows.filter((b) => b.status === params.status);
     }
     const start = (page - 1) * pageSize;
-    return { items: rows.slice(start, start + pageSize), total: rows.length, page, pageSize };
+    return {
+      items: rows.slice(start, start + pageSize).map(toBrandCollaboration),
+      total: rows.length,
+      page,
+      pageSize,
+    };
   },
 
   async updateBookingStatus(
     id: string,
     status: UpdateBookingStatusBody["status"],
   ): Promise<Booking> {
-    const booking = fixtureBookings.find((b) => b.id === id);
-    if (!booking) throw new ApiError(404, `No booking "${id}"`);
+    const booking = findFixtureBooking(id);
     if (booking.status !== "INVITED") {
       throw new ApiError(409, `This booking is already ${booking.status.toLowerCase()}`);
     }
@@ -461,6 +585,63 @@ export const fixturesClient: ApiClient = {
       booking.clickCount = 0;
     }
     return booking;
+  },
+
+  async submitDraft(id: string, content: string): Promise<CreatorCollaboration> {
+    const booking = findFixtureBooking(id);
+    if (booking.status !== "ACCEPTED") {
+      throw new ApiError(409, `This booking is ${booking.status.toLowerCase()}, so a draft can't be sent.`);
+    }
+    booking.status = "DRAFT_READY";
+    booking.draftContent = content;
+    return toCreatorCollaboration(booking);
+  },
+
+  async markPublished(id: string, postUrl: string): Promise<CreatorCollaboration> {
+    const booking = findFixtureBooking(id);
+    if (booking.status !== "SCHEDULED") {
+      throw new ApiError(409, `This booking is ${booking.status.toLowerCase()}, so it can't be published.`);
+    }
+    let url: URL;
+    try {
+      url = new URL(postUrl);
+    } catch {
+      throw new ApiError(400, "postUrl must be an https link on linkedin.com, x.com or twitter.com");
+    }
+    const allowedHosts = new Set(["linkedin.com", "www.linkedin.com", "x.com", "twitter.com"]);
+    if (url.protocol !== "https:" || !allowedHosts.has(url.hostname.toLowerCase())) {
+      throw new ApiError(400, "postUrl must be an https link on linkedin.com, x.com or twitter.com");
+    }
+    booking.status = "LIVE";
+    booking.postUrl = postUrl;
+    return toCreatorCollaboration(booking);
+  },
+
+  async approveDraft(id: string): Promise<BrandCollaboration> {
+    const booking = findFixtureBooking(id);
+    if (booking.status !== "DRAFT_READY") {
+      throw new ApiError(409, `This booking is ${booking.status.toLowerCase()}, so it can't be approved.`);
+    }
+    booking.status = "SCHEDULED";
+    return toBrandCollaboration(booking);
+  },
+
+  async requestChanges(id: string): Promise<BrandCollaboration> {
+    const booking = findFixtureBooking(id);
+    if (booking.status !== "DRAFT_READY") {
+      throw new ApiError(409, `This booking is ${booking.status.toLowerCase()}, so it can't be sent back for changes.`);
+    }
+    booking.status = "ACCEPTED";
+    return toBrandCollaboration(booking);
+  },
+
+  async markPaid(id: string): Promise<BrandCollaboration> {
+    const booking = findFixtureBooking(id);
+    if (booking.status !== "LIVE") {
+      throw new ApiError(409, `This booking is ${booking.status.toLowerCase()}, so it can't be marked paid.`);
+    }
+    booking.status = "PAID";
+    return toBrandCollaboration(booking);
   },
 
   // Fixtures never simulate a real /r/:slug click, so lastClickAt has nothing

@@ -25,7 +25,8 @@ function orderByNextAction(bookings: CreatorCollaboration[]): CreatorCollaborati
 export function CreatorCollaborationsPage(): JSX.Element {
   const [bookings, setBookings] = useState<CreatorCollaboration[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
-  const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -45,11 +46,30 @@ export function CreatorCollaborationsPage(): JSX.Element {
     };
   }, []);
 
+  function clearError(id: string): void {
+    setErrors((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function fail(id: string, err: unknown): void {
+    const message = err instanceof Error ? err.message : "Something went wrong. Try again.";
+    setErrors((prev) => ({ ...prev, [id]: message }));
+  }
+
+  function replaceRow(row: CreatorCollaboration): void {
+    setBookings((prev) => prev.map((b) => (b.id === row.id ? row : b)));
+  }
+
   async function respond(
     id: string,
     next: Extract<BookingStatus, "ACCEPTED" | "DECLINED">,
   ): Promise<void> {
-    setRespondingId(id);
+    setBusyId(id);
+    clearError(id);
     try {
       await api.updateBookingStatus(id, next);
       // Re-fetch rather than patch the row in place: `updateBookingStatus`
@@ -58,10 +78,36 @@ export function CreatorCollaborationsPage(): JSX.Element {
       // endpoint recomputes that.
       const page = await api.listBookingsReceived({ pageSize: PAGE_SIZE });
       setBookings(page.items);
-    } catch {
-      // Leave the row as it was; the buttons re-enable so they can try again.
+    } catch (err) {
+      fail(id, err);
     } finally {
-      setRespondingId(null);
+      setBusyId(null);
+    }
+  }
+
+  async function submitDraft(id: string, content: string): Promise<void> {
+    setBusyId(id);
+    clearError(id);
+    try {
+      const updated = await api.submitDraft(id, content);
+      replaceRow(updated);
+    } catch (err) {
+      fail(id, err);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function publish(id: string, postUrl: string): Promise<void> {
+    setBusyId(id);
+    clearError(id);
+    try {
+      const updated = await api.markPublished(id, postUrl);
+      replaceRow(updated);
+    } catch (err) {
+      fail(id, err);
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -97,8 +143,11 @@ export function CreatorCollaborationsPage(): JSX.Element {
             <CollaborationCard
               key={booking.id}
               booking={booking}
-              responding={respondingId === booking.id}
+              busy={busyId === booking.id}
+              error={errors[booking.id] ?? null}
               onRespond={(id, next) => void respond(id, next)}
+              onSubmitDraft={(id, content) => void submitDraft(id, content)}
+              onPublish={(id, postUrl) => void publish(id, postUrl)}
             />
           ))}
         </ul>

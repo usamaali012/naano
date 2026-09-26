@@ -1327,3 +1327,112 @@ needs to not lose an hour to.
   that session's own edit tool call landing after, not instead of, the
   original text it was appending to) — removed; no content change, only the
   leftover fragment.
+- 2026-09-26 — **W1, booking lifecycle on both sides, draft to paid.**
+  `apps/web/**` only, per A1's contract (`packages/shared/src/api.ts`
+  untouched — already correct, confirmed while building against it).
+  - **API layer.** `lib/api/client.ts`/`http.ts` gained `submitDraft`,
+    `markPublished`, `approveDraft`, `requestChanges`, `markPaid` (all thin
+    `POST` wrappers, no request body for the three no-body actions);
+    `listBookingsSent` widened to `Paginated<BrandCollaboration>` — the same
+    type-only bump `CreatorCollaboration` went through for the creator side.
+    `fixtures.ts` mirrors the full state machine so fixture mode keeps
+    working: a new `FixtureBooking` (adds `draftContent`/`postUrl`, neither on
+    `BookingSent`), a duplicated `fixtureNextAction` (mirrors
+    `apps/api/src/bookings/next-action.ts`'s status+viewer+hasDraft table —
+    same "keep two copies in sync by hand" pattern `SORTERS` already uses for
+    `ranking.ts`) and a duplicated `fixtureNetCents` (mirrors `money.ts`'s
+    `COMMISSION_PCT` math). Each new action checks the booking's current
+    status against the one transition it allows and 409s with the same
+    "This booking is X, so it can't be Y." shape the real API uses, otherwise
+    fixtures would silently accept an out-of-order call the real API would
+    reject.
+  - **Found and fixed a real bug while verifying the publish 400 case**:
+    `http.ts`'s `request()` only read `body.message` as a string, but Nest's
+    `ValidationPipe` reports field errors as a string array (exactly what
+    `MarkPublishedDto`'s non-LinkedIn-URL check returns) — so the actual
+    validation sentence never reached the UI, only a generic
+    "`/bookings/:id/publish` failed with status 400" fallback. Since "show the
+    API's message inline on that row" is the acceptance bar for every one of
+    these five actions, this wasn't a side quest — fixed by also accepting a
+    string array and joining it. Confirmed live: a `https://example.com/...`
+    postUrl now shows "postUrl must be an https link on linkedin.com, x.com or
+    twitter.com" on the row, not the fallback.
+  - **Creator Collaborations** (`components/creator/CollaborationCard.tsx`,
+    `routes/CreatorCollaborationsPage.tsx`): the tinted panel now branches on
+    `nextAction.kind`. `submit_draft` is a textarea (seeded from
+    `draftContent` so a resubmit after request-changes starts from the old
+    text, per the ask) with a live `N / 3000` count and a "Send for review"
+    button disabled empty/over-limit/in-flight. `publish` is the tracked link
+    (reusing `TrackedLinkRow`) + a plain URL `Input` + "Mark as published" —
+    deliberately no client-side domain check, so the 400 case above is a real
+    round trip, not a guard that never lets a bad URL leave the browser.
+    `respond` unchanged. Every action: `busyId` disables just that row's
+    buttons; `submitDraft`/`markPublished` replace the row in place with the
+    full returned `CreatorCollaboration` (it carries the recomputed
+    `nextAction`, so no refetch needed — unlike `respond`, which still
+    refetches because `updateBookingStatus` only returns a bare `Booking`);
+    failures land in a per-row `errors` map, read off `err.message` (the
+    `ApiError`'s own message, already the server's text after the fix above).
+  - **Brand Collaborations** (`components/campaign/CollaborationsTable.tsx`,
+    `routes/CollaborationsPage.tsx`): rather than switching the brand's table
+    to the creator's card layout, the table gained a seventh "Next action"
+    column — same tinted-panel-vs-plain-line rule as the creator side (so the
+    pattern reads as one system per the ask), but the existing Creator/
+    Campaign/Package/Agreed price/Status/Tracked link columns, the `?status=`
+    filter, and `CreatorsPagination` are all untouched, exactly as asked.
+    `review_draft` shows the draft text (`line-clamp-3`) then Approve/Ask for
+    changes; `mark_paid` shows a "View the live post" link to `postUrl` (not
+    the tracked link — a different URL, the actual published post) then
+    "Mark as paid (amount)" with the gross `agreedPriceCents`, then the fixed
+    "Payment rails aren't built..." line. Rows sort actionable-first
+    (`orderByNextAction`, the same stable-sort shape
+    `CreatorCollaborationsPage` already used) on the current page only — the
+    server-side `?status=`/pagination contract doesn't change. No em dashes
+    were introduced in any new copy (checked by re-reading every string
+    written this session, per the ask) — "Mark as paid (amount)" uses
+    parentheses, not the em-dash-joined phrasing drafted first.
+  - **Verified against the running local API (`:3000`, unmodified — no
+    `apps/api` file opened) and in the browser**, walking one real booking
+    through the whole loop rather than relying on whatever the seed happened
+    to leave in each state: booked a fresh creator (Nils Nilsson, previously
+    unbooked in Fintech Trust Campaign, via the ordinary marketplace Book
+    flow — `demo-actions.ts` was not run, per the ask) so "Continue as a
+    creator" resolved to him for a clean multi-step session. Accept (creator)
+    → mints the tracked link, submit_draft panel appears with a live
+    `0 / 3000` count. First draft (creator) → row moves to Draft ready,
+    brand's Next action shows "Review the draft..." with the draft text.
+    Ask for changes (brand) → row back to Accepted, "Waiting for the
+    creator's revised draft."; creator's panel now reads "The brand asked for
+    changes. Revise your draft and send it again." with the textarea
+    pre-filled with the old text (confirms `hasDraft` branching end to end).
+    Revise and resend (creator) → Draft ready again, brand sees the new text.
+    Approve (brand) → Scheduled, creator's panel becomes the publish form
+    (tracked link + URL input + "Mark as published"). Publish with
+    `https://example.com/not-linkedin` → 400, the real validation sentence
+    shown inline on the row (the bug above, caught by this exact step).
+    Publish with a `linkedin.com` URL → Live, brand's row becomes "The post
+    is live..." with a working "View the live post" link. Mark as paid
+    (brand) → Paid, creator's row becomes "Nothing to do.". Creator Earnings,
+    before vs. after that one mark-paid: total earned €0 → €663, in transit
+    €1,310 → €647 — both moved by exactly €663 (net of the booking's €829
+    agreed price at the 20% `COMMISSION_PCT`, confirming `netCents` isn't
+    drifting between the two figures), and the current month's chart bar grew
+    from empty to the new total. Separately, on the existing seed data (no
+    fresh booking needed): approved Marco Romano's draft and marked Elin
+    Halvorsen's live post paid as the brand, both landing correctly before
+    the fresh-booking walkthrough above.
+  - **`npm run shots`**: ran clean on retry (a first attempt hit Playwright's
+    `networkidle` wait timing out on a cold Vite compile, not a real failure —
+    the dev server needs a request to actually finish compiling before
+    Playwright's own navigation, and the first hit of the session is always
+    the slow one). All ten shots regenerated; `collaborations.png` and
+    `creator-collaborations.png` opened and checked against DESIGN.md's
+    anti-slop list — new "Next action" column reads as one tinted-panel
+    system with the creator side, tabular-nums holds on the price column, no
+    gradient/shadow/em-dash anywhere new. The four `ERR_FAILED` console lines
+    this run are `randomuser.me` avatar fetches failing in this sandboxed
+    network — pre-existing, unrelated to this slice (`ui/Avatar`'s
+    initials-first rendering already covers it), not the deliberate
+    `error-state` abort this suite also produces.
+  - `npx tsc -b apps/web/tsconfig.json` — clean, no errors, run twice (before
+    and after the `http.ts` message-array fix).

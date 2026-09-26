@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { BookingSent, BookingStatus } from "@naano/shared";
+import type { BookingStatus, BrandCollaboration } from "@naano/shared";
 import { api } from "../lib/api";
 import { CollaborationsTable } from "../components/campaign/CollaborationsTable";
 import { CreatorsPagination } from "../components/marketplace/CreatorsPagination";
@@ -19,16 +19,30 @@ const STATUS_OPTIONS: BookingStatus[] = [
   "PAID",
 ];
 
+// Consequence is non-empty exactly when the next move is the brand's — same
+// ordering rule as the creator's Collaborations screen, so the pattern reads
+// as one system. Stable sort keeps each group in the server's own
+// createdAt-desc order.
+function orderByNextAction(bookings: BrandCollaboration[]): BrandCollaboration[] {
+  return [...bookings].sort((a, b) => {
+    const aActionable = a.nextAction.consequence !== "" ? 0 : 1;
+    const bActionable = b.nextAction.consequence !== "" ? 0 : 1;
+    return aActionable - bActionable;
+  });
+}
+
 // Every booking the signed-in brand has made, across every campaign. GET
 // /bookings/sent is already paginated; the status filter is a real ?status=
 // param, not a client-side slice, so it stays correct past one page.
 export function CollaborationsPage(): JSX.Element {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<BookingStatus | "">("");
-  const [bookings, setBookings] = useState<BookingSent[]>([]);
+  const [bookings, setBookings] = useState<BrandCollaboration[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [reloadKey, setReloadKey] = useState(0);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +58,7 @@ export function CollaborationsPage(): JSX.Element {
         setBookings(result.items);
         setTotal(result.total);
         setStatus("ready");
+        setErrors({});
       })
       .catch(() => {
         if (!cancelled) setStatus("error");
@@ -56,6 +71,37 @@ export function CollaborationsPage(): JSX.Element {
   function changeStatus(value: string): void {
     setStatusFilter(value as BookingStatus | "");
     setPage(1);
+  }
+
+  function clearError(id: string): void {
+    setErrors((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function fail(id: string, err: unknown): void {
+    const message = err instanceof Error ? err.message : "Something went wrong. Try again.";
+    setErrors((prev) => ({ ...prev, [id]: message }));
+  }
+
+  function replaceRow(row: BrandCollaboration): void {
+    setBookings((prev) => prev.map((b) => (b.id === row.id ? row : b)));
+  }
+
+  async function run(id: string, action: (id: string) => Promise<BrandCollaboration>): Promise<void> {
+    setBusyId(id);
+    clearError(id);
+    try {
+      const updated = await action(id);
+      replaceRow(updated);
+    } catch (err) {
+      fail(id, err);
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return (
@@ -112,7 +158,14 @@ export function CollaborationsPage(): JSX.Element {
 
       {status === "ready" && bookings.length > 0 && (
         <>
-          <CollaborationsTable bookings={bookings} />
+          <CollaborationsTable
+            bookings={orderByNextAction(bookings)}
+            busyId={busyId}
+            errors={errors}
+            onApprove={(id) => void run(id, api.approveDraft)}
+            onRequestChanges={(id) => void run(id, api.requestChanges)}
+            onMarkPaid={(id) => void run(id, api.markPaid)}
+          />
           <CreatorsPagination
             page={page}
             pageSize={PAGE_SIZE}

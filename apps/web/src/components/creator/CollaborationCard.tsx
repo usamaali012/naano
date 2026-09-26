@@ -1,14 +1,21 @@
+import { useState } from "react";
 import type { BookingStatus, CreatorCollaboration } from "@naano/shared";
 import { Button } from "../ui/Button";
+import { Input } from "../ui/Input";
 import { StatusPill } from "../ui/StatusPill";
 import { TrackedLinkRow } from "./TrackedLinkRow";
 import { bookingStatusLabel, bookingStatusTone } from "../../lib/bookingStatus";
 import { formatCents } from "../../lib/format";
 
+const DRAFT_MAX_LENGTH = 3000;
+
 interface CollaborationCardProps {
   booking: CreatorCollaboration;
-  responding: boolean;
+  busy: boolean;
+  error: string | null;
   onRespond: (id: string, status: Extract<BookingStatus, "ACCEPTED" | "DECLINED">) => void;
+  onSubmitDraft: (id: string, content: string) => void;
+  onPublish: (id: string, postUrl: string) => void;
 }
 
 // One collaboration, organised around next action rather than status alone —
@@ -21,8 +28,11 @@ interface CollaborationCardProps {
 // docs/DECISIONS.md.
 export function CollaborationCard({
   booking,
-  responding,
+  busy,
+  error,
   onRespond,
+  onSubmitDraft,
+  onPublish,
 }: CollaborationCardProps): JSX.Element {
   const { nextAction } = booking;
   const actionable = nextAction.consequence !== "";
@@ -56,7 +66,7 @@ export function CollaborationCard({
             <div className="flex gap-s2 pt-s1">
               <Button
                 size="sm"
-                disabled={responding}
+                disabled={busy}
                 onClick={() => onRespond(booking.id, "ACCEPTED")}
               >
                 Accept
@@ -64,13 +74,28 @@ export function CollaborationCard({
               <Button
                 size="sm"
                 variant="secondary"
-                disabled={responding}
+                disabled={busy}
                 onClick={() => onRespond(booking.id, "DECLINED")}
               >
                 Decline
               </Button>
             </div>
           )}
+          {nextAction.kind === "submit_draft" && (
+            <SubmitDraftForm
+              initialContent={booking.draftContent ?? ""}
+              busy={busy}
+              onSubmit={(content) => onSubmitDraft(booking.id, content)}
+            />
+          )}
+          {nextAction.kind === "publish" && (
+            <PublishForm
+              slug={booking.trackedLinkSlug}
+              busy={busy}
+              onSubmit={(postUrl) => onPublish(booking.id, postUrl)}
+            />
+          )}
+          {error && <p className="text-label text-warn">{error}</p>}
         </div>
       ) : (
         // Informational, not actionable — a plain line, deliberately without
@@ -81,7 +106,83 @@ export function CollaborationCard({
 
       <p className="text-body text-text-muted">{booking.deliverable}</p>
 
-      {booking.trackedLinkSlug && <TrackedLinkRow slug={booking.trackedLinkSlug} />}
+      {booking.trackedLinkSlug && nextAction.kind !== "publish" && (
+        <TrackedLinkRow slug={booking.trackedLinkSlug} />
+      )}
     </li>
+  );
+}
+
+function SubmitDraftForm({
+  initialContent,
+  busy,
+  onSubmit,
+}: {
+  initialContent: string;
+  busy: boolean;
+  onSubmit: (content: string) => void;
+}): JSX.Element {
+  const [content, setContent] = useState(initialContent);
+  const trimmed = content.trim();
+  const overLimit = content.length > DRAFT_MAX_LENGTH;
+  const canSend = trimmed.length > 0 && !overLimit && !busy;
+
+  return (
+    <div className="flex flex-col gap-s2 pt-s1">
+      <textarea
+        value={content}
+        disabled={busy}
+        onChange={(e) => setContent(e.target.value)}
+        rows={5}
+        className={`w-full rounded-control border bg-surface px-s4 py-s3 text-body text-text placeholder:text-text-muted transition-shadow focus:outline-none focus:shadow-[0_0_0_3px_var(--primary-soft)] ${
+          overLimit ? "border-warn focus:border-warn" : "border-border focus:border-primary"
+        }`}
+        placeholder="Write the post you'll publish for this brand."
+      />
+      <span className={`text-label ${overLimit ? "text-warn" : "text-text-muted"}`}>
+        {content.length} / {DRAFT_MAX_LENGTH}
+      </span>
+      <div>
+        <Button size="sm" disabled={!canSend} onClick={() => onSubmit(trimmed)}>
+          Send for review
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PublishForm({
+  slug,
+  busy,
+  onSubmit,
+}: {
+  slug: string | null;
+  busy: boolean;
+  onSubmit: (postUrl: string) => void;
+}): JSX.Element {
+  const [postUrl, setPostUrl] = useState("");
+  const canPublish = postUrl.trim().length > 0 && !busy;
+
+  return (
+    <div className="flex flex-col gap-s3 pt-s1">
+      {slug && <TrackedLinkRow slug={slug} />}
+      <div className="flex flex-col gap-s2">
+        <label htmlFor={`post-url-${slug ?? "new"}`} className="text-label text-text-muted">
+          Post URL
+        </label>
+        <Input
+          id={`post-url-${slug ?? "new"}`}
+          value={postUrl}
+          disabled={busy}
+          placeholder="https://www.linkedin.com/..."
+          onChange={(e) => setPostUrl(e.target.value)}
+        />
+      </div>
+      <div>
+        <Button size="sm" disabled={!canPublish} onClick={() => onSubmit(postUrl.trim())}>
+          Mark as published
+        </Button>
+      </div>
+    </div>
   );
 }
