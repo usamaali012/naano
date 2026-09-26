@@ -89,7 +89,7 @@ export function EntryPage(): JSX.Element {
 
         {failed && (
           <p className="text-label text-warn">
-            Could not sign in. The server may still be starting — try again.
+            Could not sign in. The server may still be starting. Try again in a moment.
           </p>
         )}
       </div>
