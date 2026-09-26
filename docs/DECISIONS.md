@@ -2085,3 +2085,61 @@ needs to not lose an hour to.
     checked by measurement, not by eye, at that width) and stacked to one
     column at 390px with the steps strip and live strip both re-flowing
     cleanly. `npx tsc -b apps/web/tsconfig.json` — clean, no errors.
+
+## Session: web, round 3
+
+- 2026-09-26 — W8, `CreatorHomePage` rebuilt from a plain profile card into a
+  real Overview (docs/RECON-CREATOR.md's "Overview" section, "Problems worth
+  fixing" #4 — naano's own first run is four zeros above the fold). Only
+  `apps/web/src/routes/CreatorHomePage.tsx` touched; no new API method, all
+  four data sources (`getCreator`, `getEarnings`, `getActionCount`,
+  `listBookingsReceived`) already existed and are fetched in one
+  `Promise.all`.
+  - **Every tile carries a caption, never a bare number.** Earned:
+    "N paid, €X average" or "No paid collaborations yet" at zero. In transit:
+    "Arrives in 1 to 7 days" or "Nothing in transit right now" at zero. Needs
+    you: "Waiting on your next move" or "Nothing needs you right now" at
+    zero. Your price: "Single post, CPM €X" — always populated, since the
+    API's own price floor (5,000 cents) means this can never legitimately be
+    zero. No middle dots anywhere in this copy — grepped for `·` first
+    (still zero hits repo-wide, per the "Session: web (own-product redesign)"
+    note above) and used a comma instead, same call as `LiveCreatorsStrip`.
+  - **"Needs you" panel derivation.** `listBookingsReceived({ pageSize: 20
+    })`, filtered to `nextAction.consequence !== ""` (the same test
+    `CollaborationCard`/`CreatorCollaborationsPage` already use to mean "the
+    creator's move, not the brand's"), sliced to 3. Not a separate endpoint —
+    the API's A6 slice already orders actionable rows first, so a 20-row page
+    reliably surfaces every actionable row a creator would realistically have
+    without pagination. Each row links to `/app/collaborations` (no inline
+    accept/decline here — that stays the one place with the real controls)
+    and shows brand, campaign, the next-action label, and net amount.
+  - **Layout.** `flex-col lg:flex-row`, left column (tiles + Needs you +
+    Earnings chart) `flex-1 min-w-0`, the creator card `lg:w-[440px]` — same
+    beside/below breakpoint convention the marketplace detail panel already
+    uses (the "Piece 2" entry under "Session: web (own-product redesign)"
+    above). Inside the now-440px-wide card, the metrics grid and audience
+    snapshot lost their `sm:`/`lg:` column-count bumps: those key off
+    viewport width, not container width, and would have squeezed 3–5 columns
+    into a fixed 440px box on any wide screen. Fixed at 2 columns (metrics)
+    and 1 column (audience) instead.
+  - **Edit card unchanged in substance**, only re-parented: same
+    `EditCardForm`, same validation, same `onSaved` callback — now merges
+    into a `HomeData` object (`{ detail, earnings, actionCount, needsYou }`)
+    instead of a bare `detail` state, since the page now holds four fetched
+    pieces, not one.
+  - **Verified against the running local API** (`web` on :5173, `api` on
+    :3000) signed in as the demo creator (Clara Keller): initial state showed
+    all-zero actionable tiles and both real empty states ("Nothing needs you
+    right now" in the greeting, the tile, and the panel). Used the existing
+    dev-only `POST /dev/bookings/ensure-invited` to give her one genuine
+    INVITED booking, then reloaded — the greeting read "1 collaboration needs
+    you.", the Needs you tile and panel both showed it (Vertice Analytics /
+    Q4 RevOps Awareness / "Accept or decline this invitation." / €789), and
+    the Earned/In transit figures (€838 / €3,359) matched the Earnings page
+    exactly while the Needs-you count matched the rail badge and the
+    Collaborations page's single actionable row. Edit card re-verified end to
+    end: changed the headline, saved, confirmed the new value persisted
+    through a reload, then reverted it. Checked 1440px (two-column, beside)
+    and 375px (single column, card below) — no horizontal scroll, tiles
+    reflow 2-up on mobile. No console errors. `npx tsc -b
+    apps/web/tsconfig.json` — clean.

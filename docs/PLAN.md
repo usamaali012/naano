@@ -631,6 +631,21 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   verification (both sign-ins, live strip against the real API, 1440px and
   390px screenshots).
 
+- [x] **W8 Creator home overview** — done 2026-09-26.
+  Scope: rebuild `CreatorHomePage` from a plain profile card into a real
+  Overview per docs/RECON-CREATOR.md's "Overview" section and "Problems worth
+  fixing" #4/#5 — greeting header, four tiles from real data (no bare
+  zero/dash), a "Needs you" panel, an earnings mini chart, and the existing
+  creator card as a beside/below preview. Real data only, from the four
+  already-existing methods (`getCreator`, `getEarnings`, `getActionCount`,
+  `listBookingsReceived`) — no new API surface.
+  Files: `apps/web/src/routes/CreatorHomePage.tsx`.
+  Notes: see docs/DECISIONS.md's "Session: web, round 3" for the tile-caption
+  rules, the "Needs you" derivation, and the end-to-end verification
+  (numbers cross-checked against Earnings/Collaborations, Edit card
+  reverified, an actionable and a zero-actionable state both seen live,
+  1440px/375px screenshots).
+
 ---
 
 ## Discovered

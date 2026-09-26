@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import type { CreatorProfileDetail } from "@naano/shared";
+import { Link } from "react-router-dom";
+import type {
+  ActionCount,
+  CreatorCollaboration,
+  CreatorEarnings,
+  CreatorProfileDetail,
+} from "@naano/shared";
 import { api } from "../lib/api";
 import { ApiError } from "../lib/api/errors";
 import { useAuthStore } from "../lib/stores/authStore";
@@ -8,6 +14,7 @@ import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { SegmentedBar } from "../components/ui/SegmentedBar";
 import { segmentsFor } from "../components/marketplace/modal/audienceSegments";
+import { EarningsChart } from "../components/creator/EarningsChart";
 import {
   formatCents,
   formatCompactNumber,
@@ -19,15 +26,26 @@ import {
 const MIN_PRICE_CENTS = 5_000;
 const MAX_PRICE_CENTS = 2_250_000;
 
-// What a signed-in creator lands on: their own marketplace profile, exactly
-// as a brand sees it. Real data from GET /creators/:id. Collaborations and
-// Earnings are their own routes (the rail's other two items) — this page is
-// the profile alone, not a catch-all.
+interface HomeData {
+  detail: CreatorProfileDetail;
+  earnings: CreatorEarnings;
+  actionCount: ActionCount;
+  /** Up to three received bookings whose next move is the creator's. */
+  needsYou: CreatorCollaboration[];
+}
+
+// What a signed-in creator lands on: a real overview, not the four zeros
+// naano's own Overview opens on (docs/RECON-CREATOR.md, "Problems worth
+// fixing" #4) — tiles, next-action rows and an earnings trend, all from
+// getCreator/getEarnings/getActionCount/listBookingsReceived, plus the
+// creator's own card (identical to what GET /creators/:id shows a brand) as
+// a preview alongside it. Collaborations and Earnings stay their own routes
+// (the rail's other two items); this page summarises, it doesn't replace them.
 export function CreatorHomePage(): JSX.Element {
   const me = useAuthStore((state) => state.me);
   const creatorProfileId = me?.creatorProfileId ?? null;
 
-  const [detail, setDetail] = useState<CreatorProfileDetail | null>(null);
+  const [data, setData] = useState<HomeData | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [editing, setEditing] = useState(false);
 
@@ -38,11 +56,22 @@ export function CreatorHomePage(): JSX.Element {
     }
     let cancelled = false;
     setStatus("loading");
-    api
-      .getCreator(creatorProfileId)
-      .then((result) => {
+    Promise.all([
+      api.getCreator(creatorProfileId),
+      api.getEarnings(),
+      api.getActionCount(),
+      api.listBookingsReceived({ pageSize: 20 }),
+    ])
+      .then(([detail, earnings, actionCount, bookings]) => {
         if (cancelled) return;
-        setDetail(result);
+        setData({
+          detail,
+          earnings,
+          actionCount,
+          needsYou: bookings.items
+            .filter((booking) => booking.nextAction.consequence !== "")
+            .slice(0, 3),
+        });
         setStatus("ready");
       })
       .catch(() => {
@@ -53,18 +82,19 @@ export function CreatorHomePage(): JSX.Element {
     };
   }, [creatorProfileId]);
 
-  if (status === "loading") {
-    return (
-      <p className="text-body text-text-muted">Loading your profile…</p>
-    );
+  if (status === "loading" || !data) {
+    return <p className="text-body text-text-muted">Loading your overview…</p>;
   }
-  if (status === "error" || !detail) {
+  if (status === "error") {
     return (
       <div className="rounded-card border border-border bg-surface p-s8 text-body text-text-muted">
-        Could not load your profile. Reload the page to try again.
+        Could not load your overview. Reload the page to try again.
       </div>
     );
   }
+
+  const { detail, earnings, actionCount, needsYou } = data;
+  const firstName = detail.displayName.split(" ")[0];
 
   const metrics: Array<[string, string]> = [
     ["Followers", formatCompactNumber(detail.followerCount)],
@@ -77,115 +107,233 @@ export function CreatorHomePage(): JSX.Element {
   return (
     <div className="flex flex-col gap-s6">
       <div className="flex flex-col gap-s1">
-        <h1 className="text-page-title text-text">Your profile</h1>
+        <h1 className="text-page-title text-text">Good to see you, {firstName}</h1>
         <p className="text-body text-text-muted">
-          This is exactly how brands see you in the marketplace.
+          {actionCount.count === 0
+            ? "Nothing needs you right now."
+            : `${actionCount.count} collaboration${actionCount.count === 1 ? "" : "s"} need${
+                actionCount.count === 1 ? "s" : ""
+              } you.`}
         </p>
       </div>
 
-      <div className="flex flex-col gap-s6 rounded-card border border-border bg-surface p-s6">
-        {editing ? (
-          <EditCardForm
-            detail={detail}
-            onCancel={() => setEditing(false)}
-            onSaved={(next) => {
-              setDetail(next);
-              setEditing(false);
-            }}
-          />
-        ) : (
-          <>
-            <div className="flex flex-wrap items-start justify-between gap-s4">
-              <div className="flex items-center gap-s4">
-                <Avatar
-                  src={detail.avatarUrl}
-                  name={detail.displayName}
-                  className="h-16 w-16"
-                />
-                <div className="flex flex-col gap-s1">
-                  <h2 className="text-section-title text-text">{detail.displayName}</h2>
-                  <p className="text-label text-text-muted">
-                    {verticalLabel(detail.vertical)} creator on LinkedIn
-                    <span className="ml-s2">{detail.country}</span>
-                  </p>
-                  <p className="text-body text-text-muted">{detail.headline}</p>
+      <div className="flex flex-col gap-s6 lg:flex-row">
+        <div className="flex min-w-0 flex-1 flex-col gap-s6">
+          <dl className="grid grid-cols-2 gap-s4">
+            <OverviewTile
+              label="Earned"
+              value={formatCents(earnings.totalEarnedCents)}
+              caption={
+                earnings.paidCollaborationsCount === 0
+                  ? "No paid collaborations yet"
+                  : `${earnings.paidCollaborationsCount} paid, ${formatCents(
+                      earnings.averageCents,
+                    )} average`
+              }
+            />
+            <OverviewTile
+              label="In transit"
+              value={formatCents(earnings.inTransitCents)}
+              caption={
+                earnings.inTransitCents === 0
+                  ? "Nothing in transit right now"
+                  : "Arrives in 1 to 7 days"
+              }
+            />
+            <OverviewTile
+              label="Needs you"
+              value={String(actionCount.count)}
+              caption={
+                actionCount.count === 0
+                  ? "Nothing needs you right now"
+                  : "Waiting on your next move"
+              }
+            />
+            <OverviewTile
+              label="Your price"
+              value={formatCents(detail.postCostCents)}
+              caption={`Single post, CPM ${formatCpm(detail.postCostCents, detail.medianViews)}`}
+            />
+          </dl>
+
+          <section className="flex flex-col gap-s4 rounded-card border border-border bg-surface p-s6">
+            <h2 className="text-card-title text-text">Needs you</h2>
+            {needsYou.length === 0 ? (
+              <p className="text-body text-text-muted">
+                Nothing needs your attention right now. New collaborations will
+                show up here.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-s3">
+                {needsYou.map((booking) => (
+                  <li key={booking.id}>
+                    <Link
+                      to="/app/collaborations"
+                      className="flex flex-wrap items-start justify-between gap-s3 rounded-card border border-border p-s4 transition-colors hover:border-primary"
+                    >
+                      <div className="flex flex-col gap-s1">
+                        <span className="text-card-title text-text">
+                          {booking.companyName}
+                        </span>
+                        <span className="text-label text-text-muted">
+                          {booking.campaignName}
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-end gap-s1 text-right">
+                        <span className="text-body font-medium text-primary">
+                          {booking.nextAction.label}
+                        </span>
+                        <span className="text-metric tabular-nums text-text">
+                          {formatCents(booking.netCents)}
+                        </span>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-s4 rounded-card border border-border bg-surface p-s6">
+            <div className="flex flex-wrap items-baseline justify-between gap-s2">
+              <h2 className="text-card-title text-text">Earnings</h2>
+              <Link to="/app/earnings" className="text-label font-medium text-primary">
+                See earnings
+              </Link>
+            </div>
+            <EarningsChart months={earnings.monthly} />
+          </section>
+        </div>
+
+        <div className="flex flex-col gap-s6 rounded-card border border-border bg-surface p-s6 lg:w-[440px]">
+          <p className="text-label text-text-muted">
+            This is exactly how brands see you.
+          </p>
+
+          {editing ? (
+            <EditCardForm
+              detail={detail}
+              onCancel={() => setEditing(false)}
+              onSaved={(next) => {
+                setData((prev) => (prev ? { ...prev, detail: next } : prev));
+                setEditing(false);
+              }}
+            />
+          ) : (
+            <>
+              <div className="flex flex-wrap items-start justify-between gap-s4">
+                <div className="flex items-center gap-s4">
+                  <Avatar
+                    src={detail.avatarUrl}
+                    name={detail.displayName}
+                    className="h-16 w-16"
+                  />
+                  <div className="flex flex-col gap-s1">
+                    <h2 className="text-section-title text-text">{detail.displayName}</h2>
+                    <p className="text-label text-text-muted">
+                      {verticalLabel(detail.vertical)} creator on LinkedIn
+                      <span className="ml-s2">{detail.country}</span>
+                    </p>
+                    <p className="text-body text-text-muted">{detail.headline}</p>
+                  </div>
                 </div>
+                <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+                  Edit card
+                </Button>
               </div>
-              <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-                Edit card
-              </Button>
-            </div>
 
-            <dl className="grid grid-cols-2 gap-s4 sm:grid-cols-3 lg:grid-cols-5">
-              {metrics.map(([label, value]) => (
-                <div key={label} className="flex flex-col gap-s1">
-                  <dd className="text-metric tabular-nums text-text">{value}</dd>
-                  <dt className="text-label text-text-muted">{label}</dt>
-                </div>
+              <dl className="grid grid-cols-2 gap-s4">
+                {metrics.map(([label, value]) => (
+                  <div key={label} className="flex flex-col gap-s1">
+                    <dd className="text-metric tabular-nums text-text">{value}</dd>
+                    <dt className="text-label text-text-muted">{label}</dt>
+                  </div>
+                ))}
+              </dl>
+            </>
+          )}
+
+          <section className="flex flex-col gap-s4 border-t border-border pt-s6">
+            <div className="flex flex-wrap items-baseline justify-between gap-s2">
+              <h3 className="text-card-title text-text">Audience snapshot</h3>
+              <span className="text-label text-text-muted">
+                Estimated from {detail.observedEngagerCount} recent public engagers
+              </span>
+            </div>
+            <div className="flex flex-col gap-s6">
+              <div className="flex flex-col gap-s3">
+                <span className="text-label text-text-muted">Job title</span>
+                <SegmentedBar segments={segmentsFor(detail, "JOB_TITLE")} />
+              </div>
+              <div className="flex flex-col gap-s3">
+                <span className="text-label text-text-muted">Seniority</span>
+                <SegmentedBar segments={segmentsFor(detail, "SENIORITY")} />
+              </div>
+            </div>
+          </section>
+
+          <section className="flex flex-col gap-s3 border-t border-border pt-s6">
+            <h3 className="text-card-title text-text">
+              Recent posts ({detail.posts.length})
+            </h3>
+            <ul className="flex flex-col gap-s3">
+              {detail.posts.map((post) => (
+                <li
+                  key={post.id}
+                  className="flex flex-col gap-s2 rounded-card border border-border p-s4"
+                >
+                  <div className="flex items-baseline justify-between gap-s3">
+                    <span className="text-label text-text-muted">
+                      {new Date(post.publishedAt).toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </span>
+                    <a
+                      href={post.externalUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-label font-medium text-primary"
+                    >
+                      Open original
+                    </a>
+                  </div>
+                  <p className="line-clamp-2 text-body text-text">
+                    {post.content.replace(/\s+/g, " ")}
+                  </p>
+                  <div className="flex flex-wrap gap-s4 text-label tabular-nums text-text-muted">
+                    <span>{formatCompactNumber(post.views)} views</span>
+                    <span>{formatCompactNumber(post.reactions)} reactions</span>
+                    <span>{formatCompactNumber(post.comments)} comments</span>
+                    <span>{formatCompactNumber(post.reposts)} reposts</span>
+                  </div>
+                </li>
               ))}
-            </dl>
-          </>
-        )}
-
-        <section className="flex flex-col gap-s4 border-t border-border pt-s6">
-          <div className="flex flex-wrap items-baseline justify-between gap-s2">
-            <h3 className="text-card-title text-text">Audience snapshot</h3>
-            <span className="text-label text-text-muted">
-              Estimated from {detail.observedEngagerCount} recent public engagers
-            </span>
-          </div>
-          <div className="grid gap-s6 sm:grid-cols-2">
-            <div className="flex flex-col gap-s3">
-              <span className="text-label text-text-muted">Job title</span>
-              <SegmentedBar segments={segmentsFor(detail, "JOB_TITLE")} />
-            </div>
-            <div className="flex flex-col gap-s3">
-              <span className="text-label text-text-muted">Seniority</span>
-              <SegmentedBar segments={segmentsFor(detail, "SENIORITY")} />
-            </div>
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-s3 border-t border-border pt-s6">
-          <h3 className="text-card-title text-text">
-            Recent posts ({detail.posts.length})
-          </h3>
-          <ul className="flex flex-col gap-s3">
-            {detail.posts.map((post) => (
-              <li
-                key={post.id}
-                className="flex flex-col gap-s2 rounded-card border border-border p-s4"
-              >
-                <div className="flex items-baseline justify-between gap-s3">
-                  <span className="text-label text-text-muted">
-                    {new Date(post.publishedAt).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                    })}
-                  </span>
-                  <a
-                    href={post.externalUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-label font-medium text-primary"
-                  >
-                    Open original
-                  </a>
-                </div>
-                <p className="line-clamp-2 text-body text-text">
-                  {post.content.replace(/\s+/g, " ")}
-                </p>
-                <div className="flex flex-wrap gap-s4 text-label tabular-nums text-text-muted">
-                  <span>{formatCompactNumber(post.views)} views</span>
-                  <span>{formatCompactNumber(post.reactions)} reactions</span>
-                  <span>{formatCompactNumber(post.comments)} comments</span>
-                  <span>{formatCompactNumber(post.reposts)} reposts</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
+            </ul>
+          </section>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// One of the four Overview tiles. Never a bare number: every tile carries a
+// caption explaining what's behind it, so a zero reads as "nothing yet" and
+// not as a broken page (docs/RECON-CREATOR.md, "Problems worth fixing" #4).
+function OverviewTile({
+  label,
+  value,
+  caption,
+}: {
+  label: string;
+  value: string;
+  caption: string;
+}): JSX.Element {
+  return (
+    <div className="flex flex-col gap-s1 rounded-card border border-border bg-surface p-s4">
+      <dd className="text-metric tabular-nums text-text">{value}</dd>
+      <dt className="text-label text-text-muted">{label}</dt>
+      <p className="text-label text-text-muted">{caption}</p>
     </div>
   );
 }
@@ -275,7 +423,7 @@ function EditCardForm({
         )}
       </div>
 
-      <div className="grid gap-s4 sm:grid-cols-2">
+      <div className="flex flex-col gap-s4">
         <div className="flex flex-col gap-s2">
           <label htmlFor="edit-card-post-cost" className="text-label text-text-muted">
             Single post price (EUR)
