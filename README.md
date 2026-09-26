@@ -396,6 +396,19 @@ Then, round 2, once the brief asked for an interface I designed myself:
    campaign switcher a second campaign. See "Disclosures" for what it
    changes.
 
+Then a last pass on the screens a reviewer sees first:
+
+8. **Results as a dashboard.** KPI tiles, clicks per day, the booking
+   pipeline, clicks by creator and spend by campaign, all from live
+   aggregates (see "Results became a real dashboard" above).
+9. **The creator's home.** Earned, in transit, what needs them, and their
+   price, from the same endpoints as the Earnings and Collaborations
+   screens, with empty states that say why instead of showing a zero.
+10. **The entry page.** Two equal role panels that say what each side can
+    do, the booking steps, and five real creators from the marketplace.
+11. **The detail panel scrolls on its own.** The page ends where the list
+    ends, and the booking rail is reachable without scrolling the page.
+
 ## What was deliberately cut
 
 Named out loud rather than left to be discovered. (The creator-side cuts,
