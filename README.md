@@ -326,8 +326,9 @@ decision was wrong, but because the product underneath it had changed.
 Results used to be one table: clicks attributed per creator. It's now a full
 dashboard above that table, KPIs, a clicks-per-day chart, the booking
 pipeline, top creators by clicks, and spend by campaign, and every figure on
-it reads a live aggregate from `GET /analytics/overview`, the same honest,
-server-side pattern the attribution table already used. Clicks themselves
+it reads a live server-side aggregate from the API (`GET /analytics/overview`,
+`GET /analytics/attribution` and `GET /campaigns`), the same pattern the
+attribution table already used. Clicks themselves
 come from the real `/r/:slug` redirect, verified end to end. The one thing
 worth naming plainly: the history behind these charts is seeded, not
 accumulated from real traffic, so the shapes they draw are illustrative until
