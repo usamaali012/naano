@@ -290,10 +290,11 @@ function EditCardForm({
             onChange={(e) => setPostCostEur(e.target.value)}
             invalid={!postCostValid}
           />
-          <span className="text-label text-text-muted">
-            CPM{" "}
-            {postCostCents !== null ? formatCpm(postCostCents, detail.medianViews) : "—"}
-          </span>
+          {postCostCents !== null && (
+            <span className="text-label text-text-muted">
+              CPM {formatCpm(postCostCents, detail.medianViews)}
+            </span>
+          )}
         </div>
         <div className="flex flex-col gap-s2">
           <label htmlFor="edit-card-bundle" className="text-label text-text-muted">
@@ -309,12 +310,11 @@ function EditCardForm({
             onChange={(e) => setBundleEur(e.target.value)}
             invalid={!bundleValid}
           />
-          <span className="text-label text-text-muted">
-            CPM{" "}
-            {bundlePerPostCents !== null
-              ? formatCpm(bundlePerPostCents, detail.medianViews)
-              : "—"}
-          </span>
+          {bundlePerPostCents !== null && (
+            <span className="text-label text-text-muted">
+              CPM {formatCpm(bundlePerPostCents, detail.medianViews)}
+            </span>
+          )}
         </div>
       </div>
 
