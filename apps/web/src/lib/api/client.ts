@@ -4,6 +4,7 @@ import type {
   Booking,
   BookingStatus,
   BrandCollaboration,
+  CampaignOverview,
   CampaignSummary,
   CreateBookingBody,
   CreatorCollaboration,
@@ -39,6 +40,8 @@ export interface ApiClient {
 
   /** The campaign the marketplace is ranked for and the shortlist is keyed to. */
   getActiveCampaign(): Promise<CampaignSummary>;
+  /** Brand-only. The signed-in company's own campaigns, with money against budget. */
+  listCampaigns(params?: PageParams): Promise<Paginated<CampaignOverview>>;
 
   listShortlist(
     campaignId: string,

@@ -337,7 +337,9 @@ apps/
         api/              ALL http lives here. Two impls: http + fixtures,
                            selected by VITE_API_MODE. client.ts is the interface:
                            login, getMe, listCreators, getCreator,
-                           getActiveCampaign, listShortlist / addToShortlist /
+                           getActiveCampaign, listCampaigns (W2, thin
+                           GET /campaigns wrapper — see docs/DECISIONS.md
+                           "Session: web, round 2"), listShortlist / addToShortlist /
                            removeFromShortlist, createBooking /
                            listBookingsReceived / listBookingsSent /
                            updateBookingStatus, submitDraft / markPublished /
@@ -391,7 +393,15 @@ apps/
                            docs/DECISIONS.md for the package-derivation
                            reasoning (real API) vs. the plain pass-through
                            (fixtures, which already has the package on hand
-                           from the request).
+                           from the request). listCampaigns (W2) added a
+                           second fixture campaign (fixture-campaign-2,
+                           DRAFT) so the switcher has something to switch
+                           between in fixtures mode; fixtures.ts's
+                           createBooking now resolves body.campaignId to
+                           one of the two (falling back to the original LIVE
+                           one when omitted) instead of hardcoding it, and
+                           409s a completed one, mirroring
+                           campaigns.service.ts's own rule.
         stores/           Zustand stores, one per domain. authStore.ts:
                            {token, me}, persist -> localStorage naano.auth;
                            signIn does a real login + /me, signOut clears it.
@@ -403,22 +413,42 @@ apps/
                            postedWithinDays — each setter resets page to 1 like
                            the others; clearPerformanceFilters() resets the six
                            row-two fields in one call for FilterPanel's Clear
-                           all / the empty state's Clear filters. shortlistStore.ts:
-                           {campaignId, ids, status} — hydrates from the API,
-                           optimistic writes, no localStorage.
+                           all / the empty state's Clear filters.
+                           campaignStore.ts (W2, new — see docs/DECISIONS.md
+                           "Session: web, round 2"): {campaigns,
+                           selectedCampaignId, status}. hydrate() is
+                           idempotent — keeps the current selection if still
+                           in the refetched list (so a post-booking refresh
+                           never resets the switcher), else falls back to the
+                           company's remembered choice
+                           (localStorage["naano.campaign.<companyId>"],
+                           try/catch-wrapped) then GET /campaigns/active then
+                           the first campaign. select() sets the choice and
+                           writes it to that same localStorage key, read via
+                           authStore.getState().me?.companyId. CreatorsListPage
+                           is the one consumer; MarketplaceHeader's "Ranked
+                           for" select and CampaignBudgetBar both read off it.
+                           shortlistStore.ts: {campaignId, ids, status} —
+                           hydrate(campaignId?) now takes an optional explicit
+                           campaign id (W2; omitted keeps the old
+                           default-active-campaign behaviour) so
+                           CreatorsListPage can re-key it to whichever
+                           campaign campaignStore has selected. Hydrates from
+                           the API, optimistic writes, no localStorage.
                            bookingsStore.ts: {campaignId, byCreatorId,
-                           status} — byCreatorId values are CreatorBookingInfo
-                           ({status, clickCount}), same hydrate pattern as
-                           shortlistStore, maps creator -> booking info for
-                           the active campaign so the marketplace card can
-                           show "already booked" (and, once accepted, its
-                           click count) without a new screen. A creator can
-                           have more than one booking against the active
-                           campaign (e.g. declined, then rebooked) —
-                           hydrate() keeps the most recent one
-                           (listBookingsSent is createdAt desc; first seen
-                           per creator wins), not whichever sorts last, so
-                           the card always reflects what the brand most
+                           status} — hydrate(campaignId?) same W2 change as
+                           shortlistStore's. byCreatorId values are
+                           CreatorBookingInfo ({status, clickCount}), same
+                           hydrate pattern as shortlistStore, maps creator ->
+                           booking info for whichever campaign is selected so
+                           the marketplace card can show "already booked"
+                           (and, once accepted, its click count) without a
+                           new screen. A creator can have more than one
+                           booking against the same campaign (e.g. declined,
+                           then rebooked) — hydrate() keeps the most recent
+                           one (listBookingsSent is createdAt desc; first
+                           seen per creator wins), not whichever sorts last,
+                           so the card always reflects what the brand most
                            recently did. See docs/DECISIONS.md.
                            recordBooking() takes the full Booking and
                            updates the map immediately on a successful
@@ -528,6 +558,24 @@ apps/
                            with counts, search, sort-by, section header — "Best
                            match first" / "All N creators, ordered by…" (singular:
                            "1 creator, ordered by…"), true at any catalogue size).
+                           Gained a "Ranked for" campaign Select (W2,
+                           2026-09-26 — see docs/DECISIONS.md "Session: web,
+                           round 2"): campaign name, "(completed)" suffix for
+                           a COMPLETED one; the old static "Ranked for your
+                           company" sentence in the subtitle was dropped
+                           rather than kept alongside it (same
+                           anti-three-restatements reasoning slice 2.4 already
+                           applied to this exact phrase). New
+                           CampaignBudgetBar.tsx (W2): one bar, three segments
+                           (paid / committed-unpaid / pending) as a percentage
+                           of budgetCents capped at 100% width, same
+                           color-mix tint approach ui/SegmentedBar.tsx uses;
+                           "€X committed of €Y", "€Z invited, not yet
+                           accepted", and a conditional text-warn over-budget
+                           line. Rendered between MarketplaceHeader and the
+                           tab/filter content in CreatorsListPage,
+                           unconditionally (both tabs) since it's campaign
+                           context, not list content.
                            FilterPanel (W3, 2026-09-26, complete — see
                            docs/DECISIONS.md "Session: web, round 2"): one panel,
                            two rows, every filter the API supports. Row one:
@@ -586,6 +634,10 @@ apps/
                            which creator fills the panel — the explicit
                            selection if still in the current filtered/paged
                            list, else the top row, so the panel is never empty.
+                           CreatorDetailPanel now also takes a `campaign:
+                           CampaignOverview | null` prop (W2, the selected
+                           campaign from campaignStore) and threads it to
+                           BookingRail.
                            modal/ (name kept, contents relocated into the panel
                            rather than a dialog) has OverviewTab (its post card
                            is paged — "N of 5", prev/next, resets to post 1 per
@@ -595,7 +647,17 @@ apps/
                            /bookings; renders one of the form / a booked
                            confirmation / an already-booked notice / a
                            retryable error, see bookingStatus.ts and
-                           lib/api/errors.ts), ReachSparkline (inline-SVG),
+                           lib/api/errors.ts — W2, 2026-09-26: takes the
+                           selected `campaign` prop, sends `campaignId` on
+                           create, warns above the confirm button without
+                           blocking when committedCents + pendingCents +
+                           this package's price would exceed budgetCents,
+                           disables the confirm button with the reason always
+                           rendered as text (not a hover tooltip) for a
+                           COMPLETED campaign, and calls
+                           `useCampaignStore.getState().hydrate()` on a
+                           successful booking so the budget bar moves without
+                           a reload), ReachSparkline (inline-SVG),
                            audienceSegments.ts (dimension-filter helper). Two
                            tabs only (Overview, Audience) — no Content tab.
                            icons.tsx (NetworkBadge — no longer used by the list

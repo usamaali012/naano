@@ -4,6 +4,7 @@ import type {
   Booking,
   BookingStatus,
   BrandCollaboration,
+  CampaignOverview,
   CampaignSummary,
   CreateBookingBody,
   CreatorCollaboration,
@@ -142,6 +143,9 @@ export const httpClient: ApiClient = {
   },
   getActiveCampaign(): Promise<CampaignSummary> {
     return getJson<CampaignSummary>("/campaigns/active");
+  },
+  listCampaigns(params?: PageParams): Promise<Paginated<CampaignOverview>> {
+    return getJson<Paginated<CampaignOverview>>(`/campaigns${pageQuery(params)}`);
   },
   listShortlist(
     campaignId: string,

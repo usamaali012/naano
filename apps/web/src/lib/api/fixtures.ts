@@ -8,6 +8,7 @@ import type {
   BookingSent,
   BookingStatus,
   BrandCollaboration,
+  CampaignOverview,
   CampaignSummary,
   CreateBookingBody,
   CreatorCollaboration,
@@ -55,6 +56,31 @@ const FIXTURE_CAMPAIGN: CampaignSummary = {
   status: "LIVE",
   targetVertical: "FINTECH",
 };
+
+// A second campaign so the W2 switcher/budget bar has something real to
+// switch between in fixtures mode. DRAFT, distinct target vertical.
+const FIXTURE_CAMPAIGN_2: CampaignSummary = {
+  id: "fixture-campaign-2",
+  name: "DevTools Outreach",
+  status: "DRAFT",
+  targetVertical: "DEVTOOLS",
+};
+
+const FIXTURE_CAMPAIGNS: CampaignSummary[] = [FIXTURE_CAMPAIGN, FIXTURE_CAMPAIGN_2];
+
+const FIXTURE_BUDGET_CENTS: Record<string, number> = {
+  [FIXTURE_CAMPAIGN.id]: 500_000,
+  [FIXTURE_CAMPAIGN_2.id]: 300_000,
+};
+
+/** Mirrors apps/api/src/campaigns/campaigns.service.ts's COMMITTED_STATUSES. */
+const COMMITTED_STATUSES = new Set<BookingStatus>([
+  "ACCEPTED",
+  "DRAFT_READY",
+  "SCHEDULED",
+  "LIVE",
+  "PAID",
+]);
 
 // Per-campaign shortlist, in memory for the session.
 const fixtureShortlist = new Map<string, Set<string>>([
@@ -548,9 +574,17 @@ export const fixturesClient: ApiClient = {
     const creator = FIXTURE_CREATORS.find((c) => c.id === body.creatorProfileId);
     if (!creator) throw new ApiError(404, `No creator profile "${body.creatorProfileId}"`);
 
+    const campaign = body.campaignId
+      ? FIXTURE_CAMPAIGNS.find((c) => c.id === body.campaignId)
+      : FIXTURE_CAMPAIGN;
+    if (!campaign) throw new ApiError(404, `No campaign "${body.campaignId}"`);
+    if (campaign.status === "COMPLETED") {
+      throw new ApiError(409, "This campaign is completed, so it can't take new bookings.");
+    }
+
     const existing = fixtureBookings.find(
       (b) =>
-        b.campaignId === FIXTURE_CAMPAIGN.id &&
+        b.campaignId === campaign.id &&
         b.creatorProfileId === creator.id &&
         b.status !== "DECLINED",
     );
@@ -560,7 +594,7 @@ export const fixturesClient: ApiClient = {
 
     const booking: FixtureBooking = {
       id: `fixture-booking-${fixtureBookingSeq++}`,
-      campaignId: FIXTURE_CAMPAIGN.id,
+      campaignId: campaign.id,
       creatorProfileId: creator.id,
       agreedPriceCents:
         body.package === "bundle" ? creator.bundle5PriceCents : creator.postCostCents,
@@ -572,13 +606,39 @@ export const fixturesClient: ApiClient = {
       trackedLinkSlug: null,
       clickCount: null,
       creatorDisplayName: creator.displayName,
-      campaignName: FIXTURE_CAMPAIGN.name,
+      campaignName: campaign.name,
       package: body.package,
       draftContent: null,
       postUrl: null,
     };
     fixtureBookings = [booking, ...fixtureBookings];
     return booking;
+  },
+  async listCampaigns(params?: PageParams): Promise<Paginated<CampaignOverview>> {
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
+    const items: CampaignOverview[] = FIXTURE_CAMPAIGNS.map((summary) => {
+      let pendingCents = 0;
+      let committedCents = 0;
+      let paidCents = 0;
+      let bookingsCount = 0;
+      for (const b of fixtureBookings) {
+        if (b.campaignId !== summary.id) continue;
+        if (b.status === "INVITED") pendingCents += b.agreedPriceCents;
+        if (COMMITTED_STATUSES.has(b.status)) committedCents += b.agreedPriceCents;
+        if (b.status === "PAID") paidCents += b.agreedPriceCents;
+        if (b.status !== "DECLINED") bookingsCount += 1;
+      }
+      return {
+        ...summary,
+        budgetCents: FIXTURE_BUDGET_CENTS[summary.id] ?? 0,
+        pendingCents,
+        committedCents,
+        paidCents,
+        bookingsCount,
+      };
+    });
+    return { items, total: items.length, page, pageSize };
   },
 
   async listBookingsReceived(params?: PageParams): Promise<Paginated<CreatorCollaboration>> {

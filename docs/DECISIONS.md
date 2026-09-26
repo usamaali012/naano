@@ -1758,3 +1758,109 @@ needs to not lose an hour to.
     unrelated to this slice.
   - `npx tsc --noEmit` on `apps/web` — clean, no errors, run twice (once
     after the draft-toggle fix above, once after this slice).
+- 2026-09-26 — **W2, campaign switcher and budget bar.** `apps/web/**` only,
+  per A2's contract (`CampaignOverview`/`CreateBookingBody.campaignId` in
+  `packages/shared/src/api.ts` untouched — already correct from the round-2
+  contract pass).
+  - **API layer.** `lib/api/client.ts`/`http.ts` gained `listCampaigns` — a
+    thin `GET /campaigns` wrapper, same shape as every other list method.
+    `fixtures.ts` gained a second fixture campaign (`fixture-campaign-2`,
+    DRAFT) alongside the existing LIVE one so the switcher has something real
+    to switch between in fixtures mode; `createBooking` now resolves
+    `body.campaignId` to one of the two fixture campaigns (falling back to
+    the original LIVE one when omitted, same "omitted means active" contract
+    the real API uses) instead of hardcoding the one campaign, and 409s a
+    completed one — there wasn't one before this slice, so this is new
+    fixture behaviour, not a widen. `listCampaigns`'s fixture impl derives
+    money the same way `campaigns.service.ts` does (`COMMITTED_STATUSES`
+    mirrored by hand, same "no real server to ask" pattern every other
+    fixture mirror in this file already uses) rather than storing it.
+  - **New `campaignStore.ts`.** `{campaigns, selectedCampaignId, status}`.
+    `hydrate()` is idempotent and safe to call again after anything that
+    could move the money: it keeps the current selection if it's still in
+    the refetched list, and only falls back to a default (the company's
+    remembered choice in `localStorage["naano.campaign.<companyId>"]`, else
+    `GET /campaigns/active`, else the first campaign) when there's no valid
+    current selection — so a post-booking refresh never yanks the switcher
+    back to the default. The localStorage read/write is wrapped in
+    try/catch per the ask, keyed per company (read via `authStore.getState()`
+    rather than a prop, since the store needs it both on hydrate and on
+    every `select()`).
+  - **Wiring in `CreatorsListPage.tsx`.** `shortlistStore`/`bookingsStore`
+    `hydrate()` both gained an optional `campaignId` param (omitted keeps
+    the old default-active-campaign behaviour, so neither store's contract
+    changed for any caller that doesn't pass one) — the page now re-hydrates
+    both, keyed to `campaignStore`'s `selectedCampaignId`, on every campaign
+    change, and `campaignId` was added to the `listCreators` request +
+    effect deps so switching re-ranks the list. `MarketplaceHeader` gained
+    a "Ranked for" `Select` (campaign name, "(completed)" suffix for a
+    completed one so the switcher itself explains why Book might be
+    disabled) — the old static "Ranked for your company" sentence in the
+    subtitle was dropped rather than kept alongside it, per the same
+    anti-three-restatements reasoning slice 2.4 already applied to this
+    exact phrase.
+  - **New `CampaignBudgetBar.tsx`.** One bar, three segments (paid,
+    committed-but-unpaid = `committedCents - paidCents`, pending) as a
+    percentage of `budgetCents`, capped at 100% width — going over budget
+    shows as a warning line below, never a segment overflowing the track.
+    Tints are the same `color-mix(in srgb, var(--primary) …%, white)`
+    approach `ui/SegmentedBar.tsx` already uses (one accent token, not a
+    decorative palette). Two caption lines exactly as asked ("€X committed
+    of €Y", "€Z invited, not yet accepted") plus a conditional `text-warn`
+    line when `committedCents + pendingCents > budgetCents`. Rendered
+    between `MarketplaceHeader` and the tab/filter content, unconditionally
+    (both All-creators and Shortlist tabs), since it's campaign context, not
+    list content.
+  - **`BookingRail.tsx`** gained a `campaign: CampaignOverview | null` prop
+    (threaded through `CreatorDetailPanel`). Two new pieces of copy, neither
+    blocking except the second: a projection warning
+    (`committedCents + pendingCents + packageCents > budgetCents`) — this
+    booking would start INVITED, i.e. add to *pending*, not committed, so
+    the projection has to add the new package price on top of both existing
+    figures, not just committed — shown above the confirm button in the
+    warn token, booking still submits normally (per the ask, "that is the
+    brand's call"); and a `campaign.status === "COMPLETED"` line
+    ("This campaign is completed, so it can't take new bookings.") that is
+    always rendered as real text, not a `title` attribute, alongside
+    genuinely disabling the confirm button — a hover-only tooltip would
+    have failed the ask's "not only on hover" explicitly. `createBooking`
+    now sends `campaignId: campaign?.id` so a booking lands in whichever
+    campaign the marketplace is ranked for, not always the company's
+    default active one; on success the rail calls
+    `useCampaignStore.getState().hydrate()` (a plain store read, not a
+    subscription — the rail doesn't need to re-render on other campaigns'
+    numbers moving) so the budget bar reflects the new booking without a
+    page reload.
+  - **Verified against the running local API (`:3000`, unmodified) and in
+    the browser**, signed in as Ledgerly: switching the "Ranked for" select
+    between Fintech Trust Campaign (LIVE) and Payroll Compliance Series
+    (DRAFT) re-ranked the list, changed the shortlist tab's count (6 → 0),
+    and changed which rows read "already booked" — confirming the re-key
+    reaches both stores, not just the ranking. Switching to Summer Payouts
+    Push (COMPLETED, seeded committed €15,299 against a €9,000 budget)
+    showed "€6,299 over budget" on the bar in the warn token; opening an
+    unbooked creator's rail there showed the always-visible "This campaign
+    is completed..." line and confirmed via the DOM that the confirm
+    button's own `disabled` property was `true`, not just styled to look
+    disabled. On Payroll Compliance Series (budget €12,000, committed €362,
+    €0 pending going in): booked four bundle-of-5s in sequence (creators at
+    various post costs) and watched the budget bar's "invited, not yet
+    accepted" figure and pending segment grow after every single one with no
+    manual refresh, confirming the post-booking refetch; the fourth booking
+    (committed+pending projected to €14,024 against the €12,000 budget)
+    showed "This booking would put the campaign €2,386 over budget." above
+    an enabled confirm button, and submitting it succeeded — the bar
+    afterward read exactly "€362 committed of €12,000 / €14,024 invited, not
+    yet accepted / €2,386 over budget," matching the projection to the cent.
+    Reloading the page after switching to Payroll Compliance Series kept it
+    selected (the `localStorage` remember-per-company path), confirmed via
+    `Object.keys(localStorage)` showing `naano.campaign.<Ledgerly's company
+    id>` before the reload and the same campaign still selected after it.
+  - **`npm run shots`**: ran clean, all ten shots regenerated (`marketplace`
+    and `marketplace-filters` both now show the switcher + budget bar);
+    opened both and checked against DESIGN.md's anti-slop list — tabular-nums
+    holds on the bar's two caption lines, one accent colour throughout (no
+    new palette for the bar's segments), no gradient/shadow, the switcher and
+    the subtitle no longer both claim "ranked for your company."
+  - `npx tsc -b apps/web/tsconfig.json` and `npx tsc -b apps/api/tsconfig.json`
+    (sanity check, `apps/api` untouched this slice) — both clean.

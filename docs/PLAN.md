@@ -548,7 +548,30 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   panel was clamped to 3 lines with no way to read the rest; now a "Show
   full draft" toggle appears only when the draft actually overflows
   (measured from the real DOM, not guessed from character count).
-- [ ] **W2 Campaign switcher and budget bar**
+- [x] **W2 Campaign switcher and budget bar** — done 2026-09-26.
+  Scope: `listCampaigns` added to the web api client (http + fixtures); a new
+  `campaignStore` (selected campaign id, default `GET /campaigns/active`,
+  remembered per signed-in company in localStorage, try/catch wrapped); a
+  "Ranked for [campaign]" select in `MarketplaceHeader` that re-ranks the list
+  (`campaignId` on `listCreators`) and re-keys `shortlistStore`/`bookingsStore`
+  to the chosen campaign; a new `CampaignBudgetBar` (paid / committed-unpaid /
+  pending segments, "€X committed of €Y", "€Z invited, not yet accepted", and
+  an over-budget warning line in the warn token); `BookingRail` now takes the
+  selected campaign, warns above the confirm button (without blocking) when a
+  booking would push committed+pending over budget, disables the confirm
+  button with the reason always visible (not a hover tooltip) for a COMPLETED
+  campaign, sends `campaignId` on `POST /bookings`, and refetches campaigns on
+  a successful booking so the bar moves.
+  Files: `apps/web/src/lib/api/{client.ts,http.ts,fixtures.ts}`,
+  `apps/web/src/lib/stores/{campaignStore.ts (new),shortlistStore.ts,
+  bookingsStore.ts}`, `apps/web/src/components/marketplace/{MarketplaceHeader.tsx,
+  CampaignBudgetBar.tsx (new),CreatorDetailPanel.tsx,modal/BookingRail.tsx}`,
+  `apps/web/src/routes/CreatorsListPage.tsx`.
+  Notes: see docs/DECISIONS.md's "Session: web, round 2" for the full
+  verification log against the real API (campaign switch re-ranks/re-keys,
+  a booking on a non-default campaign moves its bar, the COMPLETED campaign's
+  book button genuinely disabled, an over-budget booking warns but still
+  succeeds).
 - [ ] **W5 Rail badge**
 
 ---

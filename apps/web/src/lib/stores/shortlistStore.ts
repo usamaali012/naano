@@ -8,7 +8,8 @@ interface ShortlistState {
   campaignId: string | null;
   ids: string[];
   status: "idle" | "loading" | "ready" | "error";
-  hydrate: () => Promise<void>;
+  /** Omit campaignId to keep the old default-active-campaign behaviour. */
+  hydrate: (campaignId?: string) => Promise<void>;
   toggle: (creatorId: string) => Promise<void>;
   add: (creatorIds: string[]) => Promise<void>;
   has: (creatorId: string) => boolean;
@@ -19,14 +20,14 @@ export const useShortlistStore = create<ShortlistState>((set, get) => ({
   ids: [],
   status: "idle",
 
-  hydrate: async () => {
+  hydrate: async (campaignId) => {
     if (get().status === "loading") return;
     set({ status: "loading" });
     try {
-      const campaign = await api.getActiveCampaign();
-      const page = await api.listShortlist(campaign.id, { pageSize: 100 });
+      const targetCampaignId = campaignId ?? (await api.getActiveCampaign()).id;
+      const page = await api.listShortlist(targetCampaignId, { pageSize: 100 });
       set({
-        campaignId: campaign.id,
+        campaignId: targetCampaignId,
         ids: page.items.map((creator) => creator.id),
         status: "ready",
       });

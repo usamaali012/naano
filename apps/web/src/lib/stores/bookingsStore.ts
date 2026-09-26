@@ -17,7 +17,8 @@ interface BookingsState {
   campaignId: string | null;
   byCreatorId: Record<string, CreatorBookingInfo>;
   status: "idle" | "loading" | "ready" | "error";
-  hydrate: () => Promise<void>;
+  /** Omit campaignId to keep the old default-active-campaign behaviour. */
+  hydrate: (campaignId?: string) => Promise<void>;
   recordBooking: (creatorProfileId: string, booking: Booking) => void;
 }
 
@@ -26,12 +27,12 @@ export const useBookingsStore = create<BookingsState>((set, get) => ({
   byCreatorId: {},
   status: "idle",
 
-  hydrate: async () => {
+  hydrate: async (campaignId) => {
     if (get().status === "loading") return;
     set({ status: "loading" });
     try {
-      const campaign = await api.getActiveCampaign();
-      const page = await api.listBookingsSent({ campaignId: campaign.id, pageSize: 100 });
+      const targetCampaignId = campaignId ?? (await api.getActiveCampaign()).id;
+      const page = await api.listBookingsSent({ campaignId: targetCampaignId, pageSize: 100 });
       // A creator can have more than one booking against the same campaign —
       // a declined one plus a fresh one, since the API only blocks a second
       // *non-declined* booking. listBookingsSent returns createdAt desc, so
@@ -46,7 +47,7 @@ export const useBookingsStore = create<BookingsState>((set, get) => ({
           clickCount: booking.clickCount,
         };
       }
-      set({ campaignId: campaign.id, byCreatorId, status: "ready" });
+      set({ campaignId: targetCampaignId, byCreatorId, status: "ready" });
     } catch {
       set({ campaignId: null, byCreatorId: {}, status: "error" });
     }
