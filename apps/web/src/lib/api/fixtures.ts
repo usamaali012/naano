@@ -1,4 +1,6 @@
+import { COMMISSION_PCT } from "@naano/shared";
 import type {
+  ActionCount,
   AttributionResponse,
   AttributionRow,
   AudienceSegment,
@@ -6,6 +8,8 @@ import type {
   Booking,
   BookingSent,
   BookingStatus,
+  BrandCollaboration,
+  CampaignOverview,
   CampaignSummary,
   CreateBookingBody,
   CreatorCollaboration,
@@ -16,9 +20,11 @@ import type {
   ListCreatorsParams,
   LoginResponse,
   MarketplaceCreator,
+  NextAction,
   PageParams,
   Paginated,
   UpdateBookingStatusBody,
+  UpdateMyCardBody,
 } from "@naano/shared";
 import type { ApiClient } from "./client";
 import { ApiError } from "./errors";
@@ -28,6 +34,13 @@ import { ApiError } from "./errors";
 // has no real creator-side session yet), so this email is never actually
 // signed into — it only keeps the ApiClient shape honest.
 const FIXTURE_CREATOR_EMAIL = "sofia.bergman0@creators.naano.dev";
+// updateMyCard's stand-in for "the signed-in creator" — same limitation as
+// FIXTURE_CREATOR_EMAIL above, there's no real creator-mode fixture session.
+// Sofia Bergman, the creator FIXTURE_CREATOR_EMAIL names.
+const FIXTURE_SELF_CREATOR_ID = "fixture-1";
+// Keep in sync with apps/api/src/creators/dto/update-my-card.dto.ts.
+const MIN_PRICE_CENTS = 5_000;
+const MAX_PRICE_CENTS = 2_250_000;
 
 const FIXTURE_ME: AuthMe = {
   userId: "fixture-user-brand",
@@ -45,6 +58,31 @@ const FIXTURE_CAMPAIGN: CampaignSummary = {
   targetVertical: "FINTECH",
 };
 
+// A second campaign so the W2 switcher/budget bar has something real to
+// switch between in fixtures mode. DRAFT, distinct target vertical.
+const FIXTURE_CAMPAIGN_2: CampaignSummary = {
+  id: "fixture-campaign-2",
+  name: "DevTools Outreach",
+  status: "DRAFT",
+  targetVertical: "DEVTOOLS",
+};
+
+const FIXTURE_CAMPAIGNS: CampaignSummary[] = [FIXTURE_CAMPAIGN, FIXTURE_CAMPAIGN_2];
+
+const FIXTURE_BUDGET_CENTS: Record<string, number> = {
+  [FIXTURE_CAMPAIGN.id]: 500_000,
+  [FIXTURE_CAMPAIGN_2.id]: 300_000,
+};
+
+/** Mirrors apps/api/src/campaigns/campaigns.service.ts's COMMITTED_STATUSES. */
+const COMMITTED_STATUSES = new Set<BookingStatus>([
+  "ACCEPTED",
+  "DRAFT_READY",
+  "SCHEDULED",
+  "LIVE",
+  "PAID",
+]);
+
 // Per-campaign shortlist, in memory for the session.
 const fixtureShortlist = new Map<string, Set<string>>([
   ["fixture-campaign-1", new Set(["fixture-3"])],
@@ -61,11 +99,126 @@ function shortlistSet(campaignId: string): Set<string> {
 // In-memory bookings for the session. FIXTURE_ME is always the brand (no
 // creator-mode fixture context yet), so listBookingsReceived has nothing to
 // return, but creating/listing/updating on the brand side works the same way
-// the real API does. Stored as BookingSent (a superset of Booking) so
-// listBookingsSent can return the real shape Collaborations needs;
-// createBooking still returns it as the Booking the interface promises.
-let fixtureBookings: BookingSent[] = [];
+// the real API does. Stored as BookingSent plus the two lifecycle fields
+// (draftContent/postUrl) neither BookingSent nor Booking carry, so the five
+// lifecycle actions below have somewhere to write — createBooking still
+// returns it as the Booking the interface promises.
+interface FixtureBooking extends BookingSent {
+  draftContent: string | null;
+  postUrl: string | null;
+}
+let fixtureBookings: FixtureBooking[] = [];
 let fixtureBookingSeq = 0;
+
+// Mirrors apps/api/src/bookings/next-action.ts — fixtures have no server to
+// ask, so the same status+viewer+hasDraft table is duplicated here (same
+// pattern as SORTERS mirroring ranking.ts). Keep the two in sync by hand.
+function fixtureNextAction(
+  status: BookingStatus,
+  viewer: "CREATOR" | "COMPANY",
+  hasDraft: boolean,
+): NextAction {
+  if (viewer === "CREATOR") {
+    switch (status) {
+      case "INVITED":
+        return {
+          kind: "respond",
+          label: "Accept or decline this invitation.",
+          consequence: "Nothing moves until you respond. The brand's invitation stays pending.",
+        };
+      case "ACCEPTED":
+        return {
+          kind: "submit_draft",
+          label: hasDraft
+            ? "The brand asked for changes. Revise your draft and send it again."
+            : "Write your post and send it to the brand for review.",
+          consequence: "The brand can't approve anything until your draft arrives.",
+        };
+      case "DRAFT_READY":
+        return { kind: "await_brand", label: "Wait for the brand to review your draft.", consequence: "" };
+      case "SCHEDULED":
+        return {
+          kind: "publish",
+          label: "Your draft is approved. Publish it with your tracked link, then add the post URL here.",
+          consequence: "The brand can't pay you until the post is live.",
+        };
+      case "LIVE":
+        return { kind: "await_brand", label: "Wait for the brand to confirm payment.", consequence: "" };
+      case "PAID":
+      case "DECLINED":
+        return { kind: "none", label: "Nothing to do.", consequence: "" };
+    }
+  }
+  switch (status) {
+    case "INVITED":
+      return { kind: "await_creator", label: "Waiting for the creator to accept.", consequence: "" };
+    case "ACCEPTED":
+      return {
+        kind: "await_creator",
+        label: hasDraft ? "Waiting for the creator's revised draft." : "Waiting for the creator's draft.",
+        consequence: "",
+      };
+    case "DRAFT_READY":
+      return {
+        kind: "review_draft",
+        label: "Review the draft. Approve it or ask for changes.",
+        consequence: "The creator can't publish until you decide.",
+      };
+    case "SCHEDULED":
+      return { kind: "await_creator", label: "Waiting for the creator to publish.", consequence: "" };
+    case "LIVE":
+      return {
+        kind: "mark_paid",
+        label: "The post is live. Record that you've paid the creator.",
+        consequence: "The creator's earnings stay in transit until you confirm.",
+      };
+    case "PAID":
+    case "DECLINED":
+      return { kind: "none", label: "Nothing to do.", consequence: "" };
+  }
+}
+
+/** What the creator receives after COMMISSION_PCT, rounded to whole cents. Mirrors apps/api/src/bookings/money.ts. */
+function fixtureNetCents(agreedPriceCents: number): number {
+  return agreedPriceCents - Math.round((agreedPriceCents * COMMISSION_PCT) / 100);
+}
+
+function toCreatorCollaboration(booking: FixtureBooking): CreatorCollaboration {
+  return {
+    id: booking.id,
+    campaignId: booking.campaignId,
+    creatorProfileId: booking.creatorProfileId,
+    agreedPriceCents: booking.agreedPriceCents,
+    status: booking.status,
+    initiatedBy: booking.initiatedBy,
+    deliverable: booking.deliverable,
+    deadline: booking.deadline,
+    createdAt: booking.createdAt,
+    trackedLinkSlug: booking.trackedLinkSlug,
+    clickCount: booking.clickCount,
+    campaignName: booking.campaignName,
+    companyName: FIXTURE_ME.displayName ?? "",
+    nextAction: fixtureNextAction(booking.status, "CREATOR", booking.draftContent !== null),
+    netCents: fixtureNetCents(booking.agreedPriceCents),
+    draftContent: booking.draftContent,
+    postUrl: booking.postUrl,
+  };
+}
+
+function toBrandCollaboration(booking: FixtureBooking): BrandCollaboration {
+  return {
+    ...booking,
+    nextAction: fixtureNextAction(booking.status, "COMPANY", booking.draftContent !== null),
+    draftContent: booking.draftContent,
+    postUrl: booking.postUrl,
+  };
+}
+
+function findFixtureBooking(id: string): FixtureBooking {
+  const booking = fixtureBookings.find((b) => b.id === id);
+  if (!booking) throw new ApiError(404, `No booking "${id}"`);
+  return booking;
+}
 
 // Static stand-in for the API — the hedge in CLAUDE.md. Same shape as the live
 // payload so swapping VITE_API_MODE is the only change. Figures follow the
@@ -260,7 +413,17 @@ export const fixturesClient: ApiClient = {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 20;
     const q = params?.q?.trim().toLowerCase();
-    const { vertical, country, minFollowers, maxFollowers } = params ?? {};
+    const {
+      vertical,
+      country,
+      minFollowers,
+      maxFollowers,
+      priceMinCents,
+      priceMaxCents,
+      maxCpmEur,
+      minMedianViews,
+      minEngagementPct,
+    } = params ?? {};
 
     let rows = [...FIXTURE_CREATORS];
     if (q) {
@@ -282,6 +445,27 @@ export const fixturesClient: ApiClient = {
     if (maxFollowers !== undefined) {
       rows = rows.filter((c) => c.followerCount <= maxFollowers);
     }
+    if (priceMinCents !== undefined) {
+      rows = rows.filter((c) => c.postCostCents >= priceMinCents);
+    }
+    if (priceMaxCents !== undefined) {
+      rows = rows.filter((c) => c.postCostCents <= priceMaxCents);
+    }
+    if (maxCpmEur !== undefined) {
+      rows = rows.filter((c) => {
+        const cpm = (c.postCostCents / c.medianViews) * 1000;
+        return cpm === 0 || cpm / 100 <= maxCpmEur;
+      });
+    }
+    if (minMedianViews !== undefined) {
+      rows = rows.filter((c) => c.medianViews >= minMedianViews);
+    }
+    if (minEngagementPct !== undefined) {
+      rows = rows.filter((c) => c.engagementRate >= minEngagementPct / 100);
+    }
+    // postedWithinDays has no fixture equivalent — FIXTURE_CREATORS carries no
+    // per-post publish date (posts are only synthesized in getCreator), so the
+    // fixture client cannot mirror this filter. Verified against the real API.
     rows.sort(SORTERS[params?.sort ?? "best_match"]);
 
     const start = (page - 1) * pageSize;
@@ -305,6 +489,48 @@ export const fixturesClient: ApiClient = {
     detail.audienceSegments = segmentsFor(detail);
     detail.posts = postsFor(detail);
     return detail;
+  },
+
+  // Mirrors apps/api/src/creators/creators.service.ts's updateMyCard
+  // validation by hand (same "no real server to ask" reasoning as
+  // fixtureNextAction above) — keep in sync if that changes.
+  async updateMyCard(body: UpdateMyCardBody): Promise<CreatorProfileDetail> {
+    const creator = FIXTURE_CREATORS.find((c) => c.id === FIXTURE_SELF_CREATOR_ID);
+    if (!creator) throw new ApiError(404, "No fixture creator profile");
+    if (
+      body.headline === undefined &&
+      body.postCostCents === undefined &&
+      body.bundle5PriceCents === undefined
+    ) {
+      throw new ApiError(400, "Provide at least one field to update.");
+    }
+    if (body.headline !== undefined) {
+      const trimmed = body.headline.trim();
+      if (trimmed.length < 1 || trimmed.length > 160) {
+        throw new ApiError(400, "headline must be between 1 and 160 characters");
+      }
+    }
+    for (const value of [body.postCostCents, body.bundle5PriceCents]) {
+      if (value === undefined) continue;
+      if (!Number.isInteger(value) || value < MIN_PRICE_CENTS || value > MAX_PRICE_CENTS) {
+        throw new ApiError(
+          400,
+          `Price must be an integer between ${MIN_PRICE_CENTS} and ${MAX_PRICE_CENTS} cents.`,
+        );
+      }
+    }
+    const postCostCents = body.postCostCents ?? creator.postCostCents;
+    const bundle5PriceCents = body.bundle5PriceCents ?? creator.bundle5PriceCents;
+    if (bundle5PriceCents < postCostCents || bundle5PriceCents > postCostCents * 5) {
+      throw new ApiError(
+        400,
+        "Bundle-of-5 price must be at least the single-post price and at most 5x it.",
+      );
+    }
+    if (body.headline !== undefined) creator.headline = body.headline.trim();
+    creator.postCostCents = postCostCents;
+    creator.bundle5PriceCents = bundle5PriceCents;
+    return fixturesClient.getCreator(creator.id);
   },
 
   async getActiveCampaign(): Promise<CampaignSummary> {
@@ -349,9 +575,17 @@ export const fixturesClient: ApiClient = {
     const creator = FIXTURE_CREATORS.find((c) => c.id === body.creatorProfileId);
     if (!creator) throw new ApiError(404, `No creator profile "${body.creatorProfileId}"`);
 
+    const campaign = body.campaignId
+      ? FIXTURE_CAMPAIGNS.find((c) => c.id === body.campaignId)
+      : FIXTURE_CAMPAIGN;
+    if (!campaign) throw new ApiError(404, `No campaign "${body.campaignId}"`);
+    if (campaign.status === "COMPLETED") {
+      throw new ApiError(409, "This campaign is completed, so it can't take new bookings.");
+    }
+
     const existing = fixtureBookings.find(
       (b) =>
-        b.campaignId === FIXTURE_CAMPAIGN.id &&
+        b.campaignId === campaign.id &&
         b.creatorProfileId === creator.id &&
         b.status !== "DECLINED",
     );
@@ -359,9 +593,9 @@ export const fixturesClient: ApiClient = {
       throw new ApiError(409, `${creator.displayName} is already booked for this campaign`);
     }
 
-    const booking: BookingSent = {
+    const booking: FixtureBooking = {
       id: `fixture-booking-${fixtureBookingSeq++}`,
-      campaignId: FIXTURE_CAMPAIGN.id,
+      campaignId: campaign.id,
       creatorProfileId: creator.id,
       agreedPriceCents:
         body.package === "bundle" ? creator.bundle5PriceCents : creator.postCostCents,
@@ -373,11 +607,39 @@ export const fixturesClient: ApiClient = {
       trackedLinkSlug: null,
       clickCount: null,
       creatorDisplayName: creator.displayName,
-      campaignName: FIXTURE_CAMPAIGN.name,
+      campaignName: campaign.name,
       package: body.package,
+      draftContent: null,
+      postUrl: null,
     };
     fixtureBookings = [booking, ...fixtureBookings];
     return booking;
+  },
+  async listCampaigns(params?: PageParams): Promise<Paginated<CampaignOverview>> {
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
+    const items: CampaignOverview[] = FIXTURE_CAMPAIGNS.map((summary) => {
+      let pendingCents = 0;
+      let committedCents = 0;
+      let paidCents = 0;
+      let bookingsCount = 0;
+      for (const b of fixtureBookings) {
+        if (b.campaignId !== summary.id) continue;
+        if (b.status === "INVITED") pendingCents += b.agreedPriceCents;
+        if (COMMITTED_STATUSES.has(b.status)) committedCents += b.agreedPriceCents;
+        if (b.status === "PAID") paidCents += b.agreedPriceCents;
+        if (b.status !== "DECLINED") bookingsCount += 1;
+      }
+      return {
+        ...summary,
+        budgetCents: FIXTURE_BUDGET_CENTS[summary.id] ?? 0,
+        pendingCents,
+        committedCents,
+        paidCents,
+        bookingsCount,
+      };
+    });
+    return { items, total: items.length, page, pageSize };
   },
 
   async listBookingsReceived(params?: PageParams): Promise<Paginated<CreatorCollaboration>> {
@@ -401,7 +663,7 @@ export const fixturesClient: ApiClient = {
 
   async listBookingsSent(
     params?: PageParams & { campaignId?: string; status?: BookingStatus },
-  ): Promise<Paginated<BookingSent>> {
+  ): Promise<Paginated<BrandCollaboration>> {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 20;
     let rows = fixtureBookings;
@@ -412,15 +674,19 @@ export const fixturesClient: ApiClient = {
       rows = rows.filter((b) => b.status === params.status);
     }
     const start = (page - 1) * pageSize;
-    return { items: rows.slice(start, start + pageSize), total: rows.length, page, pageSize };
+    return {
+      items: rows.slice(start, start + pageSize).map(toBrandCollaboration),
+      total: rows.length,
+      page,
+      pageSize,
+    };
   },
 
   async updateBookingStatus(
     id: string,
     status: UpdateBookingStatusBody["status"],
   ): Promise<Booking> {
-    const booking = fixtureBookings.find((b) => b.id === id);
-    if (!booking) throw new ApiError(404, `No booking "${id}"`);
+    const booking = findFixtureBooking(id);
     if (booking.status !== "INVITED") {
       throw new ApiError(409, `This booking is already ${booking.status.toLowerCase()}`);
     }
@@ -430,6 +696,73 @@ export const fixturesClient: ApiClient = {
       booking.clickCount = 0;
     }
     return booking;
+  },
+
+  async submitDraft(id: string, content: string): Promise<CreatorCollaboration> {
+    const booking = findFixtureBooking(id);
+    if (booking.status !== "ACCEPTED") {
+      throw new ApiError(409, `This booking is ${booking.status.toLowerCase()}, so a draft can't be sent.`);
+    }
+    booking.status = "DRAFT_READY";
+    booking.draftContent = content;
+    return toCreatorCollaboration(booking);
+  },
+
+  async markPublished(id: string, postUrl: string): Promise<CreatorCollaboration> {
+    const booking = findFixtureBooking(id);
+    if (booking.status !== "SCHEDULED") {
+      throw new ApiError(409, `This booking is ${booking.status.toLowerCase()}, so it can't be published.`);
+    }
+    let url: URL;
+    try {
+      url = new URL(postUrl);
+    } catch {
+      throw new ApiError(400, "postUrl must be an https link on linkedin.com, x.com or twitter.com");
+    }
+    const allowedHosts = new Set(["linkedin.com", "www.linkedin.com", "x.com", "twitter.com"]);
+    if (url.protocol !== "https:" || !allowedHosts.has(url.hostname.toLowerCase())) {
+      throw new ApiError(400, "postUrl must be an https link on linkedin.com, x.com or twitter.com");
+    }
+    booking.status = "LIVE";
+    booking.postUrl = postUrl;
+    return toCreatorCollaboration(booking);
+  },
+
+  async approveDraft(id: string): Promise<BrandCollaboration> {
+    const booking = findFixtureBooking(id);
+    if (booking.status !== "DRAFT_READY") {
+      throw new ApiError(409, `This booking is ${booking.status.toLowerCase()}, so it can't be approved.`);
+    }
+    booking.status = "SCHEDULED";
+    return toBrandCollaboration(booking);
+  },
+
+  async requestChanges(id: string): Promise<BrandCollaboration> {
+    const booking = findFixtureBooking(id);
+    if (booking.status !== "DRAFT_READY") {
+      throw new ApiError(409, `This booking is ${booking.status.toLowerCase()}, so it can't be sent back for changes.`);
+    }
+    booking.status = "ACCEPTED";
+    return toBrandCollaboration(booking);
+  },
+
+  async markPaid(id: string): Promise<BrandCollaboration> {
+    const booking = findFixtureBooking(id);
+    if (booking.status !== "LIVE") {
+      throw new ApiError(409, `This booking is ${booking.status.toLowerCase()}, so it can't be marked paid.`);
+    }
+    booking.status = "PAID";
+    return toBrandCollaboration(booking);
+  },
+
+  // FIXTURE_ME is always the brand (same limitation as listBookingsReceived
+  // above), so this counts fixtureBookings' own rows as the COMPANY viewer —
+  // no server to ask, same derive-from-nextAction rule the real endpoint uses.
+  async getActionCount(): Promise<ActionCount> {
+    const count = fixtureBookings.filter(
+      (b) => fixtureNextAction(b.status, "COMPANY", b.draftContent !== null).consequence !== "",
+    ).length;
+    return { count };
   },
 
   // Fixtures never simulate a real /r/:slug click, so lastClickAt has nothing

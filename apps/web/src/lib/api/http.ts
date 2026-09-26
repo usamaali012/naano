@@ -1,9 +1,11 @@
 import type {
+  ActionCount,
   AttributionResponse,
   AuthMe,
   Booking,
-  BookingSent,
   BookingStatus,
+  BrandCollaboration,
+  CampaignOverview,
   CampaignSummary,
   CreateBookingBody,
   CreatorCollaboration,
@@ -16,6 +18,7 @@ import type {
   PageParams,
   Paginated,
   UpdateBookingStatusBody,
+  UpdateMyCardBody,
 } from "@naano/shared";
 import type { ApiClient } from "./client";
 import { ApiError } from "./errors";
@@ -35,8 +38,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, { ...init, headers });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
+    // Nest's ValidationPipe reports field errors as a string array, not a
+    // single string (e.g. MarkPublishedDto's postUrl check) — join it so the
+    // real validation sentence reaches the UI instead of a generic fallback.
+    const bodyMessage: unknown = body?.message;
     const message =
-      (body && typeof body.message === "string" && body.message) ||
+      (typeof bodyMessage === "string" && bodyMessage) ||
+      (Array.isArray(bodyMessage) && bodyMessage.every((m) => typeof m === "string") &&
+        bodyMessage.join(" ")) ||
       `${path} failed with status ${response.status}`;
     throw new ApiError(response.status, message);
   }
@@ -126,8 +135,18 @@ export const httpClient: ApiClient = {
   getCreator(id: string): Promise<CreatorProfileDetail> {
     return getJson<CreatorProfileDetail>(`/creators/${encodeURIComponent(id)}`);
   },
+  updateMyCard(body: UpdateMyCardBody): Promise<CreatorProfileDetail> {
+    return request<CreatorProfileDetail>("/creators/me", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
   getActiveCampaign(): Promise<CampaignSummary> {
     return getJson<CampaignSummary>("/campaigns/active");
+  },
+  listCampaigns(params?: PageParams): Promise<Paginated<CampaignOverview>> {
+    return getJson<Paginated<CampaignOverview>>(`/campaigns${pageQuery(params)}`);
   },
   listShortlist(
     campaignId: string,
@@ -173,14 +192,14 @@ export const httpClient: ApiClient = {
   },
   listBookingsSent(
     params?: PageParams & { campaignId?: string; status?: BookingStatus },
-  ): Promise<Paginated<BookingSent>> {
+  ): Promise<Paginated<BrandCollaboration>> {
     const search = new URLSearchParams();
     if (params?.page) search.set("page", String(params.page));
     if (params?.pageSize) search.set("pageSize", String(params.pageSize));
     if (params?.campaignId) search.set("campaignId", params.campaignId);
     if (params?.status) search.set("status", params.status);
     const query = search.toString();
-    return getJson<Paginated<BookingSent>>(`/bookings/sent${query ? `?${query}` : ""}`);
+    return getJson<Paginated<BrandCollaboration>>(`/bookings/sent${query ? `?${query}` : ""}`);
   },
   updateBookingStatus(
     id: string,
@@ -191,6 +210,38 @@ export const httpClient: ApiClient = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ status }),
     });
+  },
+  submitDraft(id: string, content: string): Promise<CreatorCollaboration> {
+    return request<CreatorCollaboration>(`/bookings/${encodeURIComponent(id)}/draft`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+  },
+  markPublished(id: string, postUrl: string): Promise<CreatorCollaboration> {
+    return request<CreatorCollaboration>(`/bookings/${encodeURIComponent(id)}/publish`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ postUrl }),
+    });
+  },
+  approveDraft(id: string): Promise<BrandCollaboration> {
+    return request<BrandCollaboration>(`/bookings/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+    });
+  },
+  requestChanges(id: string): Promise<BrandCollaboration> {
+    return request<BrandCollaboration>(`/bookings/${encodeURIComponent(id)}/request-changes`, {
+      method: "POST",
+    });
+  },
+  markPaid(id: string): Promise<BrandCollaboration> {
+    return request<BrandCollaboration>(`/bookings/${encodeURIComponent(id)}/mark-paid`, {
+      method: "POST",
+    });
+  },
+  getActionCount(): Promise<ActionCount> {
+    return getJson<ActionCount>("/bookings/action-count");
   },
   listAttribution(params?: PageParams): Promise<AttributionResponse> {
     return getJson<AttributionResponse>(`/analytics/attribution${pageQuery(params)}`);

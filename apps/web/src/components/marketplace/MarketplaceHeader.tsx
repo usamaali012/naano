@@ -1,4 +1,4 @@
-import type { CreatorSort } from "@naano/shared";
+import type { CampaignOverview, CreatorSort } from "@naano/shared";
 import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
 import { Tabs } from "../ui/Tabs";
@@ -11,6 +11,10 @@ const SORT_OPTIONS: Array<{ value: CreatorSort; label: string }> = [
   { value: "engagement_desc", label: "Best engagement" },
 ];
 
+function campaignOptionLabel(campaign: CampaignOverview): string {
+  return campaign.status === "COMPLETED" ? `${campaign.name} (completed)` : campaign.name;
+}
+
 interface MarketplaceHeaderProps {
   totalCount: number;
   shortlistCount: number;
@@ -20,6 +24,9 @@ interface MarketplaceHeaderProps {
   onSortChange: (sort: CreatorSort) => void;
   query: string;
   onQueryChange: (query: string) => void;
+  campaigns: CampaignOverview[];
+  selectedCampaignId: string | null;
+  onCampaignChange: (campaignId: string) => void;
 }
 
 export function MarketplaceHeader({
@@ -31,6 +38,9 @@ export function MarketplaceHeader({
   onSortChange,
   query,
   onQueryChange,
+  campaigns,
+  selectedCampaignId,
+  onCampaignChange,
 }: MarketplaceHeaderProps): JSX.Element {
   const rankedView = tab === "all" && sort === "best_match";
   const sectionTitle =
@@ -45,10 +55,25 @@ export function MarketplaceHeader({
       <div className="flex flex-col gap-s2">
         <h1 className="text-page-title text-text">All creators</h1>
         <p className="max-w-2xl text-body text-text-muted">
-          Ranked for your company, most relevant first: sector fit leads,
-          verified performance refines the order.
+          Most relevant first: sector fit leads, verified performance refines
+          the order.
         </p>
       </div>
+
+      {campaigns.length > 0 && (
+        <label className="flex items-center gap-s2 whitespace-nowrap text-label text-text-muted">
+          Ranked for
+          <Select
+            className="min-w-[16rem]"
+            options={campaigns.map((campaign) => ({
+              value: campaign.id,
+              label: campaignOptionLabel(campaign),
+            }))}
+            value={selectedCampaignId ?? ""}
+            onChange={(event) => onCampaignChange(event.target.value)}
+          />
+        </label>
+      )}
 
       <Tabs
         value={tab}

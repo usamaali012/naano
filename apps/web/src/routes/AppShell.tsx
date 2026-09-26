@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../lib/stores/authStore";
+import { useActionCountStore } from "../lib/stores/actionCountStore";
 import { Logo } from "../components/ui/Logo";
 
 // Fixed 72px left icon rail, icons only, active item on a --primary-soft
@@ -87,8 +89,14 @@ export function AppShell(): JSX.Element {
   const location = useLocation();
   const me = useAuthStore((state) => state.me);
   const signOut = useAuthStore((state) => state.signOut);
+  const actionCount = useActionCountStore((state) => state.count);
+  const refreshActionCount = useActionCountStore((state) => state.refresh);
   const rail = me?.role === "COMPANY" ? BRAND_RAIL : me?.role === "CREATOR" ? CREATOR_RAIL : [];
   const showRail = rail.length > 0;
+
+  useEffect(() => {
+    if (me) void refreshActionCount();
+  }, [me, refreshActionCount]);
 
   function handleSignOut(): void {
     signOut();
@@ -117,6 +125,15 @@ export function AppShell(): JSX.Element {
                 }`}
               >
                 <RailIcon shape={item.key} />
+                {item.key === "collaborations" && actionCount > 0 && (
+                  <span
+                    role="status"
+                    aria-label={`${actionCount} collaborations need you`}
+                    className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-s1 text-[10px] font-semibold text-white"
+                  >
+                    {actionCount}
+                  </span>
+                )}
                 <span className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-control bg-text px-s2 py-s1 text-label text-white opacity-0 shadow-overlay transition-opacity duration-100 group-hover:opacity-100">
                   {item.label}
                 </span>

@@ -1404,3 +1404,548 @@ needs to not lose an hour to.
     GET /bookings/sent?status=LIVE            16 rows — filter still scopes correctly with the new ordering
     ```
   - `npx tsc --noEmit` on `apps/api` — clean, no errors.
+
+## Session: web, round 2
+
+- 2026-09-26 — **W3, one filter panel.** naano splits filtering one list
+  across two panels — inline industry/country/price, then a separate
+  "Performance filters" panel with its own Apply button (RECON.md
+  "Filters"). The API (`apps/api/src/creators/creators.service.ts`) already
+  took every filter — `priceMinCents`/`priceMaxCents`, `maxCpmEur`,
+  `minMedianViews`, `minFollowers`/`maxFollowers`, `minEngagementPct`,
+  `postedWithinDays` — the web side exposed three. Folded the rest into
+  `FilterPanel.tsx`'s existing panel as a second row (price range, max CPM,
+  min median views, min engagement, posted within), same visual weight as
+  row one, no second panel and no Apply button — every control applies the
+  way industry/country/followers already do, number inputs debounced 250ms
+  same as the search box and the follower-range fields. Price is the one
+  unit conversion: the UI takes and shows whole EUR, the wire and the chip
+  math both work in cents (`Math.round(eur * 100)`), same split as
+  `formatCents` elsewhere.
+- `packages/shared/src/api.ts`'s `ListCreatorsParams` and `http.ts`'s
+  `creatorsQuery()` already covered every field before this session opened
+  either file (both landed with the round-2 contract pass / were already
+  correct) — W3 touched neither. `apps/web/src/lib/stores/creatorsStore.ts`
+  gained the six new filter fields plus their setters and one
+  `clearPerformanceFilters()` (used by both FilterPanel's Clear all and the
+  empty state's Clear filters, so the two can't drift), same page-resets-to-1
+  pattern as every existing setter. `fixtures.ts` extended to mirror
+  price/CPM/median-views/engagement filtering — `postedWithinDays` is the one
+  filter it can't mirror: `FIXTURE_CREATORS` carries no per-post publish date
+  (posts are only synthesized on demand inside `getCreator()`), so that
+  filter is a no-op there. Not a real gap: verification ran against the real
+  API (`VITE_API_URL` at `:3000`), not fixtures mode.
+- **The copy line** — "Filters hide creators. They don't change the sector
+  fit score." — was checked against `apps/web` and the ranking code it calls
+  before writing it, per the brief. `creators.service.ts.list()` builds a
+  Prisma `where` from every filter param, fetches `rows`, *then* computes
+  `fitById` via `scoreAudienceFit(row, { targetVertical })` over whatever
+  `rows` survived the `where` (`audience-fit.ts`: vertical match 0.7 +
+  follower tier 0.3, keyed only on the creator's own vertical/followers and
+  the campaign's `targetVertical` — nothing filter-shaped in the formula).
+  `bestMatchOrder()` (`ranking.ts`) then sorts by that same `fitById` map.
+  So filtering narrows the candidate set the fit score gets computed over,
+  but never touches the formula itself — the claim holds, confirmed by
+  reading, not assumed.
+- **Verification**: against the real API (`apps/api` already running on
+  `:3000`, unmodified — this session opened no `apps/api` file per the
+  brief's file boundary). For each new filter: set it alone, confirmed the
+  network request carried the right param
+  (`maxCpmEur=15`, `priceMinCents=10000&priceMaxCents=50000`,
+  `minEngagementPct=3`, `postedWithinDays=90`) and the list shrank (40 → 2 on
+  `maxCpmEur=15`, 40 → 21 on the €100–€500 price band). Combined `maxCpmEur`
+  + `postedWithinDays` + `minEngagementPct` in one request, all three params
+  present together, chips for all three, list still correct. Clear all reset
+  every input and chip and returned to 40. One unrelated hiccup mid-session:
+  the already-running `apps/api` dev process died on its own
+  (`ERR_CONNECTION_REFUSED`, not triggered by anything W3 touched) —
+  restarted with `npm run dev:api` (not an edit to `apps/api/**`, just
+  running its existing script) and verification continued.
+- **`npm run shots`**: ran it per the brief; it fails as flagged in this
+  file's "Piece 2" entry above (2026-09-25) —
+  `scripts/shots.mjs`'s brand block still waits on `[role="dialog"]`
+  against the grid/modal UI that piece deleted, and that rewrite was
+  explicitly deferred to "whoever runs the next full `npm run shots`
+  regen," not scoped to W3 (CLAUDE.md rule 3: one task per session, don't
+  refactor adjacent code you weren't asked to touch). Did the anti-slop
+  check manually instead — a full-page 1440px screenshot of `/app` with all
+  ten filter controls visible: one panel, two same-weight rows, no second
+  "Performance filters" panel, no Apply button, tabular-nums columns hold,
+  nothing competing for focal point. `scripts/shots.mjs` still needs that
+  rewrite before its next regen; flagged again here, not fixed, since W3 is
+  web-filters-only.
+- 2026-09-26 — **Fix 1: filter panel input guards.** The W3 number inputs
+  (`FilterPanel.tsx`) accepted a negative value or an inverted price range
+  and silently sent it — `min={0}` on an `<input type="number">` blocks the
+  spinner, not typing, so `-5` still reached `Number(input)` and, for
+  example, `priceMinCents: -500` went straight onto the query string (the
+  API's Prisma `range()` helper then builds a `gte: -500`, which every row
+  satisfies — not an empty list, but not what the brand typed either).
+  `DebouncedNumberFilter` (max CPM, min median views, min engagement) now
+  takes an optional `max` prop and rejects `NaN`/negative/over-max in the
+  debounce handler itself, before it ever calls `onChange`: on a bad value it
+  sets local `invalid` state and returns, so the committed filter (and any
+  chip) stays exactly where it was. `PriceRangeFilter` does the same for
+  negative min/max, plus a third check — parses both sides, and if
+  `minCents > maxCents` sets an `inverted` flag instead of sending, with one
+  inline line under the inputs ("Min price is above max price.",
+  `text-label text-warn`, the same token `BookingRail`'s retryable-error line
+  and `EntryPage`'s inline error already use — no new token). Added `invalid`
+  as a boolean prop on the `Input` primitive itself (`ui/Input.tsx`) rather
+  than fighting Tailwind class-order to override `border-border` from a
+  call-site className: it swaps `border-border`/`focus:border-primary` for
+  `border-warn`/`focus:border-warn` and sets `aria-invalid`. Reused token,
+  no new colour. The typed text is never wiped in any of these cases — only
+  the local input string state changes on keystroke; the prop-driven sync
+  effect that would overwrite it only fires when the *committed* value
+  changes, and an invalid value never commits. Followers (`FollowerRangeFilter`)
+  and posted-within (a `Select`, not free text) were out of scope and
+  untouched. Verified against the real API (`:3000`): `-5` in Max CPM sent no
+  request and produced no chip; `150` in Min engagement, same; price min
+  `500` / max `100` showed the inline message and sent nothing; correcting
+  all three in one pass produced one request carrying
+  `priceMinCents=10000&priceMaxCents=50000&maxCpmEur=25&minEngagementPct=3`
+  and three chips.
+- 2026-09-26 — **Fix 2: `npm run shots` works again.** Rewrote
+  `scripts/shots.mjs` end to end against the UI that actually exists (flagged
+  broken twice already — the 2026-09-25 "Piece 2" entry and this file's W3
+  entry above — both explicitly deferred it). The old suite's brand block
+  clicked "Book" and `waitForSelector('[role="dialog"]')`: both the grid and
+  the modal were deleted in the 2026-09-25 redesign, replaced by
+  `CreatorComparisonList` + the persistent `CreatorDetailPanel`. New shot
+  list: `entry-page`, `marketplace` (list + panel, default first-row
+  selection), `marketplace-detail-panel` (a second row clicked, panel
+  swapped), `marketplace-filters` (Max CPM set to 30, its chip visible — the
+  one-panel W3 filter set the brief asked this fix to also cover),
+  `collaborations` (brand), `results` (new — 5.4 had no shot before this),
+  `creator-profile`, `creator-collaborations`, `creator-earnings`,
+  `error-state`. Every wait is on something real, never a fixed timeout:
+  clicking a row waits on the `GET /creators/:id` response that click
+  triggers (`page.waitForResponse`, run in parallel with the click via
+  `Promise.all` so the response can't fire before the listener attaches);
+  setting Max CPM waits on the response whose URL contains `maxCpmEur=30`;
+  Results/Collaborations/Earnings each wait on a `.or()`-combined locator
+  covering whichever of their real states (a table/cards vs. one of their
+  empty states) actually renders, since both are legitimate and neither is
+  forced. The `ensure-invited` dev-endpoint call survives (same reasoning as
+  before — seed's random status assignment means a fresh POST /bookings
+  could always 409), now feeding `creator-collaborations` instead of the
+  deleted `creator-home`/`creator-booking-requests`. One thing discovered,
+  not fixed here (out of scope — apps/api is off limits this session): the
+  creator `ensure-invited` targets (Emma Berg, by name) is not guaranteed to
+  be the same creator `GET /auth/demo-creator` signs "Continue as a creator"
+  into (whoever Ledgerly *most recently* booked) — this run signed in as Elin
+  Halvorsen, so `creator-collaborations.png` shows two informational cards,
+  not the actionable Accept/Decline state. The shot still correctly shows the
+  current `CollaborationCard` UI against real data; only the specific
+  actionable-state coverage is a pre-existing gap, flagged for whoever next
+  touches `GET /auth/demo-creator` or `ensure-invited`. Verified: `npm run
+  shots` against the real API (`:3000`) finished clean, wrote all ten files,
+  the only console output was the `ERR_FAILED` lines the deliberate
+  `page.route(...).abort()` in the `error-state` block always produces (same
+  as the old suite). Opened `marketplace.png`, `marketplace-filters.png`, and
+  `creator-collaborations.png` — all three render the current UI correctly.
+- **Incidental, both fixes**: the already-running `apps/api` dev process
+  died on its own again mid-session (`ERR_CONNECTION_REFUSED`, unrelated to
+  either fix, same as the hiccup logged in the W3 entry above) — restarted
+  with `npm run dev:api` (not an edit to `apps/api/**`) both times
+  verification needed it back.
+- Also fixed while reading this file for the required-reading step: the W3
+  entry above had ended with a stray duplicated "it at once." (an artifact of
+  that session's own edit tool call landing after, not instead of, the
+  original text it was appending to) — removed; no content change, only the
+  leftover fragment.
+- 2026-09-26 — **W1, booking lifecycle on both sides, draft to paid.**
+  `apps/web/**` only, per A1's contract (`packages/shared/src/api.ts`
+  untouched — already correct, confirmed while building against it).
+  - **API layer.** `lib/api/client.ts`/`http.ts` gained `submitDraft`,
+    `markPublished`, `approveDraft`, `requestChanges`, `markPaid` (all thin
+    `POST` wrappers, no request body for the three no-body actions);
+    `listBookingsSent` widened to `Paginated<BrandCollaboration>` — the same
+    type-only bump `CreatorCollaboration` went through for the creator side.
+    `fixtures.ts` mirrors the full state machine so fixture mode keeps
+    working: a new `FixtureBooking` (adds `draftContent`/`postUrl`, neither on
+    `BookingSent`), a duplicated `fixtureNextAction` (mirrors
+    `apps/api/src/bookings/next-action.ts`'s status+viewer+hasDraft table —
+    same "keep two copies in sync by hand" pattern `SORTERS` already uses for
+    `ranking.ts`) and a duplicated `fixtureNetCents` (mirrors `money.ts`'s
+    `COMMISSION_PCT` math). Each new action checks the booking's current
+    status against the one transition it allows and 409s with the same
+    "This booking is X, so it can't be Y." shape the real API uses, otherwise
+    fixtures would silently accept an out-of-order call the real API would
+    reject.
+  - **Found and fixed a real bug while verifying the publish 400 case**:
+    `http.ts`'s `request()` only read `body.message` as a string, but Nest's
+    `ValidationPipe` reports field errors as a string array (exactly what
+    `MarkPublishedDto`'s non-LinkedIn-URL check returns) — so the actual
+    validation sentence never reached the UI, only a generic
+    "`/bookings/:id/publish` failed with status 400" fallback. Since "show the
+    API's message inline on that row" is the acceptance bar for every one of
+    these five actions, this wasn't a side quest — fixed by also accepting a
+    string array and joining it. Confirmed live: a `https://example.com/...`
+    postUrl now shows "postUrl must be an https link on linkedin.com, x.com or
+    twitter.com" on the row, not the fallback.
+  - **Creator Collaborations** (`components/creator/CollaborationCard.tsx`,
+    `routes/CreatorCollaborationsPage.tsx`): the tinted panel now branches on
+    `nextAction.kind`. `submit_draft` is a textarea (seeded from
+    `draftContent` so a resubmit after request-changes starts from the old
+    text, per the ask) with a live `N / 3000` count and a "Send for review"
+    button disabled empty/over-limit/in-flight. `publish` is the tracked link
+    (reusing `TrackedLinkRow`) + a plain URL `Input` + "Mark as published" —
+    deliberately no client-side domain check, so the 400 case above is a real
+    round trip, not a guard that never lets a bad URL leave the browser.
+    `respond` unchanged. Every action: `busyId` disables just that row's
+    buttons; `submitDraft`/`markPublished` replace the row in place with the
+    full returned `CreatorCollaboration` (it carries the recomputed
+    `nextAction`, so no refetch needed — unlike `respond`, which still
+    refetches because `updateBookingStatus` only returns a bare `Booking`);
+    failures land in a per-row `errors` map, read off `err.message` (the
+    `ApiError`'s own message, already the server's text after the fix above).
+  - **Brand Collaborations** (`components/campaign/CollaborationsTable.tsx`,
+    `routes/CollaborationsPage.tsx`): rather than switching the brand's table
+    to the creator's card layout, the table gained a seventh "Next action"
+    column — same tinted-panel-vs-plain-line rule as the creator side (so the
+    pattern reads as one system per the ask), but the existing Creator/
+    Campaign/Package/Agreed price/Status/Tracked link columns, the `?status=`
+    filter, and `CreatorsPagination` are all untouched, exactly as asked.
+    `review_draft` shows the draft text (`line-clamp-3`) then Approve/Ask for
+    changes; `mark_paid` shows a "View the live post" link to `postUrl` (not
+    the tracked link — a different URL, the actual published post) then
+    "Mark as paid (amount)" with the gross `agreedPriceCents`, then the fixed
+    "Payment rails aren't built..." line. Rows sort actionable-first
+    (`orderByNextAction`, the same stable-sort shape
+    `CreatorCollaborationsPage` already used) on the current page only — the
+    server-side `?status=`/pagination contract doesn't change. No em dashes
+    were introduced in any new copy (checked by re-reading every string
+    written this session, per the ask) — "Mark as paid (amount)" uses
+    parentheses, not the em-dash-joined phrasing drafted first.
+  - **Verified against the running local API (`:3000`, unmodified — no
+    `apps/api` file opened) and in the browser**, walking one real booking
+    through the whole loop rather than relying on whatever the seed happened
+    to leave in each state: booked a fresh creator (Nils Nilsson, previously
+    unbooked in Fintech Trust Campaign, via the ordinary marketplace Book
+    flow — `demo-actions.ts` was not run, per the ask) so "Continue as a
+    creator" resolved to him for a clean multi-step session. Accept (creator)
+    → mints the tracked link, submit_draft panel appears with a live
+    `0 / 3000` count. First draft (creator) → row moves to Draft ready,
+    brand's Next action shows "Review the draft..." with the draft text.
+    Ask for changes (brand) → row back to Accepted, "Waiting for the
+    creator's revised draft."; creator's panel now reads "The brand asked for
+    changes. Revise your draft and send it again." with the textarea
+    pre-filled with the old text (confirms `hasDraft` branching end to end).
+    Revise and resend (creator) → Draft ready again, brand sees the new text.
+    Approve (brand) → Scheduled, creator's panel becomes the publish form
+    (tracked link + URL input + "Mark as published"). Publish with
+    `https://example.com/not-linkedin` → 400, the real validation sentence
+    shown inline on the row (the bug above, caught by this exact step).
+    Publish with a `linkedin.com` URL → Live, brand's row becomes "The post
+    is live..." with a working "View the live post" link. Mark as paid
+    (brand) → Paid, creator's row becomes "Nothing to do.". Creator Earnings,
+    before vs. after that one mark-paid: total earned €0 → €663, in transit
+    €1,310 → €647 — both moved by exactly €663 (net of the booking's €829
+    agreed price at the 20% `COMMISSION_PCT`, confirming `netCents` isn't
+    drifting between the two figures), and the current month's chart bar grew
+    from empty to the new total. Separately, on the existing seed data (no
+    fresh booking needed): approved Marco Romano's draft and marked Elin
+    Halvorsen's live post paid as the brand, both landing correctly before
+    the fresh-booking walkthrough above.
+  - **`npm run shots`**: ran clean on retry (a first attempt hit Playwright's
+    `networkidle` wait timing out on a cold Vite compile, not a real failure —
+    the dev server needs a request to actually finish compiling before
+    Playwright's own navigation, and the first hit of the session is always
+    the slow one). All ten shots regenerated; `collaborations.png` and
+    `creator-collaborations.png` opened and checked against DESIGN.md's
+    anti-slop list — new "Next action" column reads as one tinted-panel
+    system with the creator side, tabular-nums holds on the price column, no
+    gradient/shadow/em-dash anywhere new. The four `ERR_FAILED` console lines
+    this run are `randomuser.me` avatar fetches failing in this sandboxed
+    network — pre-existing, unrelated to this slice (`ui/Avatar`'s
+    initials-first rendering already covers it), not the deliberate
+    `error-state` abort this suite also produces.
+  - `npx tsc -b apps/web/tsconfig.json` — clean, no errors, run twice (before
+    and after the `http.ts` message-array fix).
+- 2026-09-26 — **Fix 3: brand can read the full draft before approving.**
+  `components/campaign/CollaborationsTable.tsx`'s `review_draft` panel
+  clamped the draft to `line-clamp-3` with no way to read the rest — a
+  brand had to Approve or Ask for changes on a draft it couldn't fully see.
+  New `DraftText` (replaces the bare clamped `<p>`): a `useLayoutEffect`
+  measures the real DOM (`scrollHeight` vs `clientHeight` while still
+  clamped) rather than guessing from character count, since whether
+  `line-clamp-3` actually truncates depends on real layout — font size,
+  the column's `max-w-xs`, and the draft's own line breaks. A "Show full
+  draft" / "Show less" text toggle (same `text-label font-medium
+  text-primary` treatment as the table's own "Copy link") appears only
+  when that measurement says the text overflows; a short draft (Ava
+  Dubois's seed example, two lines) shows no toggle at all. Verified
+  against the real API (`:3000`): submitted a five-line draft as a
+  creator (accepted a fresh Fintech Trust Campaign invitation, sent it for
+  review), then reviewed it as the brand — clamped to 3 lines with "Show
+  full draft" visible, clicking it revealed all five lines and flipped the
+  toggle to "Show less", clicking again re-clamped. Ava Dubois's existing
+  short draft alongside it correctly showed no toggle.
+- 2026-09-26 — **W4, a creator edits their own card and price.**
+  `apps/web/**` only, per A4's contract (`packages/shared/src/api.ts`'s
+  `UpdateMyCardBody` untouched — already correct from the round-2 contract
+  pass, confirmed while building against it).
+  - **API layer.** `lib/api/client.ts`/`http.ts` gained `updateMyCard` — a
+    thin `PATCH /creators/me` wrapper, same shape as every other action in
+    the file. `fixtures.ts` mirrors `apps/api/src/creators/creators.service.ts`'s
+    validation by hand (same "no real server to ask" reasoning
+    `fixtureNextAction` already uses for A1) — "at least one field",
+    headline 1..160 trimmed, both prices integer 5,000..2,250,000 cents,
+    and the bundle-vs-post cross-check evaluated after merging onto the
+    stored row. There's still no real creator-mode fixture session
+    (`FIXTURE_ME` is always the brand, same limitation `listBookingsReceived`
+    and `getEarnings` already flag) — `updateMyCard` mutates a fixed
+    stand-in (`FIXTURE_SELF_CREATOR_ID = "fixture-1"`, the creator
+    `FIXTURE_CREATOR_EMAIL` already names) so the client still type-checks
+    and behaves plausibly if this ever becomes reachable; unreachable today
+    the same way `updateMyCard` itself is, since `CreatorHomePage` never
+    renders past its error state when `creatorProfileId` is null.
+  - **`routes/CreatorHomePage.tsx`.** "Edit card" (top-right of the profile
+    card, `Button variant="secondary"`) swaps the header + metrics block for
+    an in-place form — no modal, no route change — via one `editing` boolean;
+    Audience snapshot and Recent posts below stay mounted and unaffected.
+    The form: headline text input, single post price (EUR) and bundle of
+    five price (EUR) — both entered in whole/decimal EUR and converted with
+    `Math.round(eur * 100)`, the same inline conversion `FilterPanel`'s
+    `PriceRangeFilter` already uses, not a new shared helper. Each price
+    field shows its own live CPM underneath via `formatCpm` (wraps the
+    shared `cpmCents`, never a copy of the formula) — the bundle field
+    divides by five first (`Math.round(bundleCents / 5)`), the same
+    per-post convention `BookingRail` already uses for its own bundle CPM.
+    Client-side validation mirrors the API's DTO/service rules exactly
+    (`MIN_PRICE_CENTS`/`MAX_PRICE_CENTS` constants duplicated with a "keep
+    in sync with the DTO" comment, same pattern the DTO itself uses pointing
+    at the shared doc comment) and disables Save while invalid, with the
+    same three inline messages the API would 400 with; a genuine API
+    rejection (network race, anything client validation didn't catch) still
+    surfaces via `err.message` off `ApiError`, same pattern every other
+    action's error row already uses. Save calls `updateMyCard` and replaces
+    `detail` with the response directly (no refetch); Cancel discards the
+    form's local state and returns to the display view unchanged. Also
+    added a "Bundle of 5" metric tile and a headline line (`OverviewTab`'s
+    own muted-paragraph treatment) to the display view — neither rendered
+    before this slice, but editing a price/field the view never showed
+    would have been confusing, and the metrics grid widened
+    (`sm:grid-cols-3 lg:grid-cols-5`) to fit the fifth tile without letting
+    any column shift width.
+  - **Verified against the running local API (`:3000`, unmodified) and in
+    the browser**, signed in as the demo creator (resolved to Mateo
+    Kowalski this run): opened Edit card, typed a bundle price 2000 with a
+    362 single-post price (over 5x) — inline "Bundle-of-5 price must be at
+    least the single-post price and at most 5x it." appeared immediately
+    while typing, Save stayed disabled, no request sent. Corrected to a
+    real change (single post €362 → €400, CPM €23 → €25 live as typed) and
+    saved — 200, view mode returned with the new figures, no refetch flash.
+    Signed in as the brand (Ledgerly), searched the marketplace for Mateo
+    Kowalski: row showed the new €400 post cost and €25 CPM, matching what
+    the creator side saved. Signed back in as the creator and reset both
+    prices to their original values (€362 / €1,217.27) — saved cleanly,
+    confirmed back to the original CPM figures (€23 / €15).
+  - **`npm run shots`**: ran clean, all ten shots regenerated;
+    `creator-profile.png` (view mode, "Edit card" button + five-tile metrics
+    row including the new Bundle of 5 tile) opened and checked against
+    DESIGN.md's anti-slop list — tabular-nums holds across all five tiles,
+    one button style, no gradient/shadow/em-dash. Edit mode itself isn't in
+    the shot suite (no shot list entry crosses a click into it); checked
+    manually instead via the browser at 1440px during the verification
+    above — token colours/radius/spacing throughout, "Save"/"Cancel" not
+    "Submit", the `--warn` token on invalid fields matching `Input`'s
+    existing `invalid` prop, no new component primitive introduced. The
+    four `ERR_FAILED` console lines this run are the same pre-existing
+    `randomuser.me` avatar-fetch issue flagged in the W1 entry above,
+    unrelated to this slice.
+  - `npx tsc --noEmit` on `apps/web` — clean, no errors, run twice (once
+    after the draft-toggle fix above, once after this slice).
+- 2026-09-26 — **W2, campaign switcher and budget bar.** `apps/web/**` only,
+  per A2's contract (`CampaignOverview`/`CreateBookingBody.campaignId` in
+  `packages/shared/src/api.ts` untouched — already correct from the round-2
+  contract pass).
+  - **API layer.** `lib/api/client.ts`/`http.ts` gained `listCampaigns` — a
+    thin `GET /campaigns` wrapper, same shape as every other list method.
+    `fixtures.ts` gained a second fixture campaign (`fixture-campaign-2`,
+    DRAFT) alongside the existing LIVE one so the switcher has something real
+    to switch between in fixtures mode; `createBooking` now resolves
+    `body.campaignId` to one of the two fixture campaigns (falling back to
+    the original LIVE one when omitted, same "omitted means active" contract
+    the real API uses) instead of hardcoding the one campaign, and 409s a
+    completed one — there wasn't one before this slice, so this is new
+    fixture behaviour, not a widen. `listCampaigns`'s fixture impl derives
+    money the same way `campaigns.service.ts` does (`COMMITTED_STATUSES`
+    mirrored by hand, same "no real server to ask" pattern every other
+    fixture mirror in this file already uses) rather than storing it.
+  - **New `campaignStore.ts`.** `{campaigns, selectedCampaignId, status}`.
+    `hydrate()` is idempotent and safe to call again after anything that
+    could move the money: it keeps the current selection if it's still in
+    the refetched list, and only falls back to a default (the company's
+    remembered choice in `localStorage["naano.campaign.<companyId>"]`, else
+    `GET /campaigns/active`, else the first campaign) when there's no valid
+    current selection — so a post-booking refresh never yanks the switcher
+    back to the default. The localStorage read/write is wrapped in
+    try/catch per the ask, keyed per company (read via `authStore.getState()`
+    rather than a prop, since the store needs it both on hydrate and on
+    every `select()`).
+  - **Wiring in `CreatorsListPage.tsx`.** `shortlistStore`/`bookingsStore`
+    `hydrate()` both gained an optional `campaignId` param (omitted keeps
+    the old default-active-campaign behaviour, so neither store's contract
+    changed for any caller that doesn't pass one) — the page now re-hydrates
+    both, keyed to `campaignStore`'s `selectedCampaignId`, on every campaign
+    change, and `campaignId` was added to the `listCreators` request +
+    effect deps so switching re-ranks the list. `MarketplaceHeader` gained
+    a "Ranked for" `Select` (campaign name, "(completed)" suffix for a
+    completed one so the switcher itself explains why Book might be
+    disabled) — the old static "Ranked for your company" sentence in the
+    subtitle was dropped rather than kept alongside it, per the same
+    anti-three-restatements reasoning slice 2.4 already applied to this
+    exact phrase.
+  - **New `CampaignBudgetBar.tsx`.** One bar, three segments (paid,
+    committed-but-unpaid = `committedCents - paidCents`, pending) as a
+    percentage of `budgetCents`, capped at 100% width — going over budget
+    shows as a warning line below, never a segment overflowing the track.
+    Tints are the same `color-mix(in srgb, var(--primary) …%, white)`
+    approach `ui/SegmentedBar.tsx` already uses (one accent token, not a
+    decorative palette). Two caption lines exactly as asked ("€X committed
+    of €Y", "€Z invited, not yet accepted") plus a conditional `text-warn`
+    line when `committedCents + pendingCents > budgetCents`. Rendered
+    between `MarketplaceHeader` and the tab/filter content, unconditionally
+    (both All-creators and Shortlist tabs), since it's campaign context, not
+    list content.
+  - **`BookingRail.tsx`** gained a `campaign: CampaignOverview | null` prop
+    (threaded through `CreatorDetailPanel`). Two new pieces of copy, neither
+    blocking except the second: a projection warning
+    (`committedCents + pendingCents + packageCents > budgetCents`) — this
+    booking would start INVITED, i.e. add to *pending*, not committed, so
+    the projection has to add the new package price on top of both existing
+    figures, not just committed — shown above the confirm button in the
+    warn token, booking still submits normally (per the ask, "that is the
+    brand's call"); and a `campaign.status === "COMPLETED"` line
+    ("This campaign is completed, so it can't take new bookings.") that is
+    always rendered as real text, not a `title` attribute, alongside
+    genuinely disabling the confirm button — a hover-only tooltip would
+    have failed the ask's "not only on hover" explicitly. `createBooking`
+    now sends `campaignId: campaign?.id` so a booking lands in whichever
+    campaign the marketplace is ranked for, not always the company's
+    default active one; on success the rail calls
+    `useCampaignStore.getState().hydrate()` (a plain store read, not a
+    subscription — the rail doesn't need to re-render on other campaigns'
+    numbers moving) so the budget bar reflects the new booking without a
+    page reload.
+  - **Verified against the running local API (`:3000`, unmodified) and in
+    the browser**, signed in as Ledgerly: switching the "Ranked for" select
+    between Fintech Trust Campaign (LIVE) and Payroll Compliance Series
+    (DRAFT) re-ranked the list, changed the shortlist tab's count (6 → 0),
+    and changed which rows read "already booked" — confirming the re-key
+    reaches both stores, not just the ranking. Switching to Summer Payouts
+    Push (COMPLETED, seeded committed €15,299 against a €9,000 budget)
+    showed "€6,299 over budget" on the bar in the warn token; opening an
+    unbooked creator's rail there showed the always-visible "This campaign
+    is completed..." line and confirmed via the DOM that the confirm
+    button's own `disabled` property was `true`, not just styled to look
+    disabled. On Payroll Compliance Series (budget €12,000, committed €362,
+    €0 pending going in): booked four bundle-of-5s in sequence (creators at
+    various post costs) and watched the budget bar's "invited, not yet
+    accepted" figure and pending segment grow after every single one with no
+    manual refresh, confirming the post-booking refetch; the fourth booking
+    (committed+pending projected to €14,024 against the €12,000 budget)
+    showed "This booking would put the campaign €2,386 over budget." above
+    an enabled confirm button, and submitting it succeeded — the bar
+    afterward read exactly "€362 committed of €12,000 / €14,024 invited, not
+    yet accepted / €2,386 over budget," matching the projection to the cent.
+    Reloading the page after switching to Payroll Compliance Series kept it
+    selected (the `localStorage` remember-per-company path), confirmed via
+    `Object.keys(localStorage)` showing `naano.campaign.<Ledgerly's company
+    id>` before the reload and the same campaign still selected after it.
+  - **`npm run shots`**: ran clean, all ten shots regenerated (`marketplace`
+    and `marketplace-filters` both now show the switcher + budget bar);
+    opened both and checked against DESIGN.md's anti-slop list — tabular-nums
+    holds on the bar's two caption lines, one accent colour throughout (no
+    new palette for the bar's segments), no gradient/shadow, the switcher and
+    the subtitle no longer both claim "ranked for your company."
+  - `npx tsc -b apps/web/tsconfig.json` and `npx tsc -b apps/api/tsconfig.json`
+    (sanity check, `apps/api` untouched this slice) — both clean.
+- 2026-09-26 — **Fix 4: `CampaignBudgetBar` legend.** The bar's three
+  segments (paid, committed-but-unpaid, invited) had no legend, and the
+  headline line named only the committed figure — a viewer couldn't read the
+  paid amount anywhere. Added a one-line legend under the bar: three small
+  `TINTS`-coloured swatches (same dot pattern `ui/SegmentedBar.tsx` already
+  uses) labelled "Paid €X", "Committed €Y" (committed-but-unpaid, i.e.
+  `committedCents - paidCents`, already computed as `committedNotPaidCents`
+  for the bar's own middle segment width — reused, not recomputed), "Invited
+  €Z" — the three sum to what the bar shows. The existing "€X committed of
+  €Y" headline and "€Z invited, not yet accepted" line are unchanged. Tokens
+  only, no new component.
+- 2026-09-26 — **W5, rail badge.** `apps/web/**` only, per A5's contract
+  (`ActionCount` in `packages/shared/src/api.ts` untouched — already correct
+  from the round-2 contract pass).
+  - **API layer.** `lib/api/client.ts`/`http.ts` gained `getActionCount` — a
+    thin `GET /bookings/action-count` wrapper, same shape as every other
+    method. `fixtures.ts`'s implementation derives the count from its own
+    `fixtureBookings` via the existing `fixtureNextAction` (viewer fixed to
+    `"COMPANY"`, since `FIXTURE_ME` is always the brand — same limitation
+    `listBookingsReceived`/`getEarnings`/`updateMyCard` already flag) rather
+    than a second hardcoded rule, so it can't drift from the state machine
+    the other fixture actions already update.
+  - **New `lib/stores/actionCountStore.ts`.** `{count, refresh}` — the
+    smallest store in the app on purpose: one number, one action. `refresh()`
+    swallows a failed request and leaves the last known count rather than
+    flashing the badge to zero on a transient blip (same reasoning
+    `bookingsStore`'s hydrate-error path uses, applied to a single number
+    instead of a map). Deliberately not wired to any polling interval — the
+    ask was "fetch on mount and after every lifecycle action," not a ticking
+    background refresh.
+  - **`AppShell.tsx`.** `useEffect` calls `refresh()` once when `me` becomes
+    non-null (covers sign-in and a page-load rehydrate alike). The badge
+    itself: a small `rounded-full bg-primary` circle, absolutely positioned
+    on the Collaborations icon's button (`key === "collaborations"`, true for
+    both `BRAND_RAIL` and `CREATOR_RAIL`), rendered only when `count > 0`.
+    `role="status"` + `aria-label={`${count} collaborations need you`}`
+    carries the count to assistive tech directly, separate from the button's
+    own `aria-label` (the nav item's name) so neither overwrites the other.
+    `text-[10px]` for the numeral has one existing precedent in the codebase
+    (`marketplace/icons.tsx`'s small circular metric badge) rather than being
+    a new arbitrary value invented for this slice.
+  - **Refresh wiring.** Both pages call `useActionCountStore`'s `refresh`
+    from the exact point W1 already handles success, per the ask — no new
+    success path introduced: `CreatorCollaborationsPage.tsx`'s `respond`
+    (covers both accept and decline), `submitDraft`, and `publish`; and
+    `CollaborationsPage.tsx`'s single `run()` helper, which already covers
+    all three brand actions (approve, request changes, mark paid) in one
+    place. No polling anywhere.
+  - **Verified against the running local API (`:3000`, unmodified) and in
+    the browser**, both demo accounts. Brand (Ledgerly): `GET
+    /bookings/action-count` returned `{count: 18}`, matching exactly the 18
+    rows in `GET /bookings/sent?pageSize=100` whose `nextAction.consequence`
+    is non-empty (checked by counting, not eyeballing). Creator (resolved to
+    Clara Keller via `GET /auth/demo-creator`): `action-count` returned
+    `{count: 1}`, matching the 1 actionable row in `GET
+    /bookings/received?pageSize=100` (an `INVITED` booking, `kind: "respond"`).
+    Accepting that invitation (`PATCH .../status`) moved it to `ACCEPTED`,
+    which is still in the creator's actionable set (`kind` becomes
+    `"submit_draft"`) — count correctly stayed at 1, not a false "drop."
+    Submitting the draft moved it to `DRAFT_READY` (`kind: "await_brand"`,
+    not actionable for the creator) — count dropped 1 → 0, and the brand's
+    own count rose 18 → 19 in the same step (the same booking became
+    actionable for the other role, `kind: "review_draft"`), confirming the
+    two sides' counts move independently and correctly off the same
+    transition. In the browser (signed in as Ledgerly on the live
+    `:5173` session): the rail badge read "19 collaborations need you"
+    (`aria-label`, confirmed via the accessibility tree, not just the visible
+    number) before any click; clicking a real "Mark as paid" button on the
+    Collaborations table dropped it to "18" immediately, with no page reload
+    — confirming the whole chain (action succeeds → `refreshActionCount()` →
+    store updates → badge re-renders) works end to end, not just the
+    underlying count formula. Signed in as the creator with zero actionable
+    bookings (all three of Clara Keller's collaborations were `await_brand`/
+    `none`): the Collaborations icon rendered with no badge at all — hidden
+    at zero, confirmed live, not just by the `count > 0` guard reading
+    correctly in isolation.
+  - **`npm run shots`**: ran clean before the live mark-paid verification
+    above; all ten shots regenerated (`collaborations.png` shows the badge at
+    19 alongside the rail icon's tooltip; `creator-collaborations.png` shows
+    the same icon with no badge for a creator with nothing actionable). Six
+    `ERR_FAILED` console lines this run: four are the pre-existing
+    `randomuser.me` avatar-fetch issue flagged in earlier entries, two are
+    the deliberate `page.route(...).abort()` calls the `error-state` block
+    always produces — not a regression.
+  - `npx tsc -b apps/web/tsconfig.json` — clean, no errors.

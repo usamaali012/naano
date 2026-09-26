@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CreatorProfileDetail } from "@naano/shared";
+import type { CampaignOverview, CreatorProfileDetail } from "@naano/shared";
 import { Avatar } from "../ui/Avatar";
 import { Card } from "../ui/Card";
 import { Tabs } from "../ui/Tabs";
@@ -14,6 +14,8 @@ interface CreatorDetailPanelProps {
   creatorId: string | null;
   shortlisted: boolean;
   onToggleShortlist: (id: string) => void;
+  /** The campaign the marketplace is ranked for; a booking is created against it. */
+  campaign: CampaignOverview | null;
 }
 
 type PanelTab = "overview" | "audience";
@@ -29,6 +31,7 @@ export function CreatorDetailPanel({
   creatorId,
   shortlisted,
   onToggleShortlist,
+  campaign,
 }: CreatorDetailPanelProps): JSX.Element {
   const [detail, setDetail] = useState<CreatorProfileDetail | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
@@ -126,7 +129,7 @@ export function CreatorDetailPanel({
             <AudienceTab creator={detail} />
           )}
           <div className="border-t border-border pt-s6">
-            <BookingRail creator={detail} />
+            <BookingRail creator={detail} campaign={campaign} />
           </div>
         </>
       )}

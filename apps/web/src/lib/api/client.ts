@@ -1,9 +1,11 @@
 import type {
+  ActionCount,
   AttributionResponse,
   AuthMe,
   Booking,
-  BookingSent,
   BookingStatus,
+  BrandCollaboration,
+  CampaignOverview,
   CampaignSummary,
   CreateBookingBody,
   CreatorCollaboration,
@@ -16,6 +18,7 @@ import type {
   PageParams,
   Paginated,
   UpdateBookingStatusBody,
+  UpdateMyCardBody,
 } from "@naano/shared";
 
 export interface ApiClient {
@@ -28,9 +31,18 @@ export interface ApiClient {
 
   listCreators(params?: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>>;
   getCreator(id: string): Promise<CreatorProfileDetail>;
+  /**
+   * Creator-only. Edit the signed-in creator's own headline/prices — every
+   * field optional, at least one required. Returns the updated
+   * CreatorProfileDetail. Existing bookings keep their agreedPriceCents; a
+   * new price only affects bookings made after it.
+   */
+  updateMyCard(body: UpdateMyCardBody): Promise<CreatorProfileDetail>;
 
   /** The campaign the marketplace is ranked for and the shortlist is keyed to. */
   getActiveCampaign(): Promise<CampaignSummary>;
+  /** Brand-only. The signed-in company's own campaigns, with money against budget. */
+  listCampaigns(params?: PageParams): Promise<Paginated<CampaignOverview>>;
 
   listShortlist(
     campaignId: string,
@@ -61,16 +73,34 @@ export interface ApiClient {
   /**
    * Brand-only. Bookings the signed-in company has made, optionally by
    * campaign and/or status — backs the Collaborations table. Rows carry
-   * creator/campaign names and the derived package, not bare Booking.
+   * creator/campaign names, the derived package, and the brand's own
+   * nextAction/draftContent/postUrl.
    */
   listBookingsSent(
     params?: PageParams & { campaignId?: string; status?: BookingStatus },
-  ): Promise<Paginated<BookingSent>>;
+  ): Promise<Paginated<BrandCollaboration>>;
   /** Creator-only. Accept or decline a booking addressed to them. */
   updateBookingStatus(
     id: string,
     status: UpdateBookingStatusBody["status"],
   ): Promise<Booking>;
+
+  /** Creator-only. Send a post draft for the brand to review (or resend one after changes were requested). */
+  submitDraft(id: string, content: string): Promise<CreatorCollaboration>;
+  /** Creator-only. Mark the approved draft as published with its live post URL. */
+  markPublished(id: string, postUrl: string): Promise<CreatorCollaboration>;
+  /** Brand-only. Approve a submitted draft, scheduling the creator to publish. */
+  approveDraft(id: string): Promise<BrandCollaboration>;
+  /** Brand-only. Send a draft back to the creator for revision. */
+  requestChanges(id: string): Promise<BrandCollaboration>;
+  /** Brand-only. Record that a live post has been paid for. */
+  markPaid(id: string): Promise<BrandCollaboration>;
+
+  /**
+   * Either role. How many bookings are waiting on the signed-in user right
+   * now — backs the Collaborations rail badge.
+   */
+  getActionCount(): Promise<ActionCount>;
 
   /**
    * Brand-only. Clicks attributed per creator, across every campaign — only

@@ -507,11 +507,86 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
 
 ### 7-WEB
 
-- [ ] **W3 One filter panel**
-- [ ] **W1 Lifecycle**
-- [ ] **W4 Card editing**
-- [ ] **W2 Campaign switcher and budget bar**
-- [ ] **W5 Rail badge**
+- [x] **W3 One filter panel** — done 2026-09-26.
+- [x] **W1 Lifecycle** — done 2026-09-26.
+  Scope: `submitDraft`/`markPublished`/`approveDraft`/`requestChanges`/
+  `markPaid` added to the web api client (http + fixtures); `listBookingsSent`
+  widened to `Paginated<BrandCollaboration>`. Creator Collaborations'
+  tinted panel now handles `submit_draft` (textarea + 3000-char count) and
+  `publish` (tracked link + URL input); brand Collaborations gained a
+  "Next action" column with the same tinted-panel treatment for
+  `review_draft`/`mark_paid`, actionable rows first, existing table/filter/
+  pagination unchanged.
+  Files: `apps/web/src/lib/api/{client.ts,http.ts,fixtures.ts}`,
+  `apps/web/src/components/creator/CollaborationCard.tsx`,
+  `apps/web/src/routes/CreatorCollaborationsPage.tsx`,
+  `apps/web/src/components/campaign/CollaborationsTable.tsx`,
+  `apps/web/src/routes/CollaborationsPage.tsx`.
+  Notes: see docs/DECISIONS.md's "Session: web, round 2" for the full
+  verification log (one booking walked end to end, draft → revise → approve
+  → publish → paid, plus an earnings before/after) and the `http.ts` fix it
+  surfaced (server validation-array messages weren't reaching the UI).
+- [x] **W4 Card editing** — done 2026-09-26.
+  Scope: `updateMyCard` added to the web api client (http + fixtures).
+  `CreatorHomePage`'s "Edit card" swaps the header + metrics block for an
+  in-place form (headline, single post price, bundle of five price, both
+  in EUR) — no modal. Each price shows its own live CPM via the shared
+  `cpmCents` formula (bundle divides by five first, `BookingRail`'s own
+  convention). Client-side validation mirrors the API's DTO/service rules
+  (at least one field, headline 1..160, prices 5,000..2,250,000 cents,
+  bundle between post price and 5x it) and still surfaces the API's own
+  message on a genuine rejection. Save replaces the page's data with the
+  response; existing bookings keep their price, confirmed unaffected.
+  Also added a "Bundle of 5" metric tile and a headline line to the
+  display view (neither rendered before this slice).
+  Files: `apps/web/src/lib/api/{client.ts,http.ts,fixtures.ts}`,
+  `apps/web/src/routes/CreatorHomePage.tsx`.
+  Notes: see docs/DECISIONS.md's "Session: web, round 2" for the full
+  verification log (bundle-over-5x inline error, a real price change seen
+  from the brand's marketplace row, reset back to original values) and a
+  separate fix landed first in the same session — the brand's draft-review
+  panel was clamped to 3 lines with no way to read the rest; now a "Show
+  full draft" toggle appears only when the draft actually overflows
+  (measured from the real DOM, not guessed from character count).
+- [x] **W2 Campaign switcher and budget bar** — done 2026-09-26.
+  Scope: `listCampaigns` added to the web api client (http + fixtures); a new
+  `campaignStore` (selected campaign id, default `GET /campaigns/active`,
+  remembered per signed-in company in localStorage, try/catch wrapped); a
+  "Ranked for [campaign]" select in `MarketplaceHeader` that re-ranks the list
+  (`campaignId` on `listCreators`) and re-keys `shortlistStore`/`bookingsStore`
+  to the chosen campaign; a new `CampaignBudgetBar` (paid / committed-unpaid /
+  pending segments, "€X committed of €Y", "€Z invited, not yet accepted", and
+  an over-budget warning line in the warn token); `BookingRail` now takes the
+  selected campaign, warns above the confirm button (without blocking) when a
+  booking would push committed+pending over budget, disables the confirm
+  button with the reason always visible (not a hover tooltip) for a COMPLETED
+  campaign, sends `campaignId` on `POST /bookings`, and refetches campaigns on
+  a successful booking so the bar moves.
+  Files: `apps/web/src/lib/api/{client.ts,http.ts,fixtures.ts}`,
+  `apps/web/src/lib/stores/{campaignStore.ts (new),shortlistStore.ts,
+  bookingsStore.ts}`, `apps/web/src/components/marketplace/{MarketplaceHeader.tsx,
+  CampaignBudgetBar.tsx (new),CreatorDetailPanel.tsx,modal/BookingRail.tsx}`,
+  `apps/web/src/routes/CreatorsListPage.tsx`.
+  Notes: see docs/DECISIONS.md's "Session: web, round 2" for the full
+  verification log against the real API (campaign switch re-ranks/re-keys,
+  a booking on a non-default campaign moves its bar, the COMPLETED campaign's
+  book button genuinely disabled, an over-budget booking warns but still
+  succeeds).
+- [x] **W5 Rail badge** — done 2026-09-26.
+  Scope: `getActionCount` added to the web api client (http + fixtures); new
+  `actionCountStore` (`{count, refresh}`); a badge on the Collaborations rail
+  icon, both roles, hidden at zero, `aria-label` "N collaborations need you".
+  Fetched on shell mount and refetched from the one store action after every
+  lifecycle action and accept/decline succeeds.
+  Files: `apps/web/src/lib/api/{client.ts,http.ts,fixtures.ts}`,
+  `apps/web/src/lib/stores/actionCountStore.ts` (new),
+  `apps/web/src/routes/{AppShell.tsx,CreatorCollaborationsPage.tsx,
+  CollaborationsPage.tsx}`.
+  Notes: see docs/DECISIONS.md's "Session: web, round 2" for the full
+  verification log (badge count matches actionable rows in `/bookings/sent`
+  and `/bookings/received` for both demo accounts, hidden at zero confirmed
+  live on a creator with no actionable rows, and one real UI action — marking
+  a live post paid — dropped the brand's badge from 19 to 18 with no reload).
 
 ---
 
@@ -519,6 +594,30 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-26 — W4 (card editing) done, `apps/web/**` only. `fixtures.ts`'s
+  `updateMyCard` has nothing real to mutate against — there's still no
+  creator-mode fixture session (`FIXTURE_ME` is always the brand), so it
+  writes to a fixed stand-in (`FIXTURE_SELF_CREATOR_ID = "fixture-1"`) that
+  is unreachable from the UI today, same shape as `listBookingsReceived`'s
+  existing "honest zeroed response" limitation — worth fixing together if a
+  real fixture creator session ever gets built. Also, ahead of W4:
+  `CreatorHomePage.tsx` never rendered `headline` or `bundle5PriceCents` at
+  all before this session, even though both were already on the wire
+  (`CreatorProfileDetail`) — added a headline line and a "Bundle of 5"
+  metric tile to the display view so the fields W4 makes editable are
+  visible outside edit mode too; flagging in case that reads as scope creep
+  to a future reviewer, it was necessary for the edit form to make sense.
+- 2026-09-26 — W1 (booking lifecycle) done, `apps/web/**` only. Two things
+  worth flagging: (1) `apps/web/src/lib/api/http.ts`'s `request()` used to
+  drop any 400/409 whose body carried `message` as a string array (Nest's
+  `ValidationPipe` shape) instead of a single string — fixed to join the
+  array, so any future action that surfaces a class-validator error will now
+  show the real sentence instead of a generic fallback; worth knowing if W4
+  (card editing) hits the same DTO-validation pattern. (2) `fixtures.ts` now
+  has a full duplicate of the lifecycle state machine
+  (`fixtureNextAction`/`fixtureNetCents`, mirroring `apps/api/src/bookings/
+  next-action.ts` and `money.ts` by hand) — if A1's real copy or transition
+  table changes again, this needs the same edit made twice.
 - 2026-09-26 — A4 (card editing) done, `apps/api/**` only, `packages/shared`
   untouched (`UpdateMyCardBody` was already right from the round-2 contract).
   Nothing for the web session to react to type-wise — `PATCH /creators/me`

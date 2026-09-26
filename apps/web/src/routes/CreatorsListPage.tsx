@@ -4,11 +4,13 @@ import { api } from "../lib/api";
 import { useCreatorsStore } from "../lib/stores/creatorsStore";
 import { useShortlistStore } from "../lib/stores/shortlistStore";
 import { useBookingsStore } from "../lib/stores/bookingsStore";
+import { useCampaignStore } from "../lib/stores/campaignStore";
 import { MarketplaceHeader } from "../components/marketplace/MarketplaceHeader";
 import { FilterPanel } from "../components/marketplace/FilterPanel";
 import { CreatorComparisonList } from "../components/marketplace/CreatorComparisonList";
 import { CreatorsPagination } from "../components/marketplace/CreatorsPagination";
 import { CreatorDetailPanel } from "../components/marketplace/CreatorDetailPanel";
+import { CampaignBudgetBar } from "../components/marketplace/CampaignBudgetBar";
 import { Button } from "../components/ui/Button";
 
 export function CreatorsListPage(): JSX.Element {
@@ -22,6 +24,12 @@ export function CreatorsListPage(): JSX.Element {
     country,
     minFollowers,
     maxFollowers,
+    priceMinCents,
+    priceMaxCents,
+    maxCpmEur,
+    minMedianViews,
+    minEngagementPct,
+    postedWithinDays,
     setPage,
     setSort,
     setQuery,
@@ -29,6 +37,12 @@ export function CreatorsListPage(): JSX.Element {
     setVerticals,
     setCountry,
     setFollowerRange,
+    setPriceRange,
+    setMaxCpmEur,
+    setMinMedianViews,
+    setMinEngagementPct,
+    setPostedWithinDays,
+    clearPerformanceFilters,
   } = useCreatorsStore();
 
   const shortlistIds = useShortlistStore((state) => state.ids);
@@ -40,6 +54,13 @@ export function CreatorsListPage(): JSX.Element {
 
   const bookingById = useBookingsStore((state) => state.byCreatorId);
   const hydrateBookings = useBookingsStore((state) => state.hydrate);
+
+  const campaigns = useCampaignStore((state) => state.campaigns);
+  const selectedCampaignId = useCampaignStore((state) => state.selectedCampaignId);
+  const hydrateCampaigns = useCampaignStore((state) => state.hydrate);
+  const selectCampaign = useCampaignStore((state) => state.select);
+  const selectedCampaign =
+    campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? null;
 
   const [creators, setCreators] = useState<MarketplaceCreator[]>([]);
   const [allTotal, setAllTotal] = useState(0);
@@ -54,9 +75,18 @@ export function CreatorsListPage(): JSX.Element {
   const [selectedCreatorId, setSelectedCreatorId] = useState<string | null>(null);
 
   useEffect(() => {
-    void hydrateShortlist();
-    void hydrateBookings();
-  }, [hydrateShortlist, hydrateBookings]);
+    void hydrateCampaigns();
+  }, [hydrateCampaigns]);
+
+  // Re-key the shortlist and bookings stores to whichever campaign the
+  // marketplace is currently ranked for — switching campaigns re-hydrates
+  // both, so "already booked"/shortlisted state always matches the campaign
+  // on screen.
+  useEffect(() => {
+    if (!selectedCampaignId) return;
+    void hydrateShortlist(selectedCampaignId);
+    void hydrateBookings(selectedCampaignId);
+  }, [selectedCampaignId, hydrateShortlist, hydrateBookings]);
 
   // Debounce the search box so typing does not fire a request per keystroke.
   const [queryInput, setQueryInput] = useState(q);
@@ -84,6 +114,13 @@ export function CreatorsListPage(): JSX.Element {
           country,
           minFollowers,
           maxFollowers,
+          priceMinCents,
+          priceMaxCents,
+          maxCpmEur,
+          minMedianViews,
+          minEngagementPct,
+          postedWithinDays,
+          campaignId: selectedCampaignId ?? undefined,
         });
 
     request
@@ -111,12 +148,22 @@ export function CreatorsListPage(): JSX.Element {
     country,
     minFollowers,
     maxFollowers,
+    priceMinCents,
+    priceMaxCents,
+    maxCpmEur,
+    minMedianViews,
+    minEngagementPct,
+    postedWithinDays,
+    selectedCampaignId,
     reloadKey,
   ]);
 
   function retry(): void {
-    void hydrateShortlist();
-    void hydrateBookings();
+    void hydrateCampaigns();
+    if (selectedCampaignId) {
+      void hydrateShortlist(selectedCampaignId);
+      void hydrateBookings(selectedCampaignId);
+    }
     setReloadKey((key) => key + 1);
   }
 
@@ -160,7 +207,12 @@ export function CreatorsListPage(): JSX.Element {
         onSortChange={setSort}
         query={queryInput}
         onQueryChange={setQueryInput}
+        campaigns={campaigns}
+        selectedCampaignId={selectedCampaignId}
+        onCampaignChange={selectCampaign}
       />
+
+      {selectedCampaign && <CampaignBudgetBar campaign={selectedCampaign} />}
 
       {!onShortlistTab && (
         <FilterPanel
@@ -171,6 +223,17 @@ export function CreatorsListPage(): JSX.Element {
           minFollowers={minFollowers}
           maxFollowers={maxFollowers}
           onFollowerRangeChange={setFollowerRange}
+          priceMinCents={priceMinCents}
+          priceMaxCents={priceMaxCents}
+          onPriceRangeChange={setPriceRange}
+          maxCpmEur={maxCpmEur}
+          onMaxCpmChange={setMaxCpmEur}
+          minMedianViews={minMedianViews}
+          onMinMedianViewsChange={setMinMedianViews}
+          minEngagementPct={minEngagementPct}
+          onMinEngagementChange={setMinEngagementPct}
+          postedWithinDays={postedWithinDays}
+          onPostedWithinChange={setPostedWithinDays}
         />
       )}
 
@@ -224,7 +287,13 @@ export function CreatorsListPage(): JSX.Element {
                 vertical.length > 0 ||
                 country !== undefined ||
                 minFollowers !== undefined ||
-                maxFollowers !== undefined
+                maxFollowers !== undefined ||
+                priceMinCents !== undefined ||
+                priceMaxCents !== undefined ||
+                maxCpmEur !== undefined ||
+                minMedianViews !== undefined ||
+                minEngagementPct !== undefined ||
+                postedWithinDays !== undefined
               }
               onClearQuery={() => {
                 setQueryInput("");
@@ -234,6 +303,7 @@ export function CreatorsListPage(): JSX.Element {
                 setVerticals([]);
                 setCountry(undefined);
                 setFollowerRange(undefined, undefined);
+                clearPerformanceFilters();
               }}
               onBrowseAll={() => setTab("all")}
             />
@@ -265,6 +335,7 @@ export function CreatorsListPage(): JSX.Element {
                   creatorId={activeCreatorId}
                   shortlisted={activeCreatorId ? shortlistSet.has(activeCreatorId) : false}
                   onToggleShortlist={toggleShortlist}
+                  campaign={selectedCampaign}
                 />
               </div>
             </div>

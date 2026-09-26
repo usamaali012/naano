@@ -284,23 +284,45 @@ apps/
                            in apps/web/.screenshots/ (gitignored). Dev server
                            must be up. From Git-Bash prefix MSYS_NO_PATHCONV=1.
       shots.mjs            `npm run shots --workspace=apps/web` — the full
-                           marketplace suite (grid, both modal tabs, booking
-                           rail, collaborations, creator home + bookings,
-                           error state). Wipes
-                           .screenshots/ first, prints mtimes. Run it to
-                           finish any UI change. Before the creator-home
-                           shots it calls the dev-only POST
+                           suite, rewritten 2026-09-26 (see docs/DECISIONS.md
+                           "Session: web, round 2") against the current UI:
+                           entry-page, marketplace (comparison list +
+                           persistent detail panel, default state),
+                           marketplace-detail-panel (a second row selected),
+                           marketplace-filters (the one filter panel, W3, with
+                           Max CPM set and its chip showing), collaborations
+                           (brand), results, creator-profile,
+                           creator-collaborations, creator-earnings,
+                           error-state. Wipes .screenshots/ first, prints
+                           mtimes. Run it to finish any UI change. Every wait
+                           is on a real selector/response/visible text, never
+                           a fixed timeout standing in for "probably done" —
+                           row selection waits on the GET /creators/:id
+                           response it triggers, the filter chip waits on the
+                           network request carrying maxCpmEur, Results/
+                           Collaborations/Earnings each wait on whichever of
+                           their real states (table/cards vs. empty state)
+                           actually renders. Before the creator-collaborations
+                           shot it calls the dev-only POST
                            /dev/bookings/ensure-invited directly (no browser)
-                           so creator-booking-requests.png always has an
-                           INVITED row with Accept/Decline visible — see
-                           docs/PLAN.md's 2026-09-11 Discovered entry for why
-                           a normal booking-creation UI flow can't guarantee
-                           that. Still does not drive a real booking
-                           creation through the UI (that mutation is not
-                           idempotent against the persistent local dev DB —
-                           see docs/PLAN.md's 2026-09-10 Discovered entry);
-                           the rail's idle state is covered by
-                           modal-rail-bundle instead.
+                           so an INVITED row exists somewhere in the data —
+                           see docs/PLAN.md's 2026-09-11 Discovered entry for
+                           why a normal booking-creation UI flow can't
+                           guarantee that; note the signed-in demo creator
+                           ("Continue as a creator") isn't guaranteed to be
+                           the same creator ensure-invited targeted (Emma
+                           Berg) — that resolution is GET /auth/demo-creator's
+                           logic (apps/api), unchanged by this rewrite. Still
+                           does not drive a real booking creation through the
+                           UI (that mutation is not idempotent against the
+                           persistent local dev DB — see docs/PLAN.md's
+                           2026-09-10 Discovered entry). Pre-2026-09-25 shot
+                           names (creators-grid, modal-overview, modal-rail-
+                           bundle, modal-audience, creator-home, creator-
+                           booking-requests) no longer exist — that UI
+                           (card grid + profile modal) was deleted; see
+                           docs/DECISIONS.md's 2026-09-25 and 2026-09-26
+                           entries for the history.
     tailwind.config.js    Maps Tailwind utilities onto the CSS custom properties
                            in src/index.css via var(). No raw hex/px in configs
                            or components.
@@ -315,53 +337,118 @@ apps/
         api/              ALL http lives here. Two impls: http + fixtures,
                            selected by VITE_API_MODE. client.ts is the interface:
                            login, getMe, listCreators, getCreator,
-                           getActiveCampaign, listShortlist / addToShortlist /
+                           getActiveCampaign, listCampaigns (W2, thin
+                           GET /campaigns wrapper — see docs/DECISIONS.md
+                           "Session: web, round 2"), listShortlist / addToShortlist /
                            removeFromShortlist, createBooking /
                            listBookingsReceived / listBookingsSent /
-                           updateBookingStatus, listAttribution (5.4,
-                           brand-only). http.ts maps every list param,
-                           including the vertical/country/follower-range
-                           filters FilterPanel (2.5) surfaces, and exports
-                           setApiToken (Bearer header for authed calls);
-                           request() throws errors.ts's ApiError (carries the
-                           HTTP status) so callers can special-case a status
-                           (e.g. 409 already-booked) instead of one generic
-                           failure message. fixtures.ts mirrors all of it —
-                           in-memory shortlist + bookings, plus the same
-                           vertical/country/follower-range filtering as
-                           http.ts (kept in sync since 2.5) — FIXTURE_ME is
-                           always the brand, so the creator-side booking
-                           methods have no real fixture context yet.
-                           listBookingsSent (4.2) returns BookingSent
-                           (creatorDisplayName/campaignName/package added)
-                           and takes an optional status, both wired in
+                           updateBookingStatus, submitDraft / markPublished /
+                           approveDraft / requestChanges / markPaid (W1, the
+                           five lifecycle actions — see docs/DECISIONS.md
+                           "Session: web, round 2"), updateMyCard (W4, thin
+                           PATCH /creators/me wrapper), listAttribution (5.4,
+                           brand-only). http.ts maps every ListCreatorsParams
+                           field onto the query string (creatorsQuery()) —
+                           already covered every filter FilterPanel (W3) now
+                           surfaces before W3 touched this file, so W3 changed
+                           nothing here — and exports setApiToken (Bearer
+                           header for authed calls); request() throws
+                           errors.ts's ApiError (carries the HTTP status) so
+                           callers can special-case a status (e.g. 409
+                           already-booked) instead of one generic failure
+                           message. request() also reads a Nest ValidationPipe
+                           error's message as either a string or a string
+                           array (W1 fix — a 400 like MarkPublishedDto's
+                           non-LinkedIn check came back as an array and fell
+                           through to a generic fallback before this). fixtures.ts
+                           mirrors most of it — in-memory shortlist + bookings,
+                           plus the same vertical/country/follower-range/price/
+                           CPM/median-views/engagement filtering as http.ts
+                           (kept in sync since 2.5, extended for W3) —
+                           FIXTURE_ME is always the brand, so
+                           listBookingsReceived still returns nothing real, but
+                           the five W1 lifecycle actions now mutate
+                           fixtureBookings correctly regardless of viewer (no
+                           role check in fixtures) via a duplicated
+                           fixtureNextAction/fixtureNetCents that mirror
+                           apps/api/src/bookings/next-action.ts and money.ts by
+                           hand — keep the two in sync if A1's copy changes.
+                           updateMyCard (W4) mirrors creators.service.ts's
+                           validation by hand against a fixed stand-in
+                           creator (FIXTURE_SELF_CREATOR_ID) — same "no real
+                           creator-mode fixture session" limitation as
+                           listBookingsReceived above, unreachable from the
+                           UI today. postedWithinDays is the one W3 filter
+                           fixtures.ts can't mirror: FIXTURE_CREATORS
+                           carries no per-post publish date (posts are only
+                           synthesized on demand
+                           in getCreator()), so that filter is a no-op in
+                           fixtures mode — verified against the real API
+                           instead.
+                           listBookingsSent returns Paginated<BrandCollaboration>
+                           (widened again for W1 — creatorDisplayName/
+                           campaignName/package from 4.2, nextAction/
+                           draftContent/postUrl from A1/W1), wired in
                            client.ts/http.ts/fixtures.ts — see
                            docs/DECISIONS.md for the package-derivation
                            reasoning (real API) vs. the plain pass-through
                            (fixtures, which already has the package on hand
-                           from the request).
+                           from the request). listCampaigns (W2) added a
+                           second fixture campaign (fixture-campaign-2,
+                           DRAFT) so the switcher has something to switch
+                           between in fixtures mode; fixtures.ts's
+                           createBooking now resolves body.campaignId to
+                           one of the two (falling back to the original LIVE
+                           one when omitted) instead of hardcoding it, and
+                           409s a completed one, mirroring
+                           campaigns.service.ts's own rule.
         stores/           Zustand stores, one per domain. authStore.ts:
                            {token, me}, persist -> localStorage naano.auth;
                            signIn does a real login + /me, signOut clears it.
                            creatorsStore.ts: grid page/sort/q/tab state, plus
-                           filter state (vertical[], country, minFollowers,
-                           maxFollowers) from 2.5 — each setter resets page
-                           to 1 like the others. shortlistStore.ts:
-                           {campaignId, ids, status} — hydrates from the API,
-                           optimistic writes, no localStorage.
+                           every ListCreatorsParams filter FilterPanel (W3)
+                           surfaces — vertical[], country, minFollowers,
+                           maxFollowers, priceMinCents, priceMaxCents,
+                           maxCpmEur, minMedianViews, minEngagementPct,
+                           postedWithinDays — each setter resets page to 1 like
+                           the others; clearPerformanceFilters() resets the six
+                           row-two fields in one call for FilterPanel's Clear
+                           all / the empty state's Clear filters.
+                           campaignStore.ts (W2, new — see docs/DECISIONS.md
+                           "Session: web, round 2"): {campaigns,
+                           selectedCampaignId, status}. hydrate() is
+                           idempotent — keeps the current selection if still
+                           in the refetched list (so a post-booking refresh
+                           never resets the switcher), else falls back to the
+                           company's remembered choice
+                           (localStorage["naano.campaign.<companyId>"],
+                           try/catch-wrapped) then GET /campaigns/active then
+                           the first campaign. select() sets the choice and
+                           writes it to that same localStorage key, read via
+                           authStore.getState().me?.companyId. CreatorsListPage
+                           is the one consumer; MarketplaceHeader's "Ranked
+                           for" select and CampaignBudgetBar both read off it.
+                           shortlistStore.ts: {campaignId, ids, status} —
+                           hydrate(campaignId?) now takes an optional explicit
+                           campaign id (W2; omitted keeps the old
+                           default-active-campaign behaviour) so
+                           CreatorsListPage can re-key it to whichever
+                           campaign campaignStore has selected. Hydrates from
+                           the API, optimistic writes, no localStorage.
                            bookingsStore.ts: {campaignId, byCreatorId,
-                           status} — byCreatorId values are CreatorBookingInfo
-                           ({status, clickCount}), same hydrate pattern as
-                           shortlistStore, maps creator -> booking info for
-                           the active campaign so the marketplace card can
-                           show "already booked" (and, once accepted, its
-                           click count) without a new screen. A creator can
-                           have more than one booking against the active
-                           campaign (e.g. declined, then rebooked) —
-                           hydrate() keeps the most recent one
-                           (listBookingsSent is createdAt desc; first seen
-                           per creator wins), not whichever sorts last, so
-                           the card always reflects what the brand most
+                           status} — hydrate(campaignId?) same W2 change as
+                           shortlistStore's. byCreatorId values are
+                           CreatorBookingInfo ({status, clickCount}), same
+                           hydrate pattern as shortlistStore, maps creator ->
+                           booking info for whichever campaign is selected so
+                           the marketplace card can show "already booked"
+                           (and, once accepted, its click count) without a
+                           new screen. A creator can have more than one
+                           booking against the same campaign (e.g. declined,
+                           then rebooked) — hydrate() keeps the most recent
+                           one (listBookingsSent is createdAt desc; first
+                           seen per creator wins), not whichever sorts last,
+                           so the card always reflects what the brand most
                            recently did. See docs/DECISIONS.md.
                            recordBooking() takes the full Booking and
                            updates the map immediately on a successful
@@ -405,6 +492,25 @@ apps/
                            CreatorsListPage (brand) or CreatorHomePage
                            (creator — their own profile only now, "this is how
                            brands see you", from GET /creators/:id).
+                           CreatorHomePage (W4, 2026-09-26): "Edit card"
+                           swaps the header + metrics block for an in-place
+                           form (headline, single post price, bundle of five
+                           price, both in EUR) — no modal, Audience snapshot/
+                           Recent posts below stay mounted. Each price field
+                           shows its own live CPM via the shared cpmCents
+                           formula (bundle divides by five first, same
+                           per-post convention BookingRail uses). Client-side
+                           validation mirrors PATCH /creators/me's DTO/
+                           service rules exactly (MIN_PRICE_CENTS/
+                           MAX_PRICE_CENTS constants, "keep in sync with the
+                           DTO" comment) and disables Save while invalid; a
+                           genuine API rejection still surfaces via
+                           ApiError.message. Save calls api.updateMyCard and
+                           replaces detail with the response directly, no
+                           refetch. Also added a headline line and a
+                           "Bundle of 5" metric tile to the display view —
+                           neither rendered before this slice even though
+                           both were already on CreatorProfileDetail.
                            Collaborations lives at one URL, `/app/
                            collaborations`, role-branched by App.tsx's new
                            CollaborationsIndex (same pattern as AppIndex): a
@@ -440,16 +546,74 @@ apps/
                            (styled <details> + chevron, controlled), Avatar
                            (initials always render underneath; the <img> paints
                            over them once loaded and is removed on error — no
-                           empty circle while a slow photo loads). None hardcode
-                           a colour, radius or spacing value.
+                           empty circle while a slow photo loads). Input takes
+                           an optional `invalid` boolean (2026-09-26, W3 input
+                           guards — see docs/DECISIONS.md "Session: web, round
+                           2"): swaps the border/focus-ring token from
+                           --primary to --warn, the same token status pills
+                           already use for a blocked state. FilterPanel is its
+                           first consumer. None hardcode a colour, radius or
+                           spacing value.
         marketplace/      MarketplaceHeader (title/explainer, All+Shortlist tabs
                            with counts, search, sort-by, section header — "Best
                            match first" / "All N creators, ordered by…" (singular:
                            "1 creator, ordered by…"), true at any catalogue size).
-                           FilterPanel (2.5, partial): industry searchable
-                           multi-select, country dropdown, follower min/max,
-                           active-filter chips + Clear all. No price range or
-                           performance filters yet (2.5 remainder / 2.6).
+                           Gained a "Ranked for" campaign Select (W2,
+                           2026-09-26 — see docs/DECISIONS.md "Session: web,
+                           round 2"): campaign name, "(completed)" suffix for
+                           a COMPLETED one; the old static "Ranked for your
+                           company" sentence in the subtitle was dropped
+                           rather than kept alongside it (same
+                           anti-three-restatements reasoning slice 2.4 already
+                           applied to this exact phrase). New
+                           CampaignBudgetBar.tsx (W2): one bar, three segments
+                           (paid / committed-unpaid / pending) as a percentage
+                           of budgetCents capped at 100% width, same
+                           color-mix tint approach ui/SegmentedBar.tsx uses;
+                           "€X committed of €Y", "€Z invited, not yet
+                           accepted", and a conditional text-warn over-budget
+                           line. Rendered between MarketplaceHeader and the
+                           tab/filter content in CreatorsListPage,
+                           unconditionally (both tabs) since it's campaign
+                           context, not list content.
+                           FilterPanel (W3, 2026-09-26, complete — see
+                           docs/DECISIONS.md "Session: web, round 2"): one panel,
+                           two rows, every filter the API supports. Row one:
+                           industry searchable multi-select, country dropdown,
+                           follower min/max. Row two, same visual weight: price
+                           range (EUR in the UI, cents on the wire), max CPM
+                           (EUR), min median views, min engagement (%), posted
+                           within (any/7/30/90 days, a Select). No Apply button —
+                           every control applies the way the existing filters do,
+                           number inputs debounced 250ms like the search box.
+                           Active-filter chips (one per filter, including each
+                           selected industry) + one Clear all, unchanged pattern.
+                           One line of copy under the panel — "Filters hide
+                           creators. They don't change the sector fit score." —
+                           verified true against ranking.ts/audience-fit.ts
+                           before writing it: `where` narrows the candidate set,
+                           sectorFitPct is computed from scoreAudienceFit on
+                           whatever survives the filter, so filtering never
+                           touches the formula. naano itself splits this one list
+                           across two panels (RECON.md "Filters") — deliberately
+                           not followed here.
+                           Input guards (2026-09-26, see docs/DECISIONS.md
+                           "Session: web, round 2"): price min/max, max CPM,
+                           min median views and min engagement all reject a
+                           negative value client-side (the native `min={0}`
+                           attribute doesn't block typing, only nudging);
+                           min engagement additionally rejects >100
+                           (DebouncedNumberFilter's optional `max` prop).
+                           PriceRangeFilter additionally rejects an inverted
+                           range (min > max) with one inline `text-warn` line
+                           under the inputs, "Min price is above max price." —
+                           no request sent for any of these until the value is
+                           fixed, the typed text stays on screen, the field
+                           gets Input's `invalid` styling, and the committed
+                           filter (so any chip) stays at its last valid
+                           setting. No guard on followers (out of W3/this
+                           fix's scope) or on posted-within (a Select, not
+                           free text).
                            A comparison list + persistent detail panel replaced
                            the card grid + modal 2026-09-25 (own-product
                            redesign, see DECISIONS.md) — a brand's job here is
@@ -470,6 +634,10 @@ apps/
                            which creator fills the panel — the explicit
                            selection if still in the current filtered/paged
                            list, else the top row, so the panel is never empty.
+                           CreatorDetailPanel now also takes a `campaign:
+                           CampaignOverview | null` prop (W2, the selected
+                           campaign from campaignStore) and threads it to
+                           BookingRail.
                            modal/ (name kept, contents relocated into the panel
                            rather than a dialog) has OverviewTab (its post card
                            is paged — "N of 5", prev/next, resets to post 1 per
@@ -479,36 +647,71 @@ apps/
                            /bookings; renders one of the form / a booked
                            confirmation / an already-booked notice / a
                            retryable error, see bookingStatus.ts and
-                           lib/api/errors.ts), ReachSparkline (inline-SVG),
+                           lib/api/errors.ts — W2, 2026-09-26: takes the
+                           selected `campaign` prop, sends `campaignId` on
+                           create, warns above the confirm button without
+                           blocking when committedCents + pendingCents +
+                           this package's price would exceed budgetCents,
+                           disables the confirm button with the reason always
+                           rendered as text (not a hover tooltip) for a
+                           COMPLETED campaign, and calls
+                           `useCampaignStore.getState().hydrate()` on a
+                           successful booking so the budget bar moves without
+                           a reload), ReachSparkline (inline-SVG),
                            audienceSegments.ts (dimension-filter helper). Two
                            tabs only (Overview, Audience) — no Content tab.
                            icons.tsx (NetworkBadge — no longer used by the list
                            row, kept for reuse; StarIcon).
-        campaign/         CollaborationsTable (new, 4.2): Creator, Campaign,
-                           Package, Agreed price, Status, Tracked link (copy
-                           button + click count, gated on trackedLinkSlug
-                           existing rather than on status === ACCEPTED, since
-                           seed can place a booking straight at
-                           SCHEDULED/LIVE/PAID with a link already minted).
-                           Brief form, campaign list, status pills still land
-                           with the rest of the campaign flow.
+        campaign/         CollaborationsTable (4.2, widened for W1
+                           2026-09-26): Creator, Campaign, Package, Agreed
+                           price, Status, Tracked link (copy button + click
+                           count, gated on trackedLinkSlug existing rather
+                           than on status === ACCEPTED, since seed can place a
+                           booking straight at SCHEDULED/LIVE/PAID with a link
+                           already minted), plus a new Next action column —
+                           same tinted-panel-vs-plain-line rule as the
+                           creator's CollaborationCard. review_draft shows the
+                           draft text (line-clamp-3) then Approve/Ask for
+                           changes; mark_paid shows a link to postUrl (the
+                           live post, not the tracked link) then "Mark as paid
+                           (amount)" plus the fixed "Payment rails aren't
+                           built..." line. Takes bookings pre-sorted
+                           actionable-first (CollaborationsPage's own
+                           orderByNextAction) plus busyId/errors maps so a row
+                           mid-action disables just itself and a failure shows
+                           inline on that row. Brief form, campaign list,
+                           status pills still land with the rest of the
+                           campaign flow.
         dashboard/        AttributionTable (5.4): Creator, Accepted bookings,
                            Clicks, Last click (formatRelativeTime, new in
                            lib/format.ts). No ranking language, no expander —
                            see docs/DECISIONS.md. Metric tiles/charts (5.1-5.3)
                            are still cut.
-        creator/          New 2026-09-25 (own-product redesign). CollaborationCard
+        creator/          New 2026-09-25 (own-product redesign), lifecycle
+                           controls added for W1 (2026-09-26). CollaborationCard
                            (one collaboration, organised around nextAction — an
-                           actionable tinted panel with the label/consequence/
-                           Accept-Decline when consequence is non-empty, else a
-                           plain muted line, deliberately not the same box in a
-                           different colour). TrackedLinkRow (moved out of
-                           CreatorHomePage.tsx, unchanged behaviour). Consumed
-                           by routes/CreatorCollaborationsPage.tsx (its own
-                           route as of 2026-09-26, was a CreatorHomePage
-                           section). EarningsChart (2026-09-26): token-only
-                           inline SVG bar chart, six months, newest solid —
-                           same restraint as marketplace/modal/ReachSparkline.
+                           actionable tinted panel with the label/consequence
+                           when consequence is non-empty, else a plain muted
+                           line, deliberately not the same box in a different
+                           colour). The panel now branches on nextAction.kind:
+                           respond (Accept/Decline, unchanged), submit_draft
+                           (a textarea seeded from draftContent so a resubmit
+                           after request-changes starts from the old text, a
+                           live N / 3000 count, "Send for review"), publish
+                           (TrackedLinkRow + a plain URL Input + "Mark as
+                           published", no client-side domain check — the
+                           400 from a non-LinkedIn URL is a real round trip).
+                           Takes busy/error per row from
+                           CreatorCollaborationsPage, which replaces a row in
+                           place with the full returned CreatorCollaboration
+                           on submitDraft/markPublished (both return the
+                           recomputed nextAction, no refetch needed) but still
+                           refetches after respond (updateBookingStatus only
+                           returns a bare Booking). TrackedLinkRow (moved out
+                           of CreatorHomePage.tsx, unchanged behaviour).
+                           EarningsChart (2026-09-26): token-only inline SVG
+                           bar chart, six months, newest solid — same
+                           restraint as marketplace/modal/ReachSparkline.
 packages/
   shared/                 Wire-safe types (enums.ts, entities.ts, api.ts) hand-kept
                            in sync with prisma/schema.prisma. Imported by both apps.

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Booking, CreatorProfileDetail } from "@naano/shared";
+import type { Booking, CampaignOverview, CreatorProfileDetail } from "@naano/shared";
 import { cpmCents } from "@naano/shared";
 import { Disclosure } from "../../ui/Disclosure";
 import { Input } from "../../ui/Input";
@@ -8,6 +8,7 @@ import { StatusPill } from "../../ui/StatusPill";
 import { api } from "../../../lib/api";
 import { ApiError } from "../../../lib/api/errors";
 import { useBookingsStore } from "../../../lib/stores/bookingsStore";
+import { useCampaignStore } from "../../../lib/stores/campaignStore";
 import { bookingStatusLabel, bookingStatusTone } from "../../../lib/bookingStatus";
 import { formatCents, formatCompactNumber } from "../../../lib/format";
 
@@ -19,6 +20,8 @@ const BOOKING_STEPS = [
 
 interface BookingRailProps {
   creator: CreatorProfileDetail;
+  /** The campaign the marketplace is ranked for; the booking is created against it. */
+  campaign: CampaignOverview | null;
 }
 
 type Package = "single" | "bundle";
@@ -32,7 +35,7 @@ function defaultDeliverable(pkg: Package): string {
 
 // The booking summary, plus the real submit control. On success the rail
 // shows the created booking's state instead of resetting to a blank form.
-export function BookingRail({ creator }: BookingRailProps): JSX.Element {
+export function BookingRail({ creator, campaign }: BookingRailProps): JSX.Element {
   const [pkg, setPkg] = useState<Package>("single");
   const [deliverable, setDeliverable] = useState(() => defaultDeliverable("single"));
   const [deliverableTouched, setDeliverableTouched] = useState(false);
@@ -82,6 +85,13 @@ export function BookingRail({ creator }: BookingRailProps): JSX.Element {
     { id: "bundle", label: "Bundle of 5", priceCents: creator.bundle5PriceCents },
   ];
 
+  const campaignCompleted = campaign?.status === "COMPLETED";
+  // This booking would start INVITED, adding to pending, not committed — so
+  // the projection is today's committed + pending plus this booking's price.
+  const overBudgetCents = campaign
+    ? Math.max(0, campaign.committedCents + campaign.pendingCents + packageCents - campaign.budgetCents)
+    : 0;
+
   async function submit(): Promise<void> {
     setPhase("submitting");
     try {
@@ -89,10 +99,12 @@ export function BookingRail({ creator }: BookingRailProps): JSX.Element {
         creatorProfileId: creator.id,
         package: pkg,
         deliverable,
+        campaignId: campaign?.id,
       });
       recordBooking(creator.id, created);
       setBooking(created);
       setPhase("booked");
+      void useCampaignStore.getState().hydrate();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setPhase("conflict");
@@ -269,9 +281,23 @@ export function BookingRail({ creator }: BookingRailProps): JSX.Element {
 
       {phase !== "booked" && phase !== "conflict" && (
         <>
+          {campaignCompleted ? (
+            <p className="text-label text-warn">
+              This campaign is completed, so it can&rsquo;t take new bookings.
+            </p>
+          ) : (
+            overBudgetCents > 0 && (
+              <p className="text-label text-warn">
+                This booking would put the campaign {formatCents(overBudgetCents)} over
+                budget.
+              </p>
+            )
+          )}
           <Button
             onClick={() => void submit()}
-            disabled={phase === "submitting" || deliverable.trim() === ""}
+            disabled={
+              phase === "submitting" || deliverable.trim() === "" || campaignCompleted
+            }
             className="w-full"
           >
             {phase === "submitting"
