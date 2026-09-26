@@ -2081,3 +2081,198 @@ needs to not lose an hour to.
     same file) and this slice is UI over an already-proven contract.
   - `npx tsc --noEmit` on `apps/web` (via its own `tsconfig.json`) — clean,
     no errors.
+
+- 2026-09-26 — **W6, the detail panel scrolls on its own.** The panel's
+  content (header + tabs + both tabs + the booking rail) could be taller
+  than the list column, and the whole page had to scroll to reach the
+  booking rail — after which the shorter list column left a large empty
+  gap on the left, because the flex row's height was governed by the
+  taller panel. Fixed in `CreatorsListPage.tsx` + `CreatorDetailPanel.tsx`
+  only, per the brief's file boundary (`apps/api`, `lib/api`, `ResultsPage`,
+  dashboard components untouched).
+  - **Sizing lives in `CreatorsListPage.tsx`, not the panel.** On desktop
+    (`matchMedia("(min-width: 1024px)")`, tracked in state so it reacts to
+    a resize crossing the breakpoint, not just read once) the panel
+    wrapper gets an inline `{ top, height }`: `top` is the real top bar's
+    height and `height` is `Math.min(listColumnHeight, viewportHeight -
+    topBarHeight - 32)` — 32 matching the page's own `p-s8` bottom
+    padding, not a separate guess. Both `listColumnHeight` and
+    `topBarHeight` come from `ResizeObserver`s on the real DOM (the list
+    column's own ref; the top bar found via `document.querySelector("main
+    > header")`, the only header that's a direct child of `main` — AppShell
+    is out of scope for this change, so its top bar has no exported height
+    to read). The `Math.min` is what actually fixes the empty-space bug:
+    capping the panel to the viewport alone still left it taller than a
+    short list (a full viewport is usually taller than a ~12-row page), so
+    the row's height stayed panel-governed. Capping to whichever is
+    shorter makes the row's height list-governed whenever the list is the
+    shorter one — verified in the browser: `row.getBoundingClientRect()`
+    bottom exactly equals the list column's bottom, not the panel's,
+    confirming there's no leftover empty space below the list.
+  - **ResizeObserver gotcha, caught in verification, not assumed away**:
+    the first version read `entry.contentRect.height` inside the observer
+    callback, which is content-box (excludes padding and border) — the top
+    bar's own height, measured this way, came back roughly half its real
+    (border-box) size, right after a client-side sign-in navigation, and
+    never corrected itself even though the header's real size never
+    changed (nothing to trigger a second callback). `getBoundingClientRect
+    ().height` (border-box) is what both the initial call and the
+    `ResizeObserver` callback use now, in both observers (top bar and list
+    column) — confirmed stable across a sign-out/sign-in round trip with
+    six samples 300ms apart, all reading the same correct height.
+  - **The panel itself** (`CreatorDetailPanel.tsx`) no longer uses the
+    shared `Card` primitive for its ready-state root — `Card`'s own
+    `p-s6` can't be selectively overridden per-section without relying on
+    Tailwind's generated class order (no `tailwind-merge` in this
+    project), so the border/radius/surface tokens are applied directly on
+    a `flex h-full min-h-0 flex-col` wrapper instead. Inside: a `shrink-0`
+    header (avatar, name, role line, star — unchanged content) with its
+    own `border-b`, then a `min-h-0 flex-1 overflow-y-auto` region holding
+    the tabs, tab content, and the booking rail. `h-full` on the root only
+    resolves correctly because the wrapping div in `CreatorsListPage.tsx`
+    sets an explicit `height` (not `max-height` — a percentage height
+    can't resolve against an auto-height ancestor even with `max-height`
+    set). Scrollbar styling is `scrollbar-width: thin` +
+    `scrollbar-color: var(--border) transparent` (Firefox) via Tailwind
+    arbitrary properties, applied in the component itself — no change to
+    `index.css`, which is outside this session's file boundary; Chromium
+    keeps its default scrollbar, per the brief's "or default."
+  - **Reset to top on selection**: the scroll region's ref calls
+    `scrollTo({ top: 0 })` inside the same `useEffect` that already resets
+    `tab` to `"overview"` on `creatorId` change — one effect, not two.
+  - **Narrow screens**: the desktop check gates the inline style entirely;
+    below 1024px the wrapper has no `top`/`height`, `position` reads
+    `static` (confirmed in the browser), and the panel stacks below the
+    list exactly as before this change.
+  - **Verified in the browser** at 1440×900 and 1280×720 (real DOM
+    measurements, not just visual): panel height matched
+    `viewportHeight - topBarHeight - 32` in both sizes; scrolling the
+    panel's own region to its `scrollHeight` moved `panelScrollTop` to the
+    bottom while `window.scrollY` stayed at 0 (page didn't move) and the
+    header text stayed visible throughout; selecting a different row reset
+    `panelScrollTop` to 0 and swapped the header's name. At 914px width
+    (the pane's floor for a 390px emulation request) the wrapper's
+    `position` was `static` with no inline `top`/`height`, confirming the
+    narrow-screen path is untouched.
+  - **`npm run shots`**: ran clean, all ten shots regenerated
+    (`marketplace.png`/`marketplace-detail-panel.png` show the panel
+    correctly bounded beside the list, no empty space below the list
+    column). Same six pre-existing `randomuser.me` `ERR_FAILED` lines as
+    every prior run in this session — not a regression.
+  - `npx tsc --noEmit -p apps/web/tsconfig.json` — clean, no errors.
+
+- 2026-09-26 — **W6 addendum: panel floor.** The cap alone (whichever is
+  shorter — viewport-below-top-bar or the list column) had no lower bound,
+  so a heavily filtered list (one or two rows) shrank the panel to match,
+  making the booking rail unusably cramped. Added a 560px floor:
+  `panelHeight` is now `Math.max(Math.min(panelAvailableHeight, 560),
+  <the existing capped value>)` — never shorter than 560px unless the
+  viewport itself has less than 560px to give (a very short screen still
+  wins, so the panel never overflows). File: `CreatorsListPage.tsx`.
+
+- 2026-09-26 — **W7, entry page redesign.** The brief: the page read as the
+  old naano clone with a new colour, not a product someone designed — a left
+  column of text, two plain cards, and a flat colour block with one sentence.
+  Rebuilt as `EntryPage.tsx` plus three new files under
+  `components/entry/` (`RolePanel.tsx`, `BookingStepsStrip.tsx`,
+  `LiveCreatorsStrip.tsx`), token-only, Fraunces headings / IBM Plex Sans UI
+  per `index.css`'s existing type layer (already wired for both faces before
+  this session — DESIGN.md's own "one family" line is stale against that;
+  not fixed here, out of this slice's scope).
+  - **RolePanel**: the whole panel is a real `<button>` (native disabled/
+    focus behaviour, and the existing `enter()`/`pending`/`failed` sign-in
+    logic is untouched) — a nested `<button>` for the CTA isn't valid HTML,
+    so the CTA is a `<span>` sharing the same classes as `ui/Button`'s
+    primary variant. Bullets use `list-disc` + `marker:text-primary` rather
+    than a hand-built dot (no arbitrary pixel sizing needed).
+  - **BookingStepsStrip**: five real steps (Invite/Accept/Draft/Publish/
+    Paid) — the one place DESIGN.md's anti-slop rule allows numbered
+    markers, since it's a genuine sequence. Connected visually with a
+    hairline divider between columns (row on `sm:` and up, stacked with a
+    top divider below it) rather than an arrow or chevron between steps —
+    "arrow appended to button text" is barred but this isn't a button, and
+    an arrow between steps read closer to the barred pattern than a plain
+    line does, so line it is.
+  - **LiveCreatorsStrip**: real `GET /creators?page=1&pageSize=5`
+    (unauthenticated — the route has no guard, confirmed against
+    `creators.controller.ts`), rendered via the existing `ui/Avatar`
+    (photo-over-initials) + `verticalLabel`/`formatCompactNumber` from
+    `lib/format.ts`. `creators` state starts `null` (nothing rendered while
+    in flight) and both the empty-result and error paths resolve it to `[]`,
+    which renders `null` — the strip hides silently rather than showing an
+    error on a page whose only job is getting someone signed in, per the ask.
+    Caught one anti-slop rule that would have been an easy miss: "no meta
+    strings joined with middle dots" (the same rule that killed the old
+    modal's "AI · Marketing · LinkedIn creator" role line, per the
+    "Session: web (own-product redesign)" heading above) — grepped the repo
+    for `·` first (zero hits, confirming the rule already holds everywhere
+    else) and joined vertical + follower count with a comma instead:
+    "Fintech, 58K followers".
+  - **Verified in the browser** against the real API (`web` dev server +
+    local API on `:3000`): both sign-ins walked end to end (brand into the
+    marketplace, creator onto their own profile), the live strip rendered 5
+    real creators (`GET /creators?page=1&pageSize=5` → 200, names/verticals/
+    follower counts matched the response), the two role panels sat side by
+    side at 1440px width (confirmed via `getBoundingClientRect` — the
+    browser pane's screenshot only captures ~800px at a time, so layout was
+    checked by measurement, not by eye, at that width) and stacked to one
+    column at 390px with the steps strip and live strip both re-flowing
+    cleanly. `npx tsc -b apps/web/tsconfig.json` — clean, no errors.
+
+## Session: web, round 3
+
+- 2026-09-26 — W8, `CreatorHomePage` rebuilt from a plain profile card into a
+  real Overview (docs/RECON-CREATOR.md's "Overview" section, "Problems worth
+  fixing" #4 — naano's own first run is four zeros above the fold). Only
+  `apps/web/src/routes/CreatorHomePage.tsx` touched; no new API method, all
+  four data sources (`getCreator`, `getEarnings`, `getActionCount`,
+  `listBookingsReceived`) already existed and are fetched in one
+  `Promise.all`.
+  - **Every tile carries a caption, never a bare number.** Earned:
+    "N paid, €X average" or "No paid collaborations yet" at zero. In transit:
+    "Arrives in 1 to 7 days" or "Nothing in transit right now" at zero. Needs
+    you: "Waiting on your next move" or "Nothing needs you right now" at
+    zero. Your price: "Single post, CPM €X" — always populated, since the
+    API's own price floor (5,000 cents) means this can never legitimately be
+    zero. No middle dots anywhere in this copy — grepped for `·` first
+    (still zero hits repo-wide, per the "Session: web (own-product redesign)"
+    note above) and used a comma instead, same call as `LiveCreatorsStrip`.
+  - **"Needs you" panel derivation.** `listBookingsReceived({ pageSize: 20
+    })`, filtered to `nextAction.consequence !== ""` (the same test
+    `CollaborationCard`/`CreatorCollaborationsPage` already use to mean "the
+    creator's move, not the brand's"), sliced to 3. Not a separate endpoint —
+    the API's A6 slice already orders actionable rows first, so a 20-row page
+    reliably surfaces every actionable row a creator would realistically have
+    without pagination. Each row links to `/app/collaborations` (no inline
+    accept/decline here — that stays the one place with the real controls)
+    and shows brand, campaign, the next-action label, and net amount.
+  - **Layout.** `flex-col lg:flex-row`, left column (tiles + Needs you +
+    Earnings chart) `flex-1 min-w-0`, the creator card `lg:w-[440px]` — same
+    beside/below breakpoint convention the marketplace detail panel already
+    uses (the "Piece 2" entry under "Session: web (own-product redesign)"
+    above). Inside the now-440px-wide card, the metrics grid and audience
+    snapshot lost their `sm:`/`lg:` column-count bumps: those key off
+    viewport width, not container width, and would have squeezed 3–5 columns
+    into a fixed 440px box on any wide screen. Fixed at 2 columns (metrics)
+    and 1 column (audience) instead.
+  - **Edit card unchanged in substance**, only re-parented: same
+    `EditCardForm`, same validation, same `onSaved` callback — now merges
+    into a `HomeData` object (`{ detail, earnings, actionCount, needsYou }`)
+    instead of a bare `detail` state, since the page now holds four fetched
+    pieces, not one.
+  - **Verified against the running local API** (`web` on :5173, `api` on
+    :3000) signed in as the demo creator (Clara Keller): initial state showed
+    all-zero actionable tiles and both real empty states ("Nothing needs you
+    right now" in the greeting, the tile, and the panel). Used the existing
+    dev-only `POST /dev/bookings/ensure-invited` to give her one genuine
+    INVITED booking, then reloaded — the greeting read "1 collaboration needs
+    you.", the Needs you tile and panel both showed it (Vertice Analytics /
+    Q4 RevOps Awareness / "Accept or decline this invitation." / €789), and
+    the Earned/In transit figures (€838 / €3,359) matched the Earnings page
+    exactly while the Needs-you count matched the rail badge and the
+    Collaborations page's single actionable row. Edit card re-verified end to
+    end: changed the headline, saved, confirmed the new value persisted
+    through a reload, then reverted it. Checked 1440px (two-column, beside)
+    and 375px (single column, card below) — no horizontal scroll, tiles
+    reflow 2-up on mobile. No console errors. `npx tsc -b
+    apps/web/tsconfig.json` — clean.

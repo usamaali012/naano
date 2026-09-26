@@ -633,6 +633,65 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   simulate a real `/r/:slug` hit. README's "What was deliberately cut" no
   longer claims the dashboard was skipped; "What I changed" says why.
 
+- [x] **W6 Panel scroll** — done 2026-09-26.
+  Scope: the persistent detail panel could be taller than the list column,
+  forcing the whole page to scroll to reach the booking rail and leaving
+  empty space below the (shorter) list. On desktop the panel wrapper
+  (`CreatorsListPage.tsx`) now gets an inline height capped to whichever is
+  shorter — the list column's own height or the viewport below the real top
+  bar (both measured via `ResizeObserver`, not guessed) — so the row's
+  height is always list-governed. `CreatorDetailPanel.tsx`'s header now
+  stays pinned (`shrink-0`) while everything below it scrolls in its own
+  region (`overflow-y-auto`), reset to the top on every new selection.
+  Narrow screens unaffected (inline sizing gated behind a `min-width: 1024px`
+  check).
+  Files: `apps/web/src/routes/CreatorsListPage.tsx`,
+  `apps/web/src/components/marketplace/CreatorDetailPanel.tsx`.
+  Notes: see docs/DECISIONS.md's "Session: web, round 2" for the full
+  verification log, including a real `ResizeObserver` bug caught along the
+  way (`entry.contentRect` is content-box, not border-box — under-reported
+  the top bar's height and never self-corrected).
+  Addendum, 2026-09-26: W6's cap had no floor — a heavily filtered list (one
+  or two rows) shrank the panel to match, leaving the booking rail cramped.
+  `panelHeight` now takes `Math.max` against `Math.min(panelAvailableHeight,
+  560)`, so the panel never drops below 560px (or the viewport's own height
+  below that, on a very short screen). File: `CreatorsListPage.tsx`.
+
+- [x] **W7 Entry page redesign** — done 2026-09-26.
+  Scope: replace the entry page's left-column-of-text-plus-two-cards layout
+  (read as the old naano clone with a new palette) with a page that looks
+  designed: logo + one-line headline/subline, two large equal-weight role
+  panels (Brand/Ledgerly, Creator) each a whole clickable surface with its
+  own bullets and CTA, a "How a booking moves" five-step strip (Invite,
+  Accept, Draft, Publish, Paid), and a live "Creators in the marketplace"
+  strip of 5 real creators from `GET /creators` (hides silently on failure).
+  Sign-in behaviour and loading/error states unchanged.
+  Files: `apps/web/src/routes/EntryPage.tsx`,
+  `apps/web/src/components/entry/RolePanel.tsx` (new),
+  `apps/web/src/components/entry/BookingStepsStrip.tsx` (new),
+  `apps/web/src/components/entry/LiveCreatorsStrip.tsx` (new).
+  Notes: see docs/DECISIONS.md's "Session: web, round 2" for the anti-slop
+  pass (no middle-dot-joined meta strings — `LiveCreatorsStrip` uses a comma
+  instead — and the numbered 1–5 steps kept since it's a genuine sequence,
+  the one case DESIGN.md's anti-slop rule allows them) and the end-to-end
+  verification (both sign-ins, live strip against the real API, 1440px and
+  390px screenshots).
+
+- [x] **W8 Creator home overview** — done 2026-09-26.
+  Scope: rebuild `CreatorHomePage` from a plain profile card into a real
+  Overview per docs/RECON-CREATOR.md's "Overview" section and "Problems worth
+  fixing" #4/#5 — greeting header, four tiles from real data (no bare
+  zero/dash), a "Needs you" panel, an earnings mini chart, and the existing
+  creator card as a beside/below preview. Real data only, from the four
+  already-existing methods (`getCreator`, `getEarnings`, `getActionCount`,
+  `listBookingsReceived`) — no new API surface.
+  Files: `apps/web/src/routes/CreatorHomePage.tsx`.
+  Notes: see docs/DECISIONS.md's "Session: web, round 3" for the tile-caption
+  rules, the "Needs you" derivation, and the end-to-end verification
+  (numbers cross-checked against Earnings/Collaborations, Edit card
+  reverified, an actionable and a zero-actionable state both seen live,
+  1440px/375px screenshots).
+
 ---
 
 ## Discovered

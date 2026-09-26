@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MarketplaceCreator } from "@naano/shared";
 import { api } from "../lib/api";
 import { useCreatorsStore } from "../lib/stores/creatorsStore";
@@ -73,6 +73,87 @@ export function CreatorsListPage(): JSX.Element {
   // list, paging, or changing a filter swaps the panel in place, with no
   // open/close step for the brand to perform.
   const [selectedCreatorId, setSelectedCreatorId] = useState<string | null>(null);
+
+  // Desktop-only sizing for the persistent detail panel (W6): capped to
+  // whichever is shorter, the viewport below the real top bar or the list
+  // column's own height, so the panel never forces the page taller than the
+  // list. Narrow screens ignore all of this and stack normally.
+  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(min-width: 1024px)").matches
+      : false,
+  );
+  const [viewportHeight, setViewportHeight] = useState<number>(() =>
+    typeof window !== "undefined" ? window.innerHeight : 0,
+  );
+  const [topBarHeight, setTopBarHeight] = useState(0);
+  const [listHeight, setListHeight] = useState(0);
+  const listObserverRef = useRef<ResizeObserver | null>(null);
+
+  useEffect(() => {
+    const mql = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(mql.matches);
+    update();
+    mql.addEventListener("change", update);
+    return () => mql.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    function onResize(): void {
+      setViewportHeight(window.innerHeight);
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // The top bar (AppShell.tsx, out of scope for this change) has no fixed
+  // height in the design system, so it's measured off the real DOM node
+  // rather than guessed. `main > header` is AppShell's own top bar — the
+  // only header that is a direct child of `main`.
+  useLayoutEffect(() => {
+    const header = document.querySelector<HTMLElement>("main > header");
+    if (!header) return;
+    // Re-measure via getBoundingClientRect (border-box) on every callback,
+    // including the observer's own initial one — entry.contentRect is
+    // content-box only (excludes the header's padding and border), which
+    // under-reports the real height ResizeObserver was meant to replace a
+    // guess with.
+    const measure = () => setTopBarHeight(header.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
+  const setListColumnRef = useCallback((node: HTMLDivElement | null) => {
+    listObserverRef.current?.disconnect();
+    listObserverRef.current = null;
+    if (node) {
+      const measure = () => setListHeight(node.getBoundingClientRect().height);
+      measure();
+      const observer = new ResizeObserver(measure);
+      observer.observe(node);
+      listObserverRef.current = observer;
+    }
+  }, []);
+
+  const PANEL_BOTTOM_GUTTER = 32; // matches the page's own p-s8 bottom padding
+  const PANEL_MIN_HEIGHT = 560; // floor so a short list (few filtered rows) doesn't shrink the panel below usable
+  const panelAvailableHeight =
+    topBarHeight > 0 && viewportHeight > 0
+      ? Math.max(0, viewportHeight - topBarHeight - PANEL_BOTTOM_GUTTER)
+      : undefined;
+  const panelHeight =
+    panelAvailableHeight !== undefined
+      ? Math.max(
+          Math.min(panelAvailableHeight, PANEL_MIN_HEIGHT),
+          listHeight > 0 ? Math.min(listHeight, panelAvailableHeight) : panelAvailableHeight,
+        )
+      : undefined;
+  const panelStyle =
+    isDesktop && topBarHeight > 0 && panelHeight !== undefined
+      ? { top: topBarHeight, height: panelHeight }
+      : undefined;
 
   useEffect(() => {
     void hydrateCampaigns();
@@ -309,7 +390,7 @@ export function CreatorsListPage(): JSX.Element {
             />
           ) : (
             <div className="flex flex-col gap-s6 lg:flex-row lg:items-start">
-              <div className="flex min-w-0 flex-1 flex-col gap-s4">
+              <div ref={setListColumnRef} className="flex min-w-0 flex-1 flex-col gap-s4">
                 <CreatorComparisonList
                   creators={displayed}
                   selectedIds={selectedIds}
@@ -330,7 +411,10 @@ export function CreatorsListPage(): JSX.Element {
                 )}
               </div>
 
-              <div className="w-full shrink-0 lg:sticky lg:top-8 lg:w-[440px]">
+              <div
+                className="w-full shrink-0 lg:sticky lg:w-[440px]"
+                style={panelStyle}
+              >
                 <CreatorDetailPanel
                   creatorId={activeCreatorId}
                   shortlisted={activeCreatorId ? shortlistSet.has(activeCreatorId) : false}
