@@ -138,15 +138,17 @@ export function CreatorsListPage(): JSX.Element {
   }, []);
 
   const PANEL_BOTTOM_GUTTER = 32; // matches the page's own p-s8 bottom padding
+  const PANEL_MIN_HEIGHT = 560; // floor so a short list (few filtered rows) doesn't shrink the panel below usable
   const panelAvailableHeight =
     topBarHeight > 0 && viewportHeight > 0
       ? Math.max(0, viewportHeight - topBarHeight - PANEL_BOTTOM_GUTTER)
       : undefined;
   const panelHeight =
     panelAvailableHeight !== undefined
-      ? listHeight > 0
-        ? Math.min(listHeight, panelAvailableHeight)
-        : panelAvailableHeight
+      ? Math.max(
+          Math.min(panelAvailableHeight, PANEL_MIN_HEIGHT),
+          listHeight > 0 ? Math.min(listHeight, panelAvailableHeight) : panelAvailableHeight,
+        )
       : undefined;
   const panelStyle =
     isDesktop && topBarHeight > 0 && panelHeight !== undefined
