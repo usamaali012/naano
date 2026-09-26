@@ -54,6 +54,34 @@ export function CampaignBudgetBar({ campaign }: CampaignBudgetBarProps): JSX.Ele
           {formatCents(pendingCents)} invited, not yet accepted
         </span>
       </div>
+      <div className="flex flex-wrap items-center gap-s4 text-label text-text-muted">
+        <span className="flex items-center gap-s2">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ backgroundColor: TINTS[0] }}
+            aria-hidden="true"
+          />
+          <span className="tabular-nums">Paid {formatCents(paidCents)}</span>
+        </span>
+        <span className="flex items-center gap-s2">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ backgroundColor: TINTS[1] }}
+            aria-hidden="true"
+          />
+          <span className="tabular-nums">
+            Committed {formatCents(committedNotPaidCents)}
+          </span>
+        </span>
+        <span className="flex items-center gap-s2">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ backgroundColor: TINTS[2] }}
+            aria-hidden="true"
+          />
+          <span className="tabular-nums">Invited {formatCents(pendingCents)}</span>
+        </span>
+      </div>
       {overBudgetCents > 0 && (
         <p className="text-label text-warn">
           {formatCents(overBudgetCents)} over budget.
