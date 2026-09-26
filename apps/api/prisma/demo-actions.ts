@@ -542,6 +542,12 @@ async function main(): Promise<void> {
       });
       await ensureChildRows(tx, booking, plan.destinationUrl, plan.status);
     }
+  }, {
+    // Many small round trips over Railway's public proxy exceed Prisma's
+    // default 5s interactive-transaction timeout from a laptop, which rolls
+    // the whole transaction back (P2028). Give it room.
+    maxWait: 20_000,
+    timeout: 120_000,
   });
 
   console.log("");
