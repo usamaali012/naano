@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import type { Request } from "express";
 import type {
+  ActionCount,
   Booking,
   BrandCollaboration,
   CreatorCollaboration,
@@ -56,6 +57,13 @@ export class BookingsController {
   earnings(@Req() req: Request): Promise<CreatorEarnings> {
     const { sub } = req.user as JwtPayload;
     return this.bookings.earnings(sub);
+  }
+
+  @Get("action-count")
+  @Roles("CREATOR", "COMPANY")
+  actionCount(@Req() req: Request): Promise<ActionCount> {
+    const { sub, role } = req.user as JwtPayload;
+    return this.bookings.actionCount(sub, role);
   }
 
   @Get("sent")

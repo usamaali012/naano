@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type {
+  ActionCount,
   Booking,
   BookingStatus,
   BrandCollaboration,
@@ -11,10 +12,12 @@ import type {
   CreatorEarnings,
   EarningsMonth,
   Paginated,
+  Role,
 } from "@naano/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { CampaignsService } from "../campaigns/campaigns.service";
 import { generateTrackedLinkSlug } from "../tracking/slug";
+import { actionableStatusesFor } from "./actionable-statuses";
 import { CreateBookingDto } from "./dto/create-booking.dto";
 import { toBooking, toBrandCollaboration, toCreatorCollaboration } from "./mappers";
 import { netCents } from "./money";
@@ -261,6 +264,30 @@ export class BookingsService {
     }
 
     return { totalEarnedCents, paidCollaborationsCount, averageCents, inTransitCents, monthly };
+  }
+
+  /**
+   * Either role: how many of the signed-in user's bookings have a non-empty
+   * `nextAction.consequence` for them — i.e. how many rows in `/received` or
+   * `/sent` are actually actionable right now. Scoped identically to whichever
+   * of those two this viewer would see, so the count can never disagree with
+   * the rows: one `count` query, `status` restricted to
+   * `actionableStatusesFor`'s derived set instead of a hardcoded list.
+   */
+  async actionCount(userId: string, role: Role): Promise<ActionCount> {
+    if (role === "CREATOR") {
+      const creatorProfileId = await this.creatorProfileIdForUser(userId);
+      const count = await this.prisma.booking.count({
+        where: { creatorProfileId, status: { in: actionableStatusesFor("CREATOR") } },
+      });
+      return { count };
+    }
+
+    const companyId = await this.companyIdForUser(userId);
+    const count = await this.prisma.booking.count({
+      where: { campaign: { companyId }, status: { in: actionableStatusesFor("COMPANY") } },
+    });
+    return { count };
   }
 
   /**
