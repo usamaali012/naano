@@ -1372,3 +1372,35 @@ needs to not lose an hour to.
     GET /bookings/action-count                    as creator   200  {count: 2} — dropped by exactly one
     ```
   - `npx tsc -b --force` on `apps/api` — clean, no errors.
+- 2026-09-26 — A6, bookings that need the viewer sort before everything else,
+  across pages, not just within one loaded page. `apps/api/**` only.
+  - **Problem**: both list endpoints ordered `createdAt desc` only, so an
+    actionable row past page 1 was invisible, and the rail badge (which
+    counts across all pages via A5's `action-count`) could disagree with what
+    a page showed.
+  - **`actionableFirst(rows, actionableStatuses)`**, new in
+    `actionable-statuses.ts` next to `actionableStatusesFor` (same file,
+    since the sort and the status set must never drift apart): a pure
+    `Array.sort` — rows whose status is in the derived actionable set first,
+    `createdAt desc` within each group. Both `listReceived` and `listSent`
+    call `actionableStatusesFor(viewer)` for the set, so the order and A5's
+    count read the exact same derivation and can't disagree by construction.
+  - **Prisma can't order by a computed flag**, so both methods now follow
+    `campaigns.service.ts`'s `list()` pattern: `findMany` with `select: {id,
+    status, createdAt}` for the full scoped set (no `skip`/`take`), sort in
+    memory with `actionableFirst`, slice the page's ids, then a second
+    `findMany({ where: { id: { in: pageIds } } })` with the real `include` to
+    load full rows — reordered afterward via a `Map`, since Prisma's `in`
+    doesn't preserve the given id order. `listSent`'s existing `campaignId`/
+    `status` filters are applied to the first (id-only) query, same as
+    before.
+  - **Verified against the running local API (`localhost:3000`)**, real
+    tokens from `POST /auth/login` (Ledgerly = brand, Mateo Kowalski =
+    creator), `pageSize=5` walked across every page:
+    ```
+    CREATOR /bookings/received   6 rows total, 2 pages — 1 actionable (SCHEDULED), sorted first on page 1; action-count {count: 1} — matches
+    COMPANY /bookings/sent       71 rows total, 15 pages — 18 actionable, all sorted before every non-actionable row across all 15 pages; action-count {count: 18} — matches
+    GET /bookings/sent?campaignId=<fintech>   38 rows — filter still scopes correctly with the new ordering
+    GET /bookings/sent?status=LIVE            16 rows — filter still scopes correctly with the new ordering
+    ```
+  - `npx tsc --noEmit` on `apps/api` — clean, no errors.

@@ -493,6 +493,17 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   `[DRAFT_READY, LIVE]`) and the full verification log (count matches
   actionable rows in `/received`/`/sent` for both demo accounts, drops by one
   after a real transition).
+- [x] **A6 Actionable first** — done 2026-09-26.
+  Scope: `/bookings/received` and `/bookings/sent` order actionable rows
+  (same derivation as A5's `action-count`) before everything else, `createdAt`
+  desc within each group, across all pages — not just within one loaded page.
+  Sort happens in memory (Prisma can't order by a computed flag), same
+  fetch-ids/sort/slice/reload pattern as `campaigns.service.ts`'s `list()`.
+  Files: `apps/api/src/bookings/{actionable-statuses.ts,bookings.service.ts}`.
+  Notes: see docs/DECISIONS.md's "Session: API, round 2" for the full
+  verification log (actionable-first ordering holds across all pages for both
+  demo accounts, actionable count matches `action-count`, existing
+  `campaignId`/`status` filters still work).
 
 ### 7-WEB
 
