@@ -1988,3 +1988,96 @@ needs to not lose an hour to.
     the deliberate `page.route(...).abort()` calls the `error-state` block
     always produces — not a regression.
   - `npx tsc -b apps/web/tsconfig.json` — clean, no errors.
+- 2026-09-26 — **W9, Results becomes a real dashboard.** `apps/web/**` only
+  (`ResultsPage.tsx`, `components/dashboard/**`, the api-client hedge). Sits
+  on top of A7's `GET /analytics/overview`, already live; this slice is the
+  UI that reads it.
+  - **Four new files, one per panel, no shared "chart" abstraction.**
+    `KpiRow.tsx`, `ClicksChart.tsx`, `BookingPipeline.tsx`,
+    `ClicksByCreator.tsx`, `SpendByCampaign.tsx`. Each is a plain component
+    taking exactly the slice of `ResultsOverview`/`CampaignOverview`/
+    `AttributionRow` it needs, not a generic `<Chart kind="bar">` — four
+    small files, each readable on its own, beat one flexible one this build
+    doesn't have time to get right.
+  - **`ClicksChart` is inline SVG, same restraint as `EarningsChart`/
+    `ReachSparkline`**, no charting dependency added (CLAUDE.md, "ask before
+    adding a dependency"). A label every 7th day keeps 30 dates legible.
+    Hover/focus needs an exact day and count, not just a bar's height, so
+    each bar gets a second, invisible full-height `<rect>` as its hit target
+    (a light day's real bar can be 1-2px tall) with `tabIndex`/`aria-label`
+    for keyboard focus, and a small tooltip positioned off the active bar's
+    own x-position, not centered. All-zero renders a plain empty sentence
+    instead of 30 flat bars.
+  - **`BookingPipeline` reads `bookingsByStatus` into a `Map` by status**,
+    not by array index, even though A7's `STATUS_ORDER` already returns it
+    lifecycle-ordered zero-filled, so this component doesn't silently break
+    if that ordering ever changes server-side. Labels are the plain-word
+    set the brief asked for ("Draft in review" for `DRAFT_READY`), which is
+    deliberately not `bookingStatusLabel()` from `lib/bookingStatus.ts`
+    (that one says "Draft ready" and is tuned for a status pill, not a
+    pipeline row) — a second, local label map, not a shared one edited to
+    serve two callers with different needs. DECLINED renders separately,
+    muted, below a divider: it's a dead end, not a pipeline stage, and
+    stacking it inline with the six live ones would have implied a booking
+    passes through it on the way to somewhere.
+  - **`ClicksByCreator` takes `listAttribution({ page: 1, pageSize: 8 })`
+    as-is** for "top 8" rather than re-deriving a top-N client-side: the
+    endpoint already sorts `totalClicks` desc (5.4), so the first page at
+    `pageSize: 8` is the top 8 by construction, no new query param needed.
+  - **`SpendByCampaign` duplicates `CampaignBudgetBar`'s width math**
+    (paid/committed-not-paid/pending capped at 100%, same three
+    `color-mix` tints) rather than importing it: `CampaignBudgetBar` renders
+    one campaign as a full `Card` with two legend rows and an over-budget
+    warning; this panel needs one compact row per campaign inside a grid
+    tile that might hold several. Same formula, deliberately not the same
+    component, because the two call sites want different amounts of chrome
+    around it.
+  - **Spend-per-click needed a second currency formatter.** `formatCents()`
+    (`lib/format.ts`) rounds to whole euros, right for prices and budgets,
+    wrong here: `paidCents / totalClicksAllTime` is routinely under a euro,
+    and whole-euro rounding would show "€0" for a real, nonzero number.
+    `KpiRow.tsx` gets its own `Intl.NumberFormat` at `maximumFractionDigits:
+    2` rather than widening the shared formatter's precision for every
+    other caller. Zero clicks shows the literal string "no clicks yet" (the
+    brief's exact wording), not "€0" or "—".
+  - **One fetch, one status, kept apart from the attribution table's own
+    pagination.** `ResultsPage` already had `page`/`status`/`reloadKey` for
+    the table; the new KPI/chart section gets its own
+    `dashboardStatus`/`dashboardReloadKey` and a `Promise.all` over
+    `getResultsOverview()` + `listCampaigns({ pageSize: 50 })` +
+    `listAttribution({ page: 1, pageSize: 8 })`, so paging the table below
+    never re-fetches the dashboard above it, and a dashboard load failure
+    doesn't blank the table that loaded fine.
+  - **`fixtures.ts`'s `getResultsOverview` mirrors A7's zero-fill logic
+    locally**, not just its output shape: a local `STATUS_ORDER` constant
+    (same seven-status lifecycle order as the API's) and `emptyClicksDays()`
+    (30 UTC day buckets, oldest first, today included) — same pattern
+    `fixtureNextAction` already set for "no server to ask, so the table gets
+    duplicated by hand, keep in sync manually." `bookingsByStatus`/
+    `paidCents`/`committedCents` are real, derived from `fixtureBookings`
+    the same way `listCampaigns` already does (reuses the existing
+    `COMMITTED_STATUSES` set); every click figure stays honestly zero,
+    since nothing in fixtures mode ever simulates a real `/r/:slug` hit, so
+    `clicksByDay` zero-filled is not a placeholder, it's the true state.
+  - **Verified in the browser against the fixture client** (the real API's
+    CORS is pinned to the primary dev origin, and a second one couldn't be
+    stood up for this check without either editing a file outside this
+    slice's scope or risking the shared dev API's own watch process, so
+    fixtures were the safe path to an actual render): fresh load renders
+    all four panels' empty states correctly, including "no clicks yet" and
+    the pipeline's "Invite a creator from the marketplace" empty state with
+    a working link; booking a creator through the real marketplace UI, in
+    the same page load, moved the pipeline's Invited bar from the empty
+    state to a full-width bar reading "1" and lit up Fintech Trust
+    Campaign's invited (lightest-tint) segment against its €5,000 budget,
+    both without a reload, confirming the dashboard reads the same
+    in-memory booking state the marketplace and budget bar already do. A
+    hard browser navigation (not an in-app route change) resets fixtures'
+    in-memory state, as expected of a client-side stand-in with no
+    database, so this check was done as one continuous session, not by
+    reloading between steps. The real API's A7 aggregates were checked by
+    inspection against `ResultsOverview` rather than re-run live, since A7
+    itself already verified them end to end (docs/DECISIONS.md, A7 entry,
+    same file) and this slice is UI over an already-proven contract.
+  - `npx tsc --noEmit` on `apps/web` (via its own `tsconfig.json`) — clean,
+    no errors.

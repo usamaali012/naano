@@ -602,6 +602,36 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   and `/bookings/received` for both demo accounts, hidden at zero confirmed
   live on a creator with no actionable rows, and one real UI action — marking
   a live post paid — dropped the brand's badge from 19 to 18 with no reload).
+- [x] **W9 Results dashboard** — done 2026-09-26.
+  Scope: `getResultsOverview` added to the web api client (http + fixtures,
+  reading the API's `GET /analytics/overview` from A7). `ResultsPage` gained,
+  above the existing attribution table: a four-tile KPI row (clicks last 30
+  days, total clicks, committed spend, spend per click, "no clicks yet" at
+  zero clicks); a two-column grid (one column narrow) of four token-only
+  inline-SVG panels, a clicks-per-day chart (dated x-axis, a label every 7th
+  day, hover/focus tooltip, an empty state when every day is zero), the
+  booking pipeline (one bar per BookingStatus in lifecycle order, plain-word
+  labels, DECLINED shown separately and muted), clicks by creator (top 8 from
+  `listAttribution`, already sorted by clicks), and spend by campaign (one
+  segmented bar per campaign from `listCampaigns`, same three paid/committed/
+  invited tints as `CampaignBudgetBar`). New files, all in
+  `components/dashboard/`: `KpiRow.tsx`, `ClicksChart.tsx`,
+  `BookingPipeline.tsx`, `ClicksByCreator.tsx`, `SpendByCampaign.tsx`.
+  Files: `apps/web/src/lib/api/{client.ts,http.ts,fixtures.ts}`,
+  `apps/web/src/routes/ResultsPage.tsx`,
+  `apps/web/src/components/dashboard/{KpiRow.tsx,ClicksChart.tsx,
+  BookingPipeline.tsx,ClicksByCreator.tsx,SpendByCampaign.tsx}` (all new).
+  Notes: verified in the browser against the fixture client (booking a
+  creator moved the pipeline's Invited bar from 0 to 1 and lit up the
+  Fintech Trust Campaign's invited segment, live, no reload) and against the
+  real API's A7 aggregates by inspection (shapes match `ResultsOverview`
+  exactly, zero-filled 30-day `clicksByDay` and lifecycle-ordered
+  `bookingsByStatus` both consumed as documented in docs/DECISIONS.md's A7
+  entry). `fixtures.ts`'s new `getResultsOverview` mirrors A7's zero-fill
+  logic locally (`STATUS_ORDER`, `emptyClicksDays()`) since there's no server
+  to ask; every click figure stays honestly zero there, fixtures never
+  simulate a real `/r/:slug` hit. README's "What was deliberately cut" no
+  longer claims the dashboard was skipped; "What I changed" says why.
 
 ---
 

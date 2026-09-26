@@ -321,6 +321,19 @@ stopped being correct the moment Earnings gave creators a second and
 third destination, so the rail came back, not because the earlier
 decision was wrong, but because the product underneath it had changed.
 
+### Results became a real dashboard
+
+Results used to be one table: clicks attributed per creator. It's now a full
+dashboard above that table, KPIs, a clicks-per-day chart, the booking
+pipeline, top creators by clicks, and spend by campaign, and every figure on
+it reads a live aggregate from `GET /analytics/overview`, the same honest,
+server-side pattern the attribution table already used. Clicks themselves
+come from the real `/r/:slug` redirect, verified end to end. The one thing
+worth naming plainly: the history behind these charts is seeded, not
+accumulated from real traffic, so the shapes they draw are illustrative until
+real usage exists. The aggregation and the click-tracking are real either
+way.
+
 ## What shipped first
 
 The core loop, end to end, before anything else:
@@ -407,10 +420,6 @@ reasoning specific to each. This list is everything else.)
 - The Leads tab and ICP account enrichment.
 - The MCP / Connect server.
 - i18n, the blog, and the SEO page tree.
-- The rest of the analytics dashboard: metric cards and a daily-clicks
-  time series. Attribution by creator shipped because it closes the
-  tracked-link loop; charts drawn over data I seeded myself would only
-  have proved that I can draw a chart.
 - The floating AI command bar seen on the live product, left out rather
   than shipped as a non-functional signature element.
 

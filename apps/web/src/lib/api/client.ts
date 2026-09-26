@@ -17,6 +17,7 @@ import type {
   MarketplaceCreator,
   PageParams,
   Paginated,
+  ResultsOverview,
   UpdateBookingStatusBody,
   UpdateMyCardBody,
 } from "@naano/shared";
@@ -108,4 +109,11 @@ export interface ApiClient {
    * included. Backs the Results attribution table.
    */
   listAttribution(params?: PageParams): Promise<AttributionResponse>;
+
+  /**
+   * Brand-only. Real aggregates for the Results dashboard, scoped to the
+   * signed-in company's own campaigns: clicks by day, the booking pipeline,
+   * and money against agreed spend.
+   */
+  getResultsOverview(): Promise<ResultsOverview>;
 }

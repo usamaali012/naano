@@ -23,6 +23,8 @@ import type {
   NextAction,
   PageParams,
   Paginated,
+  ResultsOverview,
+  StatusCount,
   UpdateBookingStatusBody,
   UpdateMyCardBody,
 } from "@naano/shared";
@@ -82,6 +84,32 @@ const COMMITTED_STATUSES = new Set<BookingStatus>([
   "LIVE",
   "PAID",
 ]);
+
+/** Lifecycle order, mirrors apps/api/analytics.service.ts's STATUS_ORDER (A7). */
+const STATUS_ORDER: BookingStatus[] = [
+  "INVITED",
+  "ACCEPTED",
+  "DRAFT_READY",
+  "SCHEDULED",
+  "LIVE",
+  "PAID",
+  "DECLINED",
+];
+
+// 30 UTC day buckets, oldest first, today included — mirrors the real
+// endpoint's emptyClicksDays(). Fixtures never simulate a real /r/:slug
+// click, so every bucket stays zero; that's an honest zero, not a fake one.
+function emptyClicksDays(): ResultsOverview["clicksByDay"] {
+  const today = new Date();
+  const days: ResultsOverview["clicksByDay"] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - i),
+    );
+    days.push({ date: d.toISOString().slice(0, 10), clicks: 0 });
+  }
+  return days;
+}
 
 // Per-campaign shortlist, in memory for the session.
 const fixtureShortlist = new Map<string, Set<string>>([
@@ -814,6 +842,32 @@ export const fixturesClient: ApiClient = {
       page,
       pageSize,
       hasAnyClicks,
+    };
+  },
+
+  // A plausible zero-safe shape: no fixture booking ever gets a real click
+  // (clickCount is minted at 0 on accept and nothing here increments it), so
+  // every click figure is honestly zero rather than invented. Bookings,
+  // paidCents and committedCents are real, derived from fixtureBookings the
+  // same way listCampaigns above does.
+  async getResultsOverview(): Promise<ResultsOverview> {
+    const bookingsByStatus: StatusCount[] = STATUS_ORDER.map((status) => ({
+      status,
+      count: fixtureBookings.filter((b) => b.status === status).length,
+    }));
+    let paidCents = 0;
+    let committedCents = 0;
+    for (const b of fixtureBookings) {
+      if (b.status === "PAID") paidCents += b.agreedPriceCents;
+      if (COMMITTED_STATUSES.has(b.status)) committedCents += b.agreedPriceCents;
+    }
+    return {
+      clicksByDay: emptyClicksDays(),
+      totalClicks30d: 0,
+      totalClicksAllTime: 0,
+      bookingsByStatus,
+      paidCents,
+      committedCents,
     };
   },
 };

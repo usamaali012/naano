@@ -1,18 +1,64 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { AttributionRow } from "@naano/shared";
+import type { AttributionRow, CampaignOverview, ResultsOverview } from "@naano/shared";
 import { api } from "../lib/api";
 import { AttributionTable } from "../components/dashboard/AttributionTable";
+import { KpiRow } from "../components/dashboard/KpiRow";
+import { ClicksChart } from "../components/dashboard/ClicksChart";
+import { BookingPipeline } from "../components/dashboard/BookingPipeline";
+import { ClicksByCreator } from "../components/dashboard/ClicksByCreator";
+import { SpendByCampaign } from "../components/dashboard/SpendByCampaign";
 import { CreatorsPagination } from "../components/marketplace/CreatorsPagination";
 import { Button } from "../components/ui/Button";
 
 const PAGE_SIZE = 20;
+const TOP_CREATORS_COUNT = 8;
 
-// Clicks attributed per creator for the signed-in brand (5.4). Fetches on
-// every mount with no store cache, so a click on a tracked link shows the
-// next time this page is opened, not only after a hard refresh.
+// A real dashboard on top of the attribution table this page used to be
+// (5.4): KPIs, a clicks-per-day chart, the booking pipeline, top creators by
+// clicks, and spend by campaign, all reading live /analytics/overview
+// aggregates (W9). Everything fetches on every mount with no store cache, so
+// a click on a tracked link shows the next time this page is opened, not
+// only after a hard refresh.
 export function ResultsPage(): JSX.Element {
   const navigate = useNavigate();
+
+  // KPIs + charts: one fetch, one status, kept independent of the
+  // attribution table's own pagination below so paging the table never
+  // reloads the dashboard above it.
+  const [overview, setOverview] = useState<ResultsOverview | null>(null);
+  const [campaigns, setCampaigns] = useState<CampaignOverview[]>([]);
+  const [topCreators, setTopCreators] = useState<AttributionRow[]>([]);
+  const [dashboardStatus, setDashboardStatus] = useState<"loading" | "error" | "ready">(
+    "loading",
+  );
+  const [dashboardReloadKey, setDashboardReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDashboardStatus("loading");
+    Promise.all([
+      api.getResultsOverview(),
+      api.listCampaigns({ pageSize: 50 }),
+      api.listAttribution({ page: 1, pageSize: TOP_CREATORS_COUNT }),
+    ])
+      .then(([overviewResult, campaignsResult, attributionResult]) => {
+        if (cancelled) return;
+        setOverview(overviewResult);
+        setCampaigns(campaignsResult.items);
+        setTopCreators(attributionResult.items);
+        setDashboardStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setDashboardStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardReloadKey]);
+
+  // The attribution table below the charts, unchanged: its own page state
+  // and its own two empty states (no accepted bookings vs. no clicks yet).
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<AttributionRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -49,6 +95,73 @@ export function ResultsPage(): JSX.Element {
           you&rsquo;ve run.
         </p>
       </div>
+
+      {dashboardStatus === "loading" && (
+        <div className="rounded-card border border-border bg-surface p-s8 text-body text-text-muted">
+          Loading your dashboard…
+        </div>
+      )}
+
+      {dashboardStatus === "error" && (
+        <div className="flex flex-col items-start gap-s3 rounded-card border border-border bg-surface p-s8">
+          <div className="flex flex-col gap-s1">
+            <p className="text-card-title text-text">Your dashboard didn&rsquo;t load</p>
+            <p className="text-body text-text-muted">
+              That is usually a brief drop in the connection. Try again in a
+              moment.
+            </p>
+          </div>
+          <Button size="sm" onClick={() => setDashboardReloadKey((key) => key + 1)}>
+            Try again
+          </Button>
+        </div>
+      )}
+
+      {dashboardStatus === "ready" && overview && (
+        <>
+          <KpiRow overview={overview} />
+
+          <div className="grid grid-cols-1 gap-s6 lg:grid-cols-2">
+            <div className="flex flex-col gap-s4 rounded-card border border-border bg-surface p-s6">
+              <div className="flex flex-col gap-s1">
+                <h2 className="text-card-title text-text">Clicks per day</h2>
+                <p className="text-label text-text-muted">Last 30 days.</p>
+              </div>
+              <ClicksChart days={overview.clicksByDay} />
+            </div>
+
+            <div className="flex flex-col gap-s4 rounded-card border border-border bg-surface p-s6">
+              <div className="flex flex-col gap-s1">
+                <h2 className="text-card-title text-text">Booking pipeline</h2>
+                <p className="text-label text-text-muted">
+                  Every non-declined booking, by stage.
+                </p>
+              </div>
+              <BookingPipeline statuses={overview.bookingsByStatus} />
+            </div>
+
+            <div className="flex flex-col gap-s4 rounded-card border border-border bg-surface p-s6">
+              <div className="flex flex-col gap-s1">
+                <h2 className="text-card-title text-text">Clicks by creator</h2>
+                <p className="text-label text-text-muted">
+                  Top {TOP_CREATORS_COUNT}, across every campaign.
+                </p>
+              </div>
+              <ClicksByCreator rows={topCreators} />
+            </div>
+
+            <div className="flex flex-col gap-s4 rounded-card border border-border bg-surface p-s6">
+              <div className="flex flex-col gap-s1">
+                <h2 className="text-card-title text-text">Spend by campaign</h2>
+                <p className="text-label text-text-muted">
+                  Paid, committed, and invited against budget.
+                </p>
+              </div>
+              <SpendByCampaign campaigns={campaigns} />
+            </div>
+          </div>
+        </>
+      )}
 
       {status === "loading" && (
         <div className="rounded-card border border-border bg-surface p-s8 text-body text-text-muted">

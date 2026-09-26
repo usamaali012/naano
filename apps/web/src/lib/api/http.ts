@@ -17,6 +17,7 @@ import type {
   MarketplaceCreator,
   PageParams,
   Paginated,
+  ResultsOverview,
   UpdateBookingStatusBody,
   UpdateMyCardBody,
 } from "@naano/shared";
@@ -245,5 +246,8 @@ export const httpClient: ApiClient = {
   },
   listAttribution(params?: PageParams): Promise<AttributionResponse> {
     return getJson<AttributionResponse>(`/analytics/attribution${pageQuery(params)}`);
+  },
+  getResultsOverview(): Promise<ResultsOverview> {
+    return getJson<ResultsOverview>("/analytics/overview");
   },
 };
