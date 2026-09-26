@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { BrandCollaboration } from "@naano/shared";
 import { Table, THead, TBody, TR, TH, TD } from "../ui/Table";
 import { Button } from "../ui/Button";
@@ -117,11 +117,7 @@ function NextActionCell({
 
       {nextAction.kind === "review_draft" && (
         <>
-          {booking.draftContent && (
-            <p className="line-clamp-3 whitespace-pre-wrap text-label text-text">
-              {booking.draftContent}
-            </p>
-          )}
+          {booking.draftContent && <DraftText content={booking.draftContent} />}
           <div className="flex gap-s2 pt-s1">
             <Button size="sm" disabled={busy} onClick={onApprove}>
               Approve
@@ -158,6 +154,44 @@ function NextActionCell({
       )}
 
       {error && <p className="text-label text-warn">{error}</p>}
+    </div>
+  );
+}
+
+// line-clamp-3 is CSS-only truncation, so whether the draft actually
+// overflows depends on real layout (font size, column width, line breaks) —
+// only a DOM measurement can tell. Measured with useLayoutEffect so the
+// toggle is present (or absent) before first paint, no flash.
+function DraftText({ content }: { content: string }): JSX.Element {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [canExpand, setCanExpand] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || expanded) return;
+    setCanExpand(el.scrollHeight > el.clientHeight + 1);
+  }, [content, expanded]);
+
+  return (
+    <div className="flex flex-col items-start gap-s1">
+      <p
+        ref={ref}
+        className={`whitespace-pre-wrap text-label text-text ${
+          expanded ? "" : "line-clamp-3"
+        }`}
+      >
+        {content}
+      </p>
+      {canExpand && (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="text-label font-medium text-primary"
+        >
+          {expanded ? "Show less" : "Show full draft"}
+        </button>
+      )}
     </div>
   );
 }
