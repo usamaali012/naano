@@ -2276,3 +2276,74 @@ needs to not lose an hour to.
     and 375px (single column, card below) — no horizontal scroll, tiles
     reflow 2-up on mobile. No console errors. `npx tsc -b
     apps/web/tsconfig.json` — clean.
+
+- 2026-09-26 — W10, the creator card (`CreatorHomePage.tsx`'s right column)
+  gets W6's own-scroll fix. Same underlying bug as W6: the card's content
+  (avatar/name header, headline, metrics, audience snapshot, recent posts)
+  could be taller than the left overview column, so the whole page scrolled
+  to reach the bottom of the card and the shorter left column left empty
+  space beside it once the page had scrolled past it.
+  - **Ported, not extracted.** The brief for this slice explicitly asked to
+    copy W6's approach into `CreatorHomePage.tsx` rather than pull a shared
+    hook out of `CreatorsListPage.tsx` first — this page owns a second,
+    independent copy of the same `isDesktop`/`viewportHeight`/`topBarHeight`/
+    column-height state, the same `main > header` + `ResizeObserver` +
+    `getBoundingClientRect` measurement (not `entry.contentRect` — W6 already
+    found that under-reports a border-box element), and the same
+    `Math.max(Math.min(panelAvailableHeight, 560), Math.min(columnHeight,
+    panelAvailableHeight))` formula, including the addendum's 560px floor.
+    **Follow-up, not yet done:** a `useStickyCappedColumn`-shaped hook in
+    `lib/hooks/` would remove this duplication (this file and
+    `CreatorsListPage.tsx` now carry the identical measurement logic twice);
+    deferred because extracting it correctly would mean touching
+    `CreatorsListPage.tsx`, which was outside this slice's file boundary.
+  - **What's pinned vs. what scrolls, chosen narrower than W6's panel.** The
+    task asked for exactly avatar, name and the Edit card button pinned in
+    the header (`shrink-0`, `border-b`) — narrower than `CreatorDetailPanel`'s
+    pinned header, which also keeps the role line. Here the role/vertical/
+    country line and the headline moved into the scrolling region instead,
+    directly above the metrics grid, since the ask named only those three
+    elements as pinned. The Edit card button itself only renders when not
+    editing (`!editing &&`), same as before this change — editing mode has no
+    redundant second entry point into itself.
+  - **Edit mode stays inside the scrolling region**, not pinned — `EditCardForm`
+    (headline input, both price inputs, Save/Cancel) renders in the same
+    `overflow-y-auto` div as the read-only headline/metrics it replaces, so
+    Save and Cancel are reachable by scrolling like every other control below
+    the header. One `useEffect` keyed on `editing` calls
+    `cardScrollRef.current?.scrollTo({ top: 0 })`, so opening or leaving edit
+    mode always starts the column scrolled to the top — the same "reset on
+    state change" pattern W6 uses for a new row selection, just keyed on
+    `editing` instead of `creatorId` since this page never swaps which
+    creator it shows.
+  - **The measured "list column" is the left overview column** (tiles + Needs
+    you + Earnings chart), via a `setLeftColumnRef` callback ref identical in
+    shape to `CreatorsListPage.tsx`'s `setListColumnRef`. Added
+    `lg:items-start` to the two-column row (it was missing before this
+    change) so the row's rendered height is governed by this left column
+    alone rather than stretched to match the sticky, explicitly-heighted card
+    — the same reason `CreatorsListPage.tsx`'s row already carries it.
+  - **Verified in the browser** as the demo creator (Clara Keller), both
+    required sizes. At 1440×900: card wrapper's inline style read `top:
+    50.4px; height: 678px` and its `getBoundingClientRect().bottom` (845.4)
+    exactly matched the left column's; scrolling the card's own region to
+    `scrollHeight` moved its `scrollTop` to the end while `window.scrollY`
+    stayed 0 and the pinned header (avatar/name/Edit card) stayed visible
+    throughout (confirmed via screenshot mid-scroll, recent posts scrolled
+    under a still-visible header). At 1280×720: the left column (678px) is
+    taller than the viewport-capped available height (637.6px), so the card
+    correctly capped to 637.6px while the left column ran past it — scrolling
+    the page to its end landed `window.scrollY` at exactly `document.body
+    .scrollHeight - window.innerHeight`, and the left column's own
+    `getBoundingClientRect().bottom` landed at 687.8, i.e. the viewport height
+    (720) minus the page's own 32px `p-s8` bottom padding — confirming the
+    page ends exactly at the left column's bottom with no leftover gap.
+    Edit card: opened edit mode (scroll reset to top, confirmed by
+    screenshot), changed the single-post price, saved — request succeeded,
+    view reverted to read-only with the new price, scroll still at top.
+    375px: card wrapper had `position: static` and no inline `style`
+    attribute at all, confirming the narrow-screen path renders exactly as it
+    did before this change. Also loaded the brand marketplace
+    (`CreatorsListPage`/`CreatorDetailPanel`, untouched by this slice) and
+    confirmed it still renders and behaves correctly, no console errors.
+    `npx tsc -b apps/web/tsconfig.json` — clean.

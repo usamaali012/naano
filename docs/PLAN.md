@@ -692,6 +692,30 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   reverified, an actionable and a zero-actionable state both seen live,
   1440px/375px screenshots).
 
+- [x] **W10 Creator home card scroll** — done 2026-09-26.
+  Scope: on wide screens the creator card (right column) could be taller than
+  the left overview column, forcing the whole page to scroll and leaving
+  empty space below the shorter left column. Ported W6's fix into
+  `CreatorHomePage.tsx` (own copy, not a shared hook — see docs/DECISIONS.md):
+  the card wrapper gets an inline height capped to whichever is shorter, the
+  left column's own height or the viewport below the real top bar (both
+  measured via `ResizeObserver`, `getBoundingClientRect`, not
+  `entry.contentRect`), with the same 560px floor as W6's addendum. The
+  card's header (avatar, name, Edit card) stays pinned; headline, metrics,
+  the edit form, audience snapshot and recent posts all scroll in one region
+  below it, reset to the top on selection and on entering/leaving edit mode.
+  Narrow screens unaffected.
+  Files: `apps/web/src/routes/CreatorHomePage.tsx`.
+  Notes: verified in the browser at 1440x900 and 1280x720 as the demo
+  creator — card scrolls independently of the page (`window.scrollY` stayed
+  0 while the card's own region scrolled to its end), the left/card column
+  bottoms matched exactly at 1440x900, and at 1280x720 (left column taller
+  than the viewport-capped card) the page's own scroll ended exactly at the
+  left column's bottom; Edit card still saves, scroll resets to top on
+  entering and leaving edit mode; 375px stacks unchanged (`position: static`,
+  no inline style). Also opened the brand marketplace and confirmed it is
+  unaffected. `npx tsc -b apps/web/tsconfig.json` clean.
+
 ---
 
 ## Discovered

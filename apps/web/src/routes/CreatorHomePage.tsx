@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type {
   ActionCount,
@@ -48,6 +48,93 @@ export function CreatorHomePage(): JSX.Element {
   const [data, setData] = useState<HomeData | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [editing, setEditing] = useState(false);
+
+  // Desktop-only sizing for the sticky card column, copied from W6
+  // (CreatorsListPage.tsx / docs/DECISIONS.md) rather than extracted into a
+  // shared hook per this session's ask — capped to whichever is shorter, the
+  // viewport below the real top bar or the left column's own height, with a
+  // 560px floor. Narrow screens ignore all of this and stack normally.
+  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(min-width: 1024px)").matches
+      : false,
+  );
+  const [viewportHeight, setViewportHeight] = useState<number>(() =>
+    typeof window !== "undefined" ? window.innerHeight : 0,
+  );
+  const [topBarHeight, setTopBarHeight] = useState(0);
+  const [leftColumnHeight, setLeftColumnHeight] = useState(0);
+  const leftColumnObserverRef = useRef<ResizeObserver | null>(null);
+  const cardScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const mql = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(mql.matches);
+    update();
+    mql.addEventListener("change", update);
+    return () => mql.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    function onResize(): void {
+      setViewportHeight(window.innerHeight);
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // `main > header` is AppShell's own top bar, the only header that is a
+  // direct child of `main`. getBoundingClientRect (border-box) in both the
+  // initial call and every ResizeObserver callback, not entry.contentRect
+  // (content-box), which under-reports the real height — the same gotcha W6
+  // hit and fixed.
+  useLayoutEffect(() => {
+    const header = document.querySelector<HTMLElement>("main > header");
+    if (!header) return;
+    const measure = () => setTopBarHeight(header.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
+  const setLeftColumnRef = useCallback((node: HTMLDivElement | null) => {
+    leftColumnObserverRef.current?.disconnect();
+    leftColumnObserverRef.current = null;
+    if (node) {
+      const measure = () => setLeftColumnHeight(node.getBoundingClientRect().height);
+      measure();
+      const observer = new ResizeObserver(measure);
+      observer.observe(node);
+      leftColumnObserverRef.current = observer;
+    }
+  }, []);
+
+  const PANEL_BOTTOM_GUTTER = 32; // matches the page's own p-s8 bottom padding
+  const PANEL_MIN_HEIGHT = 560; // floor so a short left column doesn't shrink the card below usable
+  const panelAvailableHeight =
+    topBarHeight > 0 && viewportHeight > 0
+      ? Math.max(0, viewportHeight - topBarHeight - PANEL_BOTTOM_GUTTER)
+      : undefined;
+  const panelHeight =
+    panelAvailableHeight !== undefined
+      ? Math.max(
+          Math.min(panelAvailableHeight, PANEL_MIN_HEIGHT),
+          leftColumnHeight > 0
+            ? Math.min(leftColumnHeight, panelAvailableHeight)
+            : panelAvailableHeight,
+        )
+      : undefined;
+  const panelStyle =
+    isDesktop && topBarHeight > 0 && panelHeight !== undefined
+      ? { top: topBarHeight, height: panelHeight }
+      : undefined;
+
+  // Entering or leaving edit mode always starts the card column scrolled to
+  // the top, same as W6 resets on selection change.
+  useEffect(() => {
+    cardScrollRef.current?.scrollTo({ top: 0 });
+  }, [editing]);
 
   useEffect(() => {
     if (!creatorProfileId) {
@@ -117,8 +204,8 @@ export function CreatorHomePage(): JSX.Element {
         </p>
       </div>
 
-      <div className="flex flex-col gap-s6 lg:flex-row">
-        <div className="flex min-w-0 flex-1 flex-col gap-s6">
+      <div className="flex flex-col gap-s6 lg:flex-row lg:items-start">
+        <div ref={setLeftColumnRef} className="flex min-w-0 flex-1 flex-col gap-s6">
           <dl className="grid grid-cols-2 gap-s4">
             <OverviewTile
               label="Earned"
@@ -205,112 +292,129 @@ export function CreatorHomePage(): JSX.Element {
           </section>
         </div>
 
-        <div className="flex flex-col gap-s6 rounded-card border border-border bg-surface p-s6 lg:w-[440px]">
-          <p className="text-label text-text-muted">
-            This is exactly how brands see you.
-          </p>
-
-          {editing ? (
-            <EditCardForm
-              detail={detail}
-              onCancel={() => setEditing(false)}
-              onSaved={(next) => {
-                setData((prev) => (prev ? { ...prev, detail: next } : prev));
-                setEditing(false);
-              }}
-            />
-          ) : (
-            <>
-              <div className="flex flex-wrap items-start justify-between gap-s4">
-                <div className="flex items-center gap-s4">
-                  <Avatar
-                    src={detail.avatarUrl}
-                    name={detail.displayName}
-                    className="h-16 w-16"
-                  />
-                  <div className="flex flex-col gap-s1">
-                    <h2 className="text-section-title text-text">{detail.displayName}</h2>
-                    <p className="text-label text-text-muted">
-                      {verticalLabel(detail.vertical)} creator on LinkedIn
-                      <span className="ml-s2">{detail.country}</span>
-                    </p>
-                    <p className="text-body text-text-muted">{detail.headline}</p>
-                  </div>
-                </div>
-                <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+        <div className="w-full shrink-0 lg:sticky lg:w-[440px]" style={panelStyle}>
+          <div className="flex h-full min-h-0 flex-col rounded-card border border-border bg-surface">
+            <header className="flex shrink-0 items-center justify-between gap-s4 border-b border-border p-s6">
+              <div className="flex min-w-0 items-center gap-s4">
+                <Avatar
+                  src={detail.avatarUrl}
+                  name={detail.displayName}
+                  className="h-16 w-16 shrink-0"
+                />
+                <h2 className="truncate text-section-title text-text">{detail.displayName}</h2>
+              </div>
+              {!editing && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => setEditing(true)}
+                >
                   Edit card
                 </Button>
-              </div>
+              )}
+            </header>
 
-              <dl className="grid grid-cols-2 gap-s4">
-                {metrics.map(([label, value]) => (
-                  <div key={label} className="flex flex-col gap-s1">
-                    <dd className="text-metric tabular-nums text-text">{value}</dd>
-                    <dt className="text-label text-text-muted">{label}</dt>
-                  </div>
-                ))}
-              </dl>
-            </>
-          )}
+            <div
+              ref={cardScrollRef}
+              className="min-h-0 flex-1 overflow-y-auto p-s6 [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin]"
+            >
+              <div className="flex flex-col gap-s6">
+                <p className="text-label text-text-muted">
+                  This is exactly how brands see you.
+                </p>
 
-          <section className="flex flex-col gap-s4 border-t border-border pt-s6">
-            <div className="flex flex-wrap items-baseline justify-between gap-s2">
-              <h3 className="text-card-title text-text">Audience snapshot</h3>
-              <span className="text-label text-text-muted">
-                Estimated from {detail.observedEngagerCount} recent public engagers
-              </span>
-            </div>
-            <div className="flex flex-col gap-s6">
-              <div className="flex flex-col gap-s3">
-                <span className="text-label text-text-muted">Job title</span>
-                <SegmentedBar segments={segmentsFor(detail, "JOB_TITLE")} />
-              </div>
-              <div className="flex flex-col gap-s3">
-                <span className="text-label text-text-muted">Seniority</span>
-                <SegmentedBar segments={segmentsFor(detail, "SENIORITY")} />
-              </div>
-            </div>
-          </section>
+                {editing ? (
+                  <EditCardForm
+                    detail={detail}
+                    onCancel={() => setEditing(false)}
+                    onSaved={(next) => {
+                      setData((prev) => (prev ? { ...prev, detail: next } : prev));
+                      setEditing(false);
+                    }}
+                  />
+                ) : (
+                  <>
+                    <div className="flex flex-col gap-s1">
+                      <p className="text-label text-text-muted">
+                        {verticalLabel(detail.vertical)} creator on LinkedIn
+                        <span className="ml-s2">{detail.country}</span>
+                      </p>
+                      <p className="text-body text-text-muted">{detail.headline}</p>
+                    </div>
 
-          <section className="flex flex-col gap-s3 border-t border-border pt-s6">
-            <h3 className="text-card-title text-text">
-              Recent posts ({detail.posts.length})
-            </h3>
-            <ul className="flex flex-col gap-s3">
-              {detail.posts.map((post) => (
-                <li
-                  key={post.id}
-                  className="flex flex-col gap-s2 rounded-card border border-border p-s4"
-                >
-                  <div className="flex items-baseline justify-between gap-s3">
+                    <dl className="grid grid-cols-2 gap-s4">
+                      {metrics.map(([label, value]) => (
+                        <div key={label} className="flex flex-col gap-s1">
+                          <dd className="text-metric tabular-nums text-text">{value}</dd>
+                          <dt className="text-label text-text-muted">{label}</dt>
+                        </div>
+                      ))}
+                    </dl>
+                  </>
+                )}
+
+                <section className="flex flex-col gap-s4 border-t border-border pt-s6">
+                  <div className="flex flex-wrap items-baseline justify-between gap-s2">
+                    <h3 className="text-card-title text-text">Audience snapshot</h3>
                     <span className="text-label text-text-muted">
-                      {new Date(post.publishedAt).toLocaleDateString("en-GB", {
-                        day: "numeric",
-                        month: "short",
-                      })}
+                      Estimated from {detail.observedEngagerCount} recent public engagers
                     </span>
-                    <a
-                      href={post.externalUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-label font-medium text-primary"
-                    >
-                      Open original
-                    </a>
                   </div>
-                  <p className="line-clamp-2 text-body text-text">
-                    {post.content.replace(/\s+/g, " ")}
-                  </p>
-                  <div className="flex flex-wrap gap-s4 text-label tabular-nums text-text-muted">
-                    <span>{formatCompactNumber(post.views)} views</span>
-                    <span>{formatCompactNumber(post.reactions)} reactions</span>
-                    <span>{formatCompactNumber(post.comments)} comments</span>
-                    <span>{formatCompactNumber(post.reposts)} reposts</span>
+                  <div className="flex flex-col gap-s6">
+                    <div className="flex flex-col gap-s3">
+                      <span className="text-label text-text-muted">Job title</span>
+                      <SegmentedBar segments={segmentsFor(detail, "JOB_TITLE")} />
+                    </div>
+                    <div className="flex flex-col gap-s3">
+                      <span className="text-label text-text-muted">Seniority</span>
+                      <SegmentedBar segments={segmentsFor(detail, "SENIORITY")} />
+                    </div>
                   </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+                </section>
+
+                <section className="flex flex-col gap-s3 border-t border-border pt-s6">
+                  <h3 className="text-card-title text-text">
+                    Recent posts ({detail.posts.length})
+                  </h3>
+                  <ul className="flex flex-col gap-s3">
+                    {detail.posts.map((post) => (
+                      <li
+                        key={post.id}
+                        className="flex flex-col gap-s2 rounded-card border border-border p-s4"
+                      >
+                        <div className="flex items-baseline justify-between gap-s3">
+                          <span className="text-label text-text-muted">
+                            {new Date(post.publishedAt).toLocaleDateString("en-GB", {
+                              day: "numeric",
+                              month: "short",
+                            })}
+                          </span>
+                          <a
+                            href={post.externalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-label font-medium text-primary"
+                          >
+                            Open original
+                          </a>
+                        </div>
+                        <p className="line-clamp-2 text-body text-text">
+                          {post.content.replace(/\s+/g, " ")}
+                        </p>
+                        <div className="flex flex-wrap gap-s4 text-label tabular-nums text-text-muted">
+                          <span>{formatCompactNumber(post.views)} views</span>
+                          <span>{formatCompactNumber(post.reactions)} reactions</span>
+                          <span>{formatCompactNumber(post.comments)} comments</span>
+                          <span>{formatCompactNumber(post.reposts)} reposts</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
