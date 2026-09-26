@@ -78,14 +78,28 @@ export class BookingsService {
   }
 
   /**
-   * Brand-only: create a Booking from the signed-in company's active campaign.
-   * The price is never taken from the client — it is derived here from the
-   * creator's own postCostCents / bundle5PriceCents, keyed on which package
-   * was selected, so the amount can't be tampered with in transit.
+   * Brand-only: create a Booking against the signed-in company's active
+   * campaign, or a chosen one via `dto.campaignId` — 404 if it doesn't
+   * belong to this company, 409 if it's COMPLETED. Omitted `campaignId`
+   * keeps the original behaviour exactly: the active campaign, no COMPLETED
+   * check (a brand's active campaign can itself be COMPLETED when they have
+   * no LIVE/DRAFT campaign, and that was never blocked). The price is never
+   * taken from the client — it is derived here from the creator's own
+   * postCostCents / bundle5PriceCents, keyed on which package was selected,
+   * so the amount can't be tampered with in transit. Going over budget is
+   * never blocked here — that's the brand's call, not the API's.
    */
   async create(userId: string, dto: CreateBookingDto): Promise<Booking> {
     const companyId = await this.companyIdForUser(userId);
-    const campaign = await this.campaigns.getActiveForCompanyOrThrow(companyId);
+    const campaign = dto.campaignId
+      ? await this.campaigns.getOwnedByCompanyOrThrow(companyId, dto.campaignId)
+      : await this.campaigns.getActiveForCompanyOrThrow(companyId);
+
+    if (dto.campaignId && campaign.status === "COMPLETED") {
+      throw new ConflictException(
+        "This campaign is completed, so it can't take new bookings.",
+      );
+    }
 
     const creator = await this.prisma.creatorProfile.findUnique({
       where: { id: dto.creatorProfileId },

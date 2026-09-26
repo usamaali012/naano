@@ -132,9 +132,24 @@ apps/
                            see docs/DECISIONS.md for the before/after counts.
       campaigns/          CampaignsService.getActive() = the campaign the
                            marketplace ranks for and the shortlist keys to (most
-                           recent LIVE, else most recent). GET /campaigns/active
-                           exposes it. Full CRUD + brief land with 3.1.
-                           Exports CampaignsService.
+                           recent LIVE, else most recent) — global, not scoped
+                           to a company (see docs/DECISIONS.md's A2 entry for
+                           why that's noted, not fixed). GET /campaigns/active
+                           exposes it. GET /campaigns (COMPANY, A2, round 2):
+                           the signed-in company's own campaigns,
+                           Paginated<CampaignOverview>, LIVE then DRAFT then
+                           COMPLETED, newest first within each — fetched then
+                           sorted in memory (same pattern as creators'
+                           best_match) since the wanted order isn't the enum's
+                           declaration order. Money (pending/committed/paid/
+                           bookingsCount) comes from one
+                           prisma.booking.groupBy({by:["campaignId","status"]})
+                           over the page's campaign ids, folded up in memory —
+                           never a query per campaign. getOwnedByCompanyOrThrow
+                           (new): 404s (never 403) a campaignId that doesn't
+                           exist or belongs to another company — used by
+                           POST /bookings' optional campaignId. Full CRUD +
+                           brief land with 3.1. Exports CampaignsService.
       shortlist/         Campaign-scoped shortlist. GET|POST
                            /campaigns/:campaignId/shortlist (POST idempotent),
                            DELETE /.../:creatorProfileId (no-op if absent).
@@ -143,11 +158,16 @@ apps/
                            campaign Shortlist tab (3.5) both read GET here.
       bookings/           Real, guarded routes. POST /bookings (COMPANY,
                            from the signed-in company's active campaign via
-                           CampaignsService.getActiveForCompany — price
-                           derived server-side from the creator's
-                           postCostCents/bundle5PriceCents, 409 on a
+                           CampaignsService.getActiveForCompany, or an
+                           explicit optional campaignId (A2, round 2) via
+                           CampaignsService.getOwnedByCompanyOrThrow — 404 if
+                           not owned, 409 if COMPLETED, only checked when
+                           campaignId is actually passed so the omitted case
+                           is unchanged — price derived server-side from the
+                           creator's postCostCents/bundle5PriceCents, 409 on a
                            duplicate non-DECLINED booking for the same
-                           creator+campaign). GET /bookings/received
+                           creator+campaign; going over budget is never
+                           checked, deliberately). GET /bookings/received
                            (CREATOR, own profile only) returns
                            CreatorCollaboration rows — BookingReceived plus a
                            derived nextAction and netCents, per

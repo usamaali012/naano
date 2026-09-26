@@ -1176,6 +1176,165 @@ needs to not lose an hour to.
   PATCH /creators/me {postCostCents:77600,bundle5PriceCents:260623}  200  reset to original values
   ```
   `npx tsc -b` on `apps/api` — clean, no errors.
+- 2026-09-26 — A2, campaigns the brand can choose between, with money against
+  budget. `apps/api/**` only — `packages/shared` untouched (`CampaignOverview`
+  and `CreateBookingBody.campaignId` were already correct from the round-2
+  contract).
+  - **New `GET /campaigns`** (COMPANY-only): the signed-in company's own
+    campaigns, `Paginated<CampaignOverview>`. Ordering is LIVE, then DRAFT,
+    then COMPLETED, newest first within each band — not a single Prisma
+    `orderBy` (the enum's declaration order is DRAFT/LIVE/COMPLETED, not the
+    wanted one), so `CampaignsService.list` fetches the company's campaigns
+    (a handful per company, same "small catalogue, sort in memory" pattern
+    `creators.service.ts` already uses for `best_match`) and sorts by a
+    `STATUS_ORDER` map before paging the array. Money is one
+    `prisma.booking.groupBy({ by: ["campaignId", "status"] })` over the
+    *page's* campaign ids — `_sum.agreedPriceCents` + `_count._all` per
+    (campaign, status) pair, folded up in memory into
+    `pendingCents`/`committedCents`/`paidCents`/`bookingsCount` — not a query
+    per campaign, per the ask. `committedCents` sums ACCEPTED, DRAFT_READY,
+    SCHEDULED, LIVE, PAID (everything except INVITED and DECLINED) — the same
+    set `money.ts`'s `IN_TRANSIT_STATUSES` uses plus PAID, kept as a local
+    `COMMITTED_STATUSES` const rather than importing across modules for one
+    array literal. `bookingsCount` counts every non-DECLINED status.
+  - **`POST /bookings` accepts optional `campaignId`.** New
+    `CampaignsService.getOwnedByCompanyOrThrow(companyId, campaignId)` — 404
+    (never 403, same probing-concern pattern as `bookingOwnedByCreator`/
+    `bookingOwnedByCompany`) when the id doesn't exist *or* belongs to another
+    company, so a brand can't tell the two cases apart. A COMPLETED campaign
+    is 409 `"This campaign is completed, so it can't take new bookings."` —
+    but **only when `campaignId` was explicitly passed**: omitted keeps the
+    original behaviour byte-for-byte, including a brand whose *active*
+    campaign (the `getActiveForCompanyOrThrow` fallback) happens to be
+    COMPLETED because they have no LIVE/DRAFT one — that was never blocked
+    before this slice and still isn't. Going over budget is never checked —
+    deliberately, per the ask ("that is the brand's call, and the web warns
+    them"); nothing in `create()` reads `budgetCents` at all.
+  - **Checked, not fixed:** `GET /creators?campaignId=` and both shortlist
+    routes (`GET|POST /campaigns/:campaignId/shortlist`,
+    `DELETE .../:creatorProfileId`) already work for any campaign id, active
+    or not — none of the three assumed "active". `creators.service.ts`'s
+    `resolveTargetVertical` takes an explicit `campaignId` and 404s only if
+    it doesn't exist anywhere (no company/active check); the shortlist routes
+    take `campaignId` as a path param and go through
+    `CampaignsService.assertExists`, same deal. Verified live against a
+    freshly created DRAFT campaign that was neither company's active one (see
+    the verification log below) — both endpoints returned real data scoped to
+    that campaign, nothing needed changing.
+  - **Noted, not fixed:** `GET /campaigns/active` is still the *global*
+    lookup (most recent LIVE across every company, or most recent of any
+    status/company if none are LIVE) — `CampaignsService.getActive()`,
+    unchanged since it was written for the marketplace-ranking use case
+    before campaigns had per-company scoping anywhere else. Confirmed live,
+    unauthenticated: `GET /campaigns/active` returns Ledgerly's "Fintech
+    Trust Campaign" regardless of caller. **Doesn't matter with the current
+    seed/demo**, because Ledgerly's LIVE campaign also happens to be the
+    most-recently-created LIVE campaign globally (created after Vertice's
+    LIVE "DevTools Integration Launch"), and the only real login this app
+    ever demos is Ledgerly (`EntryPage.tsx`'s `BRAND_EMAIL`) — so the value
+    it returns and the value a Ledgerly-scoped lookup would return are
+    identical today. It **would** matter the moment a second brand
+    (Vertice, seeded but never signed into by the demo entry) used the
+    marketplace or booked without an explicit `campaignId`: they'd rank
+    against and book into Ledgerly's campaign, not their own LIVE one — a
+    real cross-company leak, just not one the current seed/demo path can
+    reach. Only `creators.service.ts`'s no-`campaignId` fallback and
+    `bookings.service.ts`'s no-`campaignId` fallback call the *company-scoped*
+    `getActiveForCompany`/`getActiveForCompanyOrThrow` already, which is
+    correct; it's only the
+    public `GET /campaigns/active` endpoint itself (and whatever reads it
+    directly) that's global. Left as-is per the ask.
+  - **Verified on `localhost:3000`**, real tokens from `POST /auth/login`
+    (Ledgerly = `growth@ledgerly.example.com`, creator Adam Bauer =
+    `adam.bauer31@creators.naano.dev`), demo password for both:
+    ```
+    GET  /campaigns                                                200  as Ledgerly — 2 rows: Fintech Trust (LIVE, pending 0 / committed 1,829,575 / paid 598,493 / bookings 32), Summer Payouts (COMPLETED, committed=paid=1,447,040 / bookings 30) — LIVE-then-COMPLETED order
+    ```
+    Hand-check against `GET /bookings/sent?campaignId=<fintech>&pageSize=100`
+    (35 rows, one page): summed by status — INVITED 0, {ACCEPTED,
+    DRAFT_READY, SCHEDULED, LIVE, PAID} = 47,200 + 75,787 + 106,665 +
+    1,001,430 + 598,493 = **1,829,575**, PAID alone = **598,493**, non-DECLINED
+    count = 35 − 3 declined = **32** — exact match on all four figures.
+    ```
+    (created a temp DRAFT campaign for Ledgerly directly via Prisma, since the
+    seed gives Ledgerly only one LIVE and one COMPLETED campaign — no
+    non-active, non-completed one to book into; deleted it and its booking
+    after)
+    POST /bookings {campaignId:<temp DRAFT>, package:single, creator:Adam Bauer}   201  agreedPriceCents:47200 (= Adam's postCostCents)
+    GET  /campaigns                                                                200  temp campaign now pendingCents:47200, bookingsCount:1 — bumped by exactly the booked price
+    POST /bookings {campaignId:<Summer Payouts, COMPLETED>, creator:Adam Bauer}    409  "This campaign is completed, so it can't take new bookings."
+    POST /bookings {campaignId:<Vertice's "Q4 RevOps Awareness">, creator:Adam Bauer}  404  "No campaign \"...\""
+    POST /bookings  (as Adam Bauer, CREATOR role)                                  403  "Forbidden resource"
+    GET  /campaigns (as Adam Bauer, CREATOR role)                                  403  "Forbidden resource"
+    GET  /creators?campaignId=<temp DRAFT, non-active>                             200  real rows with real sectorFitPct (targetVertical FINTECH) — works for a non-active campaign
+    GET  /campaigns/<temp DRAFT, non-active>/shortlist                             200  {items:[],total:0} — works for a non-active campaign
+    ```
+  - `npx tsc -b --force` on `apps/api` — clean, no errors.
+- 2026-09-26 — A2 demo-data follow-up, `apps/api/prisma/demo-actions.ts` only
+  (no route changed — this is data maintenance, not a new endpoint). The real
+  A2 verification above used a temp Prisma-created campaign specifically
+  *because* the seed leaves Ledgerly with only one LIVE campaign (already
+  over its own budget: committed ~1,829,575 against budgetCents 1,500,000)
+  and one COMPLETED one — the new campaign switcher / budget bar has nothing
+  to switch to and a permanent over-budget warning on every fresh reseed.
+  Extended `demo-actions.ts` with three more idempotent guarantees, same
+  dry-run-by-default / `--local` / `--apply` guards as the existing
+  booking-lifecycle top-up:
+  1. **`"Fintech Trust Campaign"`'s `budgetCents` is bumped to at least
+     2,500,000** (`FINTECH_TRUST_MIN_BUDGET_CENTS`) — only up, checked with a
+     plain `<` so a database someone already fixed by hand isn't touched
+     again.
+  2. **Ledgerly gets a DRAFT campaign `"Payroll Compliance Series"`** if one
+     doesn't already exist for that `companyId` + name (`budgetCents
+     1,200,000`, `targetVertical HR_TECH`, `destinationUrl
+     https://example.com/lp/payroll-compliance` — same path pattern every
+     other seeded campaign uses) — a second non-LIVE row for the switcher to
+     show, with realistic objective/brief/keyMessages/guidelines text
+     matching the existing campaigns' tone (see `PAYROLL_CAMPAIGN` in the
+     script).
+  3. **`"Fintech Trust Campaign"` gets >= 1 fresh INVITED booking**
+     (BRAND-initiated, `agreedPriceCents` from the chosen creator's own
+     `postCostCents`) if it doesn't have one already — picks any creator with
+     no existing non-declined booking in that campaign, same rule `POST
+     /bookings` and the rest of this script already enforce.
+  - **The identity-shift gotcha this surfaced:** `resolveDemoCreator()`
+    (pre-existing, unchanged) picks "whoever the demo brand most recently
+    booked" — the single most-recently-created `Booking` row, company-wide.
+    The first version of guarantee 3 `.push()`ed its new INVITED booking onto
+    the end of `newBookings`, so it was written *last* inside the apply
+    transaction and became the new "most recent" — meaning the *next* run's
+    `resolveDemoCreator()` resolved to that random creator instead of
+    whoever it resolved to before, and `CREATOR_TARGETS` then had to top up
+    INVITED/ACCEPTED/SCHEDULED for *them* too, one extra cycle deep. Caught
+    this because the ask's own acceptance check (dry run → apply → dry run
+    reporting nothing to do) failed on the first attempt — a second dry run
+    immediately after the single `--apply` found two more bookings pending.
+    Fixed by `.unshift()`ing the new INVITED plan instead of `.push()`ing it,
+    so it's written *first* in the transaction and the existing
+    `CREATOR_TARGETS`/`BRAND_TARGETS` bookings (whichever of those two loops
+    actually writes something this run) stays the most recent one, same as
+    before this slice touched the file at all — this addition doesn't change
+    which creator the *next* run resolves as "the demo creator," it only
+    matters for *this* run's own plan.
+  - **Verified against the local dev database (`--local`):**
+    ```
+    npx ts-node prisma/demo-actions.ts --local            dry run: 6 changes — budget bump, new "Payroll Compliance Series", 4 bookings (2 pre-existing-mechanism top-ups for the then-current demo creator Nils Nilsson, 1 brand DRAFT_READY, 1 new Fintech Trust INVITED for Mateo Kowalski)
+    npx ts-node prisma/demo-actions.ts --local --apply     applied all 6
+    npx ts-node prisma/demo-actions.ts --local             dry run: found 2 MORE changes (Mateo Kowalski ACCEPTED + SCHEDULED) — the identity-shift gotcha above, not yet fixed at this point
+    ```
+    Fixed the ordering (`.unshift`), then converged:
+    ```
+    npx ts-node prisma/demo-actions.ts --local --apply     applied the 2 pending (Mateo Kowalski's own CREATOR_TARGETS top-up — legitimate, pre-existing mechanism, unrelated to the ordering fix itself)
+    npx ts-node prisma/demo-actions.ts --local             "Nothing to do. Every target status already has a real row." — ran twice more to confirm it stays that way
+    ```
+    `GET /campaigns` as Ledgerly (`growth@ledgerly.example.com`), real token:
+    ```
+    Fintech Trust Campaign   LIVE      budgetCents 2,500,000  pendingCents 36,200   committedCents 1,965,075  paidCents 758,993   bookingsCount 35   (under budget, pendingCents > 0)
+    Payroll Compliance Series  DRAFT   budgetCents 1,200,000  pendingCents 0        committedCents 36,200     paidCents 0         bookingsCount 1
+    Summer Payouts Push     COMPLETED  budgetCents 900,000    pendingCents 0        committedCents 1,529,940  paidCents 1,447,040 bookingsCount 31
+    ```
+    Hand-checked Fintech Trust's row against `GET /bookings/sent?campaignId=<fintech>&pageSize=100` (38 rows, one page) the same way as the A2 entry above: INVITED 36,200; {ACCEPTED, DRAFT_READY, SCHEDULED, LIVE, PAID} sum 47,200 + 52,600 + 182,452 + 923,830 + 758,993 = **1,965,075**; PAID alone **758,993**; non-DECLINED count 38 − 3 declined = **35** — exact match on all four figures again.
+  - `npx tsc -b --force` on `apps/api` — clean, no errors.
 
 ## Session: web, round 2
 
