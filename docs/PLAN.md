@@ -587,6 +587,24 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   and `/bookings/received` for both demo accounts, hidden at zero confirmed
   live on a creator with no actionable rows, and one real UI action — marking
   a live post paid — dropped the brand's badge from 19 to 18 with no reload).
+- [x] **W6 Panel scroll** — done 2026-09-26.
+  Scope: the persistent detail panel could be taller than the list column,
+  forcing the whole page to scroll to reach the booking rail and leaving
+  empty space below the (shorter) list. On desktop the panel wrapper
+  (`CreatorsListPage.tsx`) now gets an inline height capped to whichever is
+  shorter — the list column's own height or the viewport below the real top
+  bar (both measured via `ResizeObserver`, not guessed) — so the row's
+  height is always list-governed. `CreatorDetailPanel.tsx`'s header now
+  stays pinned (`shrink-0`) while everything below it scrolls in its own
+  region (`overflow-y-auto`), reset to the top on every new selection.
+  Narrow screens unaffected (inline sizing gated behind a `min-width: 1024px`
+  check).
+  Files: `apps/web/src/routes/CreatorsListPage.tsx`,
+  `apps/web/src/components/marketplace/CreatorDetailPanel.tsx`.
+  Notes: see docs/DECISIONS.md's "Session: web, round 2" for the full
+  verification log, including a real `ResizeObserver` bug caught along the
+  way (`entry.contentRect` is content-box, not border-box — under-reported
+  the top bar's height and never self-corrected).
 
 ---
 

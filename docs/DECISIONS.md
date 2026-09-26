@@ -1949,3 +1949,81 @@ needs to not lose an hour to.
     the deliberate `page.route(...).abort()` calls the `error-state` block
     always produces — not a regression.
   - `npx tsc -b apps/web/tsconfig.json` — clean, no errors.
+- 2026-09-26 — **W6, the detail panel scrolls on its own.** The panel's
+  content (header + tabs + both tabs + the booking rail) could be taller
+  than the list column, and the whole page had to scroll to reach the
+  booking rail — after which the shorter list column left a large empty
+  gap on the left, because the flex row's height was governed by the
+  taller panel. Fixed in `CreatorsListPage.tsx` + `CreatorDetailPanel.tsx`
+  only, per the brief's file boundary (`apps/api`, `lib/api`, `ResultsPage`,
+  dashboard components untouched).
+  - **Sizing lives in `CreatorsListPage.tsx`, not the panel.** On desktop
+    (`matchMedia("(min-width: 1024px)")`, tracked in state so it reacts to
+    a resize crossing the breakpoint, not just read once) the panel
+    wrapper gets an inline `{ top, height }`: `top` is the real top bar's
+    height and `height` is `Math.min(listColumnHeight, viewportHeight -
+    topBarHeight - 32)` — 32 matching the page's own `p-s8` bottom
+    padding, not a separate guess. Both `listColumnHeight` and
+    `topBarHeight` come from `ResizeObserver`s on the real DOM (the list
+    column's own ref; the top bar found via `document.querySelector("main
+    > header")`, the only header that's a direct child of `main` — AppShell
+    is out of scope for this change, so its top bar has no exported height
+    to read). The `Math.min` is what actually fixes the empty-space bug:
+    capping the panel to the viewport alone still left it taller than a
+    short list (a full viewport is usually taller than a ~12-row page), so
+    the row's height stayed panel-governed. Capping to whichever is
+    shorter makes the row's height list-governed whenever the list is the
+    shorter one — verified in the browser: `row.getBoundingClientRect()`
+    bottom exactly equals the list column's bottom, not the panel's,
+    confirming there's no leftover empty space below the list.
+  - **ResizeObserver gotcha, caught in verification, not assumed away**:
+    the first version read `entry.contentRect.height` inside the observer
+    callback, which is content-box (excludes padding and border) — the top
+    bar's own height, measured this way, came back roughly half its real
+    (border-box) size, right after a client-side sign-in navigation, and
+    never corrected itself even though the header's real size never
+    changed (nothing to trigger a second callback). `getBoundingClientRect
+    ().height` (border-box) is what both the initial call and the
+    `ResizeObserver` callback use now, in both observers (top bar and list
+    column) — confirmed stable across a sign-out/sign-in round trip with
+    six samples 300ms apart, all reading the same correct height.
+  - **The panel itself** (`CreatorDetailPanel.tsx`) no longer uses the
+    shared `Card` primitive for its ready-state root — `Card`'s own
+    `p-s6` can't be selectively overridden per-section without relying on
+    Tailwind's generated class order (no `tailwind-merge` in this
+    project), so the border/radius/surface tokens are applied directly on
+    a `flex h-full min-h-0 flex-col` wrapper instead. Inside: a `shrink-0`
+    header (avatar, name, role line, star — unchanged content) with its
+    own `border-b`, then a `min-h-0 flex-1 overflow-y-auto` region holding
+    the tabs, tab content, and the booking rail. `h-full` on the root only
+    resolves correctly because the wrapping div in `CreatorsListPage.tsx`
+    sets an explicit `height` (not `max-height` — a percentage height
+    can't resolve against an auto-height ancestor even with `max-height`
+    set). Scrollbar styling is `scrollbar-width: thin` +
+    `scrollbar-color: var(--border) transparent` (Firefox) via Tailwind
+    arbitrary properties, applied in the component itself — no change to
+    `index.css`, which is outside this session's file boundary; Chromium
+    keeps its default scrollbar, per the brief's "or default."
+  - **Reset to top on selection**: the scroll region's ref calls
+    `scrollTo({ top: 0 })` inside the same `useEffect` that already resets
+    `tab` to `"overview"` on `creatorId` change — one effect, not two.
+  - **Narrow screens**: the desktop check gates the inline style entirely;
+    below 1024px the wrapper has no `top`/`height`, `position` reads
+    `static` (confirmed in the browser), and the panel stacks below the
+    list exactly as before this change.
+  - **Verified in the browser** at 1440×900 and 1280×720 (real DOM
+    measurements, not just visual): panel height matched
+    `viewportHeight - topBarHeight - 32` in both sizes; scrolling the
+    panel's own region to its `scrollHeight` moved `panelScrollTop` to the
+    bottom while `window.scrollY` stayed at 0 (page didn't move) and the
+    header text stayed visible throughout; selecting a different row reset
+    `panelScrollTop` to 0 and swapped the header's name. At 914px width
+    (the pane's floor for a 390px emulation request) the wrapper's
+    `position` was `static` with no inline `top`/`height`, confirming the
+    narrow-screen path is untouched.
+  - **`npm run shots`**: ran clean, all ten shots regenerated
+    (`marketplace.png`/`marketplace-detail-panel.png` show the panel
+    correctly bounded beside the list, no empty space below the list
+    column). Same six pre-existing `randomuser.me` `ERR_FAILED` lines as
+    every prior run in this session — not a regression.
+  - `npx tsc --noEmit -p apps/web/tsconfig.json` — clean, no errors.

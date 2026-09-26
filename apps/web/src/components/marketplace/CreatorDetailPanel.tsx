@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CampaignOverview, CreatorProfileDetail } from "@naano/shared";
 import { Avatar } from "../ui/Avatar";
 import { Card } from "../ui/Card";
@@ -27,6 +27,12 @@ type PanelTab = "overview" | "audience";
 // CreatorProfileModal's tabs, relocated close to unchanged; the booking rail
 // moves from a side column to a stacked section, because a 1080px modal had
 // room for two columns and this ~440px pane doesn't.
+//
+// The wrapping element in CreatorsListPage sizes and positions this panel
+// (sticky, height capped to the list column or the viewport, whichever is
+// shorter — W6, docs/DECISIONS.md). This component just fills that box: the
+// header stays put (shrink-0) while everything below it — tabs, tab content,
+// the booking rail — scrolls in its own region, independent of the page.
 export function CreatorDetailPanel({
   creatorId,
   shortlisted,
@@ -36,6 +42,7 @@ export function CreatorDetailPanel({
   const [detail, setDetail] = useState<CreatorProfileDetail | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [tab, setTab] = useState<PanelTab>("overview");
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!creatorId) return;
@@ -43,6 +50,9 @@ export function CreatorDetailPanel({
     setStatus("loading");
     setDetail(null);
     setTab("overview");
+    // Selecting another row always starts the panel scrolled to the top,
+    // even if it was mid-scroll on the previous creator's booking rail.
+    scrollRef.current?.scrollTo({ top: 0 });
     api
       .getCreator(creatorId)
       .then((result) => {
@@ -74,8 +84,8 @@ export function CreatorDetailPanel({
     : "";
 
   return (
-    <Card className="flex flex-col gap-s6">
-      <header className="flex items-start justify-between gap-s4">
+    <div className="flex h-full min-h-0 flex-col rounded-card border border-border bg-surface">
+      <header className="flex shrink-0 items-start justify-between gap-s4 border-b border-border p-s6">
         <div className="flex min-w-0 items-center gap-s4">
           <Avatar
             src={detail?.avatarUrl ?? null}
@@ -104,35 +114,42 @@ export function CreatorDetailPanel({
         )}
       </header>
 
-      {status === "loading" && (
-        <p className="text-body text-text-muted">Loading profile…</p>
-      )}
-      {status === "error" && (
-        <p className="text-body text-warn">
-          Could not load this profile. Select it again to retry.
-        </p>
-      )}
-
-      {status === "ready" && detail && (
-        <>
-          <Tabs
-            value={tab}
-            onChange={(value) => setTab(value as PanelTab)}
-            items={[
-              { value: "overview", label: "Overview" },
-              { value: "audience", label: "Audience" },
-            ]}
-          />
-          {tab === "overview" ? (
-            <OverviewTab creator={detail} />
-          ) : (
-            <AudienceTab creator={detail} />
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto p-s6 [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin]"
+      >
+        <div className="flex flex-col gap-s6">
+          {status === "loading" && (
+            <p className="text-body text-text-muted">Loading profile…</p>
           )}
-          <div className="border-t border-border pt-s6">
-            <BookingRail creator={detail} campaign={campaign} />
-          </div>
-        </>
-      )}
-    </Card>
+          {status === "error" && (
+            <p className="text-body text-warn">
+              Could not load this profile. Select it again to retry.
+            </p>
+          )}
+
+          {status === "ready" && detail && (
+            <>
+              <Tabs
+                value={tab}
+                onChange={(value) => setTab(value as PanelTab)}
+                items={[
+                  { value: "overview", label: "Overview" },
+                  { value: "audience", label: "Audience" },
+                ]}
+              />
+              {tab === "overview" ? (
+                <OverviewTab creator={detail} />
+              ) : (
+                <AudienceTab creator={detail} />
+              )}
+              <div className="border-t border-border pt-s6">
+                <BookingRail creator={detail} campaign={campaign} />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
