@@ -1,4 +1,5 @@
 import type {
+  ActionCount,
   AttributionResponse,
   AuthMe,
   Booking,
@@ -238,6 +239,9 @@ export const httpClient: ApiClient = {
     return request<BrandCollaboration>(`/bookings/${encodeURIComponent(id)}/mark-paid`, {
       method: "POST",
     });
+  },
+  getActionCount(): Promise<ActionCount> {
+    return getJson<ActionCount>("/bookings/action-count");
   },
   listAttribution(params?: PageParams): Promise<AttributionResponse> {
     return getJson<AttributionResponse>(`/analytics/attribution${pageQuery(params)}`);

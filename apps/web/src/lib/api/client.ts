@@ -1,4 +1,5 @@
 import type {
+  ActionCount,
   AttributionResponse,
   AuthMe,
   Booking,
@@ -94,6 +95,12 @@ export interface ApiClient {
   requestChanges(id: string): Promise<BrandCollaboration>;
   /** Brand-only. Record that a live post has been paid for. */
   markPaid(id: string): Promise<BrandCollaboration>;
+
+  /**
+   * Either role. How many bookings are waiting on the signed-in user right
+   * now — backs the Collaborations rail badge.
+   */
+  getActionCount(): Promise<ActionCount>;
 
   /**
    * Brand-only. Clicks attributed per creator, across every campaign — only

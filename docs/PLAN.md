@@ -572,7 +572,21 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   a booking on a non-default campaign moves its bar, the COMPLETED campaign's
   book button genuinely disabled, an over-budget booking warns but still
   succeeds).
-- [ ] **W5 Rail badge**
+- [x] **W5 Rail badge** — done 2026-09-26.
+  Scope: `getActionCount` added to the web api client (http + fixtures); new
+  `actionCountStore` (`{count, refresh}`); a badge on the Collaborations rail
+  icon, both roles, hidden at zero, `aria-label` "N collaborations need you".
+  Fetched on shell mount and refetched from the one store action after every
+  lifecycle action and accept/decline succeeds.
+  Files: `apps/web/src/lib/api/{client.ts,http.ts,fixtures.ts}`,
+  `apps/web/src/lib/stores/actionCountStore.ts` (new),
+  `apps/web/src/routes/{AppShell.tsx,CreatorCollaborationsPage.tsx,
+  CollaborationsPage.tsx}`.
+  Notes: see docs/DECISIONS.md's "Session: web, round 2" for the full
+  verification log (badge count matches actionable rows in `/bookings/sent`
+  and `/bookings/received` for both demo accounts, hidden at zero confirmed
+  live on a creator with no actionable rows, and one real UI action — marking
+  a live post paid — dropped the brand's badge from 19 to 18 with no reload).
 
 ---
 

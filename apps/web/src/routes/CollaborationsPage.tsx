@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { BookingStatus, BrandCollaboration } from "@naano/shared";
 import { api } from "../lib/api";
+import { useActionCountStore } from "../lib/stores/actionCountStore";
 import { CollaborationsTable } from "../components/campaign/CollaborationsTable";
 import { CreatorsPagination } from "../components/marketplace/CreatorsPagination";
 import { Select } from "../components/ui/Select";
@@ -43,6 +44,7 @@ export function CollaborationsPage(): JSX.Element {
   const [reloadKey, setReloadKey] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const refreshActionCount = useActionCountStore((state) => state.refresh);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +99,7 @@ export function CollaborationsPage(): JSX.Element {
     try {
       const updated = await action(id);
       replaceRow(updated);
+      void refreshActionCount();
     } catch (err) {
       fail(id, err);
     } finally {

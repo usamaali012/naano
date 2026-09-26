@@ -1,5 +1,6 @@
 import { COMMISSION_PCT } from "@naano/shared";
 import type {
+  ActionCount,
   AttributionResponse,
   AttributionRow,
   AudienceSegment,
@@ -752,6 +753,16 @@ export const fixturesClient: ApiClient = {
     }
     booking.status = "PAID";
     return toBrandCollaboration(booking);
+  },
+
+  // FIXTURE_ME is always the brand (same limitation as listBookingsReceived
+  // above), so this counts fixtureBookings' own rows as the COMPANY viewer —
+  // no server to ask, same derive-from-nextAction rule the real endpoint uses.
+  async getActionCount(): Promise<ActionCount> {
+    const count = fixtureBookings.filter(
+      (b) => fixtureNextAction(b.status, "COMPANY", b.draftContent !== null).consequence !== "",
+    ).length;
+    return { count };
   },
 
   // Fixtures never simulate a real /r/:slug click, so lastClickAt has nothing

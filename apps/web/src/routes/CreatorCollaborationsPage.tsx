@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { BookingStatus, CreatorCollaboration } from "@naano/shared";
 import { api } from "../lib/api";
+import { useActionCountStore } from "../lib/stores/actionCountStore";
 import { CollaborationCard } from "../components/creator/CollaborationCard";
 
 const PAGE_SIZE = 20;
@@ -27,6 +28,7 @@ export function CreatorCollaborationsPage(): JSX.Element {
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const refreshActionCount = useActionCountStore((state) => state.refresh);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +80,7 @@ export function CreatorCollaborationsPage(): JSX.Element {
       // endpoint recomputes that.
       const page = await api.listBookingsReceived({ pageSize: PAGE_SIZE });
       setBookings(page.items);
+      void refreshActionCount();
     } catch (err) {
       fail(id, err);
     } finally {
@@ -91,6 +94,7 @@ export function CreatorCollaborationsPage(): JSX.Element {
     try {
       const updated = await api.submitDraft(id, content);
       replaceRow(updated);
+      void refreshActionCount();
     } catch (err) {
       fail(id, err);
     } finally {
@@ -104,6 +108,7 @@ export function CreatorCollaborationsPage(): JSX.Element {
     try {
       const updated = await api.markPublished(id, postUrl);
       replaceRow(updated);
+      void refreshActionCount();
     } catch (err) {
       fail(id, err);
     } finally {

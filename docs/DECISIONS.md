@@ -1864,3 +1864,88 @@ needs to not lose an hour to.
     the subtitle no longer both claim "ranked for your company."
   - `npx tsc -b apps/web/tsconfig.json` and `npx tsc -b apps/api/tsconfig.json`
     (sanity check, `apps/api` untouched this slice) — both clean.
+- 2026-09-26 — **Fix 4: `CampaignBudgetBar` legend.** The bar's three
+  segments (paid, committed-but-unpaid, invited) had no legend, and the
+  headline line named only the committed figure — a viewer couldn't read the
+  paid amount anywhere. Added a one-line legend under the bar: three small
+  `TINTS`-coloured swatches (same dot pattern `ui/SegmentedBar.tsx` already
+  uses) labelled "Paid €X", "Committed €Y" (committed-but-unpaid, i.e.
+  `committedCents - paidCents`, already computed as `committedNotPaidCents`
+  for the bar's own middle segment width — reused, not recomputed), "Invited
+  €Z" — the three sum to what the bar shows. The existing "€X committed of
+  €Y" headline and "€Z invited, not yet accepted" line are unchanged. Tokens
+  only, no new component.
+- 2026-09-26 — **W5, rail badge.** `apps/web/**` only, per A5's contract
+  (`ActionCount` in `packages/shared/src/api.ts` untouched — already correct
+  from the round-2 contract pass).
+  - **API layer.** `lib/api/client.ts`/`http.ts` gained `getActionCount` — a
+    thin `GET /bookings/action-count` wrapper, same shape as every other
+    method. `fixtures.ts`'s implementation derives the count from its own
+    `fixtureBookings` via the existing `fixtureNextAction` (viewer fixed to
+    `"COMPANY"`, since `FIXTURE_ME` is always the brand — same limitation
+    `listBookingsReceived`/`getEarnings`/`updateMyCard` already flag) rather
+    than a second hardcoded rule, so it can't drift from the state machine
+    the other fixture actions already update.
+  - **New `lib/stores/actionCountStore.ts`.** `{count, refresh}` — the
+    smallest store in the app on purpose: one number, one action. `refresh()`
+    swallows a failed request and leaves the last known count rather than
+    flashing the badge to zero on a transient blip (same reasoning
+    `bookingsStore`'s hydrate-error path uses, applied to a single number
+    instead of a map). Deliberately not wired to any polling interval — the
+    ask was "fetch on mount and after every lifecycle action," not a ticking
+    background refresh.
+  - **`AppShell.tsx`.** `useEffect` calls `refresh()` once when `me` becomes
+    non-null (covers sign-in and a page-load rehydrate alike). The badge
+    itself: a small `rounded-full bg-primary` circle, absolutely positioned
+    on the Collaborations icon's button (`key === "collaborations"`, true for
+    both `BRAND_RAIL` and `CREATOR_RAIL`), rendered only when `count > 0`.
+    `role="status"` + `aria-label={`${count} collaborations need you`}`
+    carries the count to assistive tech directly, separate from the button's
+    own `aria-label` (the nav item's name) so neither overwrites the other.
+    `text-[10px]` for the numeral has one existing precedent in the codebase
+    (`marketplace/icons.tsx`'s small circular metric badge) rather than being
+    a new arbitrary value invented for this slice.
+  - **Refresh wiring.** Both pages call `useActionCountStore`'s `refresh`
+    from the exact point W1 already handles success, per the ask — no new
+    success path introduced: `CreatorCollaborationsPage.tsx`'s `respond`
+    (covers both accept and decline), `submitDraft`, and `publish`; and
+    `CollaborationsPage.tsx`'s single `run()` helper, which already covers
+    all three brand actions (approve, request changes, mark paid) in one
+    place. No polling anywhere.
+  - **Verified against the running local API (`:3000`, unmodified) and in
+    the browser**, both demo accounts. Brand (Ledgerly): `GET
+    /bookings/action-count` returned `{count: 18}`, matching exactly the 18
+    rows in `GET /bookings/sent?pageSize=100` whose `nextAction.consequence`
+    is non-empty (checked by counting, not eyeballing). Creator (resolved to
+    Clara Keller via `GET /auth/demo-creator`): `action-count` returned
+    `{count: 1}`, matching the 1 actionable row in `GET
+    /bookings/received?pageSize=100` (an `INVITED` booking, `kind: "respond"`).
+    Accepting that invitation (`PATCH .../status`) moved it to `ACCEPTED`,
+    which is still in the creator's actionable set (`kind` becomes
+    `"submit_draft"`) — count correctly stayed at 1, not a false "drop."
+    Submitting the draft moved it to `DRAFT_READY` (`kind: "await_brand"`,
+    not actionable for the creator) — count dropped 1 → 0, and the brand's
+    own count rose 18 → 19 in the same step (the same booking became
+    actionable for the other role, `kind: "review_draft"`), confirming the
+    two sides' counts move independently and correctly off the same
+    transition. In the browser (signed in as Ledgerly on the live
+    `:5173` session): the rail badge read "19 collaborations need you"
+    (`aria-label`, confirmed via the accessibility tree, not just the visible
+    number) before any click; clicking a real "Mark as paid" button on the
+    Collaborations table dropped it to "18" immediately, with no page reload
+    — confirming the whole chain (action succeeds → `refreshActionCount()` →
+    store updates → badge re-renders) works end to end, not just the
+    underlying count formula. Signed in as the creator with zero actionable
+    bookings (all three of Clara Keller's collaborations were `await_brand`/
+    `none`): the Collaborations icon rendered with no badge at all — hidden
+    at zero, confirmed live, not just by the `count > 0` guard reading
+    correctly in isolation.
+  - **`npm run shots`**: ran clean before the live mark-paid verification
+    above; all ten shots regenerated (`collaborations.png` shows the badge at
+    19 alongside the rail icon's tooltip; `creator-collaborations.png` shows
+    the same icon with no badge for a creator with nothing actionable). Six
+    `ERR_FAILED` console lines this run: four are the pre-existing
+    `randomuser.me` avatar-fetch issue flagged in earlier entries, two are
+    the deliberate `page.route(...).abort()` calls the `error-state` block
+    always produces — not a regression.
+  - `npx tsc -b apps/web/tsconfig.json` — clean, no errors.
