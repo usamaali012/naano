@@ -38,8 +38,9 @@ paginated. See `docs/DECISIONS.md` for the full architecture log.
 apps/
   api/              NestJS API: REST endpoints, Prisma, JWT auth,
                      the public tracked-link redirect (GET /r/:slug).
-  web/               React + Vite SPA: the marketplace, creator modal,
-                     campaign and booking flows.
+  web/               React + Vite SPA: the marketplace (a comparison list
+                     beside a persistent creator detail panel), campaign
+                     and booking flows.
 packages/
   shared/            Types shared by both apps (enums, entities, the wire
                      API contracts, and the one CPM formula), derived from
@@ -125,10 +126,11 @@ pass/fail line per check and exits non-zero on any failure.
 
 ## What I changed
 
-naano.com is the reference, not the spec. Three decisions worth calling out
-before the build log below.
+naano.com is the reference, not the spec. Three decisions from the first
+round, four more from a second round once the brief asked for an interface
+I designed myself rather than a naano clone.
 
-### Next action is the spine of the creator's screen
+### Next action is the spine of both sides now
 
 naano has this idea already. The real Collaborations table has a "Next
 action" column, sixth of six, one line per row. It's the best idea in the
@@ -138,15 +140,103 @@ it tells them anything.
 I made it the organizing fact instead of a footnote. `GET /bookings/received`
 doesn't return a bare booking with a status pill and leave the creator to
 work out what that status means for them. It returns a `nextAction` per
-row: `kind` (`respond` / `publish` / `await_brand` / `none`), an imperative
-`label`, and a `consequence` string that's non-empty exactly when the next
-move is the creator's and empty otherwise (`DRAFT_READY`/`SCHEDULED` are the
-brand's move, not the creator's, even though the booking is technically
-"pending"). It's a pure function of status alone
+row: `kind`, an imperative `label`, and a `consequence` string that's
+non-empty exactly when the next move is the creator's and empty otherwise.
+It's a pure function of status, viewer, and whether a draft already exists
 (`apps/api/src/bookings/next-action.ts`, no Prisma, no side effects), so the
-same table that used to require reading a status enum and inferring what it
-means now says outright: accept or decline this; publish this, using your
-tracked link; wait, this one isn't yours to move.
+table that used to require reading a status enum and inferring what it means
+now says outright: accept or decline this; write your draft; publish this,
+using your tracked link; wait, this one isn't yours to move.
+
+The second round widened the same function to the brand's side.
+`GET /bookings/sent` returns a `nextAction` per row too: `DRAFT_READY`
+tells the brand to review the draft or ask for changes, `LIVE` tells them
+to confirm they've paid. The Collaborations table gained a seventh column,
+the same tinted-panel-when-actionable treatment as the creator's card, and
+both `/bookings/received` and `/bookings/sent` now sort actionable rows
+before everything else, across every page, not just whichever one is
+loaded (`actionable-statuses.ts`, the same derivation the rail badge counts
+from, so the badge, the sort, and the column can never disagree with each
+other).
+
+A "needs you" badge on the rail makes the same fact visible before either
+list even opens: `GET /bookings/action-count` counts exactly the rows
+whose `nextAction.consequence` is non-empty for the signed-in role, and a
+small circle on the Collaborations icon shows that count, hidden at zero,
+for both a brand and a creator.
+
+### The booking lifecycle, draft to paid, on both sides
+
+Round 2 extended accept/decline, already real, into the rest of the deal: a
+creator submits a draft, the brand approves it or sends it back for
+changes, the creator publishes with their tracked link and pastes the post
+URL, and the brand marks it paid. Five endpoints
+(`apps/api/src/bookings/{transitions.ts,next-action.ts}`) enforce this as a
+real state machine: each action checks the booking's current status
+against the one transition it allows and 409s in plain language
+(`"This booking is live, so it can't be approved."`) otherwise.
+
+Marking paid records a payment made outside naano, not a real transfer.
+Payment rails are cut (see "What was deliberately cut" below), so
+`markPaid` writes a `Payout` row for the full agreed price, a receipt, not
+a wallet movement, and that's the one action that moves a booking from "in
+transit" to "earned" on the creator's Earnings page via `netCents()`.
+Recording an honest receipt for money that changed hands elsewhere is a
+better use of a real database than a wallet UI pretending to move funds it
+never held.
+
+### One filter panel, not naano's two
+
+naano splits filtering across two panels: inline industry/country/price,
+then a separate "Performance filters" panel with its own Apply button. The
+API already accepted every filter, price range, max CPM, minimum median
+views, minimum engagement, posted-within-days, on top of
+industry/country/followers, the web side just wasn't exposing the second
+half of it. `FilterPanel.tsx` now has one panel, two rows of equal visual
+weight, and every control applies the moment it changes, the same way
+industry and country always did; there's no second panel and no Apply
+button to remember to press. The copy under it says exactly what the
+filters do and don't: "Filters hide creators. They don't change the sector
+fit score." That line was checked against `creators.service.ts` before
+writing it. Filtering narrows the set the fit score gets computed over, but
+the score itself never reads a filter param.
+
+### Creators edit their own card and price
+
+A creator's headline and both prices (single post, bundle of five) used to
+be seed data nobody could touch. `PATCH /creators/me` lets a signed-in
+creator change all three; the API validates each field on its own (headline
+1–160 characters, both prices a sane cents range) and, after merging the
+edit onto the stored row, checks the pair together, the bundle price has to
+stay between the single-post price and five times it, so a creator can't
+save a bundle that's cheaper per post than booking one at a time. An edit
+only affects bookings made afterward: `Booking.agreedPriceCents` is fixed
+at booking time and this endpoint never touches an existing booking, so a
+brand's already-agreed price can't move under them. The web form mirrors
+the same validation live, in EUR, with each price's CPM computed the same
+way `BookingRail`'s own formula does, so what a creator sees while typing
+is exactly what a brand will see afterward.
+
+### A campaign switcher and a budget bar that warns, not blocks
+
+The marketplace used to rank against one implicit "active" campaign with no
+way to see or change that. `GET /campaigns` now returns a brand's own
+campaigns with money already summed per campaign (paid, committed-but-
+unpaid, pending/invited, against budget); a "Ranked for" select in the
+marketplace header switches between them, re-ranking the list and re-keying
+the shortlist and booking state to whichever campaign is selected,
+remembered per company. Under it, a budget bar shows those same figures as
+a segmented bar plus a legend, capped visually at 100% of budget.
+
+Going over budget warns and doesn't block. Booking a creator that would
+push a campaign's committed-plus-pending total past its budget shows a
+plain-text warning above the confirm button, and the booking still goes
+through, the same way `POST /bookings` never checks budget server-side
+either. The brand is the one who knows whether going over is fine this
+month; a hard stop would be a rule I invented, not one anyone asked for.
+The one real stop is a completed campaign: its Book button is genuinely
+disabled, with the reason always visible as text, not hidden behind a
+hover tooltip.
 
 ### The commission is real, named, and can't drift
 
@@ -270,6 +360,28 @@ Server-side aggregates, paginated like every other list, no charting
 dependency. It exists because the entry page promises "trace every click"
 and nothing else in the product paid that off as a screen you could open.
 
+Then, round 2, once the brief asked for an interface I designed myself:
+
+1. **The shared contract.** `packages/shared/src/api.ts` widened first,
+   `NextAction`, `BrandCollaboration`, the lifecycle bodies,
+   `UpdateMyCardBody`, `CampaignOverview`, `ActionCount`, so two sessions
+   could build against one agreed file instead of editing it at the same
+   time.
+2. **The booking lifecycle on both sides.** Draft, review, publish, mark
+   paid, plus `nextAction` widened to the brand's own Collaborations table.
+3. **One filter panel.** The performance filters naano hides behind a
+   second panel, folded into the existing one.
+4. **Card editing.** A creator can change their own headline and price.
+5. **Campaign switcher and budget bar.** Money against budget on the
+   marketplace itself, warning instead of blocking.
+6. **The "needs you" badge.** One number on the Collaborations rail icon,
+   both sides, backed by the same actionable-row logic as the sort and the
+   column.
+7. **`prisma/demo-actions.ts`.** A script that tops up the demo accounts so
+   every action in the lifecycle has a booking to act on, and gives the
+   campaign switcher a second campaign. See "Disclosures" for what it
+   changes.
+
 ## What was deliberately cut
 
 Named out loud rather than left to be discovered. (The creator-side cuts,
@@ -281,12 +393,17 @@ reasoning specific to each. This list is everything else.)
 - Real payment rails. A wallet UI may exist, but balances are never real
   money moving.
 - The AI Matching conversational mode; the marketplace stays a browsable,
-  filterable grid.
+  filterable list.
 - The conversion pixel (a layer above click tracking). Click tracking
   itself is real and verified end to end.
 - LinkedIn OAuth and any real LinkedIn API. Post URLs and content are
   seeded, not fetched.
 - Messages between brands and creators.
+- A note field on "Ask for changes." Sending a draft back to the creator is
+  a real status change with no way to say what to change, the same gap as
+  Messages above, and cut for the same reason: real brand-to-creator text
+  belongs to a messaging feature I didn't build, not bolted onto one
+  button.
 - The Leads tab and ICP account enrichment.
 - The MCP / Connect server.
 - i18n, the blog, and the SEO page tree.
@@ -309,18 +426,38 @@ from the audience industry mix shown on the Audience tab, so the two can
 disagree for the same creator. Deriving fit from audience composition is
 the more honest version and I did not have time for it.
 
-**Campaign context is implicit.** The marketplace ranks against the
-company's most recent live campaign. There is no campaign switcher,
-because there are no campaign screens.
+**A campaign switcher replaced the implicit one.** The marketplace used to
+rank against whichever campaign happened to be "most recent live," with no
+way to see or change that. `GET /campaigns` and a "Ranked for" select fixed
+that; see "A campaign switcher and a budget bar that warns, not blocks"
+above.
+
+**`GET /campaigns/active` is not scoped to a company.** It's still the
+global "most recent live campaign across every brand," not "this brand's."
+Bookings are not affected: `POST /bookings` resolves the default campaign
+per company, and the web app only accepts the active campaign as its
+default if it appears in the brand's own `GET /campaigns` list. What's left
+is an endpoint that answers the wrong question for any brand but the one
+this demo signs in as. It should be company-scoped, and it isn't yet.
+
+**The status check and the write, in every lifecycle action, aren't one
+atomic step.** Draft, approve, request-changes, publish, and mark-paid each
+read the booking, check its status in application code, then write. Two
+requests racing on the same booking could both pass the check before either
+writes. The web app narrows this to a non-issue in practice by disabling
+that row's buttons while a request for it is in flight, but the API itself
+has no database-level guard against it.
 
 **Tracked-link destinations are `example.com` paths.** The redirect and
 the click recording are real and verified end to end. The page a link
 lands on is a placeholder, because the plumbing was the point.
 
-**There are no tests.** In a build this short I chose hand-verification, a
-Playwright screenshot suite that regenerates on every change, and a smoke
-script that runs against the deployed API. That is a real tradeoff, not an
-oversight, and it is the first thing I would add.
+**There are no tests.** In a build this short I chose hand-verification and
+a smoke script that runs against the deployed API. There's also a
+Playwright screenshot suite (`npm run shots`) that I run on demand after a
+UI change, not on every change. It isn't wired into anything automatic.
+That is a real tradeoff, not an oversight, and it is the first thing I
+would add.
 
 ## Disclosures
 
@@ -336,6 +473,23 @@ summarized after the fact. `docs/DECISIONS.md`'s running log and
 `docs/PLAN.md`'s per-slice notes are the human-readable index into that
 history. They cite the reasoning; the `.agent-logs/` transcripts are the
 record it was derived from.
+
+### The demo accounts get topped up by a script
+
+`apps/api/prisma/demo-actions.ts` runs by hand, idempotently, against the
+demo brand and creator accounts. It guarantees the demo creator has a
+booking to accept, one to write a draft for, and one to publish, and the
+demo brand has a draft to review and a live post to mark paid. Every
+walkthrough uses those up, so without it a reviewer could open the demo and
+find nothing to act on.
+
+It also changes campaign data, and I want that visible: it raises the
+budget of the demo brand's live campaign, "Fintech Trust Campaign", to
+EUR 25,000 (the seed had it at EUR 15,000, already overspent, so the budget
+bar opened in its warning state), and adds a second campaign, "Payroll
+Compliance Series", as a draft, so the campaign switcher has something to
+switch to. The budget figures you see on the live demo are those adjusted
+ones, not the seed's.
 
 ### The demo password is in the repo on purpose
 
