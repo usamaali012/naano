@@ -16,6 +16,7 @@ import type {
   PageParams,
   Paginated,
   UpdateBookingStatusBody,
+  UpdateMyCardBody,
 } from "@naano/shared";
 
 export interface ApiClient {
@@ -28,6 +29,13 @@ export interface ApiClient {
 
   listCreators(params?: ListCreatorsParams): Promise<Paginated<MarketplaceCreator>>;
   getCreator(id: string): Promise<CreatorProfileDetail>;
+  /**
+   * Creator-only. Edit the signed-in creator's own headline/prices — every
+   * field optional, at least one required. Returns the updated
+   * CreatorProfileDetail. Existing bookings keep their agreedPriceCents; a
+   * new price only affects bookings made after it.
+   */
+  updateMyCard(body: UpdateMyCardBody): Promise<CreatorProfileDetail>;
 
   /** The campaign the marketplace is ranked for and the shortlist is keyed to. */
   getActiveCampaign(): Promise<CampaignSummary>;

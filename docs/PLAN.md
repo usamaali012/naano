@@ -504,7 +504,28 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   verification log (one booking walked end to end, draft → revise → approve
   → publish → paid, plus an earnings before/after) and the `http.ts` fix it
   surfaced (server validation-array messages weren't reaching the UI).
-- [ ] **W4 Card editing**
+- [x] **W4 Card editing** — done 2026-09-26.
+  Scope: `updateMyCard` added to the web api client (http + fixtures).
+  `CreatorHomePage`'s "Edit card" swaps the header + metrics block for an
+  in-place form (headline, single post price, bundle of five price, both
+  in EUR) — no modal. Each price shows its own live CPM via the shared
+  `cpmCents` formula (bundle divides by five first, `BookingRail`'s own
+  convention). Client-side validation mirrors the API's DTO/service rules
+  (at least one field, headline 1..160, prices 5,000..2,250,000 cents,
+  bundle between post price and 5x it) and still surfaces the API's own
+  message on a genuine rejection. Save replaces the page's data with the
+  response; existing bookings keep their price, confirmed unaffected.
+  Also added a "Bundle of 5" metric tile and a headline line to the
+  display view (neither rendered before this slice).
+  Files: `apps/web/src/lib/api/{client.ts,http.ts,fixtures.ts}`,
+  `apps/web/src/routes/CreatorHomePage.tsx`.
+  Notes: see docs/DECISIONS.md's "Session: web, round 2" for the full
+  verification log (bundle-over-5x inline error, a real price change seen
+  from the brand's marketplace row, reset back to original values) and a
+  separate fix landed first in the same session — the brand's draft-review
+  panel was clamped to 3 lines with no way to read the rest; now a "Show
+  full draft" toggle appears only when the draft actually overflows
+  (measured from the real DOM, not guessed from character count).
 - [ ] **W2 Campaign switcher and budget bar**
 - [ ] **W5 Rail badge**
 
@@ -514,6 +535,19 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
 
 Notes handed forward between sessions. Newest first.
 
+- 2026-09-26 — W4 (card editing) done, `apps/web/**` only. `fixtures.ts`'s
+  `updateMyCard` has nothing real to mutate against — there's still no
+  creator-mode fixture session (`FIXTURE_ME` is always the brand), so it
+  writes to a fixed stand-in (`FIXTURE_SELF_CREATOR_ID = "fixture-1"`) that
+  is unreachable from the UI today, same shape as `listBookingsReceived`'s
+  existing "honest zeroed response" limitation — worth fixing together if a
+  real fixture creator session ever gets built. Also, ahead of W4:
+  `CreatorHomePage.tsx` never rendered `headline` or `bundle5PriceCents` at
+  all before this session, even though both were already on the wire
+  (`CreatorProfileDetail`) — added a headline line and a "Bundle of 5"
+  metric tile to the display view so the fields W4 makes editable are
+  visible outside edit mode too; flagging in case that reads as scope creep
+  to a future reviewer, it was necessary for the edit form to make sense.
 - 2026-09-26 — W1 (booking lifecycle) done, `apps/web/**` only. Two things
   worth flagging: (1) `apps/web/src/lib/api/http.ts`'s `request()` used to
   drop any 400/409 whose body carried `message` as a string array (Nest's

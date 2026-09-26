@@ -1595,3 +1595,97 @@ needs to not lose an hour to.
     `error-state` abort this suite also produces.
   - `npx tsc -b apps/web/tsconfig.json` — clean, no errors, run twice (before
     and after the `http.ts` message-array fix).
+- 2026-09-26 — **Fix 3: brand can read the full draft before approving.**
+  `components/campaign/CollaborationsTable.tsx`'s `review_draft` panel
+  clamped the draft to `line-clamp-3` with no way to read the rest — a
+  brand had to Approve or Ask for changes on a draft it couldn't fully see.
+  New `DraftText` (replaces the bare clamped `<p>`): a `useLayoutEffect`
+  measures the real DOM (`scrollHeight` vs `clientHeight` while still
+  clamped) rather than guessing from character count, since whether
+  `line-clamp-3` actually truncates depends on real layout — font size,
+  the column's `max-w-xs`, and the draft's own line breaks. A "Show full
+  draft" / "Show less" text toggle (same `text-label font-medium
+  text-primary` treatment as the table's own "Copy link") appears only
+  when that measurement says the text overflows; a short draft (Ava
+  Dubois's seed example, two lines) shows no toggle at all. Verified
+  against the real API (`:3000`): submitted a five-line draft as a
+  creator (accepted a fresh Fintech Trust Campaign invitation, sent it for
+  review), then reviewed it as the brand — clamped to 3 lines with "Show
+  full draft" visible, clicking it revealed all five lines and flipped the
+  toggle to "Show less", clicking again re-clamped. Ava Dubois's existing
+  short draft alongside it correctly showed no toggle.
+- 2026-09-26 — **W4, a creator edits their own card and price.**
+  `apps/web/**` only, per A4's contract (`packages/shared/src/api.ts`'s
+  `UpdateMyCardBody` untouched — already correct from the round-2 contract
+  pass, confirmed while building against it).
+  - **API layer.** `lib/api/client.ts`/`http.ts` gained `updateMyCard` — a
+    thin `PATCH /creators/me` wrapper, same shape as every other action in
+    the file. `fixtures.ts` mirrors `apps/api/src/creators/creators.service.ts`'s
+    validation by hand (same "no real server to ask" reasoning
+    `fixtureNextAction` already uses for A1) — "at least one field",
+    headline 1..160 trimmed, both prices integer 5,000..2,250,000 cents,
+    and the bundle-vs-post cross-check evaluated after merging onto the
+    stored row. There's still no real creator-mode fixture session
+    (`FIXTURE_ME` is always the brand, same limitation `listBookingsReceived`
+    and `getEarnings` already flag) — `updateMyCard` mutates a fixed
+    stand-in (`FIXTURE_SELF_CREATOR_ID = "fixture-1"`, the creator
+    `FIXTURE_CREATOR_EMAIL` already names) so the client still type-checks
+    and behaves plausibly if this ever becomes reachable; unreachable today
+    the same way `updateMyCard` itself is, since `CreatorHomePage` never
+    renders past its error state when `creatorProfileId` is null.
+  - **`routes/CreatorHomePage.tsx`.** "Edit card" (top-right of the profile
+    card, `Button variant="secondary"`) swaps the header + metrics block for
+    an in-place form — no modal, no route change — via one `editing` boolean;
+    Audience snapshot and Recent posts below stay mounted and unaffected.
+    The form: headline text input, single post price (EUR) and bundle of
+    five price (EUR) — both entered in whole/decimal EUR and converted with
+    `Math.round(eur * 100)`, the same inline conversion `FilterPanel`'s
+    `PriceRangeFilter` already uses, not a new shared helper. Each price
+    field shows its own live CPM underneath via `formatCpm` (wraps the
+    shared `cpmCents`, never a copy of the formula) — the bundle field
+    divides by five first (`Math.round(bundleCents / 5)`), the same
+    per-post convention `BookingRail` already uses for its own bundle CPM.
+    Client-side validation mirrors the API's DTO/service rules exactly
+    (`MIN_PRICE_CENTS`/`MAX_PRICE_CENTS` constants duplicated with a "keep
+    in sync with the DTO" comment, same pattern the DTO itself uses pointing
+    at the shared doc comment) and disables Save while invalid, with the
+    same three inline messages the API would 400 with; a genuine API
+    rejection (network race, anything client validation didn't catch) still
+    surfaces via `err.message` off `ApiError`, same pattern every other
+    action's error row already uses. Save calls `updateMyCard` and replaces
+    `detail` with the response directly (no refetch); Cancel discards the
+    form's local state and returns to the display view unchanged. Also
+    added a "Bundle of 5" metric tile and a headline line (`OverviewTab`'s
+    own muted-paragraph treatment) to the display view — neither rendered
+    before this slice, but editing a price/field the view never showed
+    would have been confusing, and the metrics grid widened
+    (`sm:grid-cols-3 lg:grid-cols-5`) to fit the fifth tile without letting
+    any column shift width.
+  - **Verified against the running local API (`:3000`, unmodified) and in
+    the browser**, signed in as the demo creator (resolved to Mateo
+    Kowalski this run): opened Edit card, typed a bundle price 2000 with a
+    362 single-post price (over 5x) — inline "Bundle-of-5 price must be at
+    least the single-post price and at most 5x it." appeared immediately
+    while typing, Save stayed disabled, no request sent. Corrected to a
+    real change (single post €362 → €400, CPM €23 → €25 live as typed) and
+    saved — 200, view mode returned with the new figures, no refetch flash.
+    Signed in as the brand (Ledgerly), searched the marketplace for Mateo
+    Kowalski: row showed the new €400 post cost and €25 CPM, matching what
+    the creator side saved. Signed back in as the creator and reset both
+    prices to their original values (€362 / €1,217.27) — saved cleanly,
+    confirmed back to the original CPM figures (€23 / €15).
+  - **`npm run shots`**: ran clean, all ten shots regenerated;
+    `creator-profile.png` (view mode, "Edit card" button + five-tile metrics
+    row including the new Bundle of 5 tile) opened and checked against
+    DESIGN.md's anti-slop list — tabular-nums holds across all five tiles,
+    one button style, no gradient/shadow/em-dash. Edit mode itself isn't in
+    the shot suite (no shot list entry crosses a click into it); checked
+    manually instead via the browser at 1440px during the verification
+    above — token colours/radius/spacing throughout, "Save"/"Cancel" not
+    "Submit", the `--warn` token on invalid fields matching `Input`'s
+    existing `invalid` prop, no new component primitive introduced. The
+    four `ERR_FAILED` console lines this run are the same pre-existing
+    `randomuser.me` avatar-fetch issue flagged in the W1 entry above,
+    unrelated to this slice.
+  - `npx tsc --noEmit` on `apps/web` — clean, no errors, run twice (once
+    after the draft-toggle fix above, once after this slice).

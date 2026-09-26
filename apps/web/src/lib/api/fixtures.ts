@@ -22,6 +22,7 @@ import type {
   PageParams,
   Paginated,
   UpdateBookingStatusBody,
+  UpdateMyCardBody,
 } from "@naano/shared";
 import type { ApiClient } from "./client";
 import { ApiError } from "./errors";
@@ -31,6 +32,13 @@ import { ApiError } from "./errors";
 // has no real creator-side session yet), so this email is never actually
 // signed into — it only keeps the ApiClient shape honest.
 const FIXTURE_CREATOR_EMAIL = "sofia.bergman0@creators.naano.dev";
+// updateMyCard's stand-in for "the signed-in creator" — same limitation as
+// FIXTURE_CREATOR_EMAIL above, there's no real creator-mode fixture session.
+// Sofia Bergman, the creator FIXTURE_CREATOR_EMAIL names.
+const FIXTURE_SELF_CREATOR_ID = "fixture-1";
+// Keep in sync with apps/api/src/creators/dto/update-my-card.dto.ts.
+const MIN_PRICE_CENTS = 5_000;
+const MAX_PRICE_CENTS = 2_250_000;
 
 const FIXTURE_ME: AuthMe = {
   userId: "fixture-user-brand",
@@ -454,6 +462,48 @@ export const fixturesClient: ApiClient = {
     detail.audienceSegments = segmentsFor(detail);
     detail.posts = postsFor(detail);
     return detail;
+  },
+
+  // Mirrors apps/api/src/creators/creators.service.ts's updateMyCard
+  // validation by hand (same "no real server to ask" reasoning as
+  // fixtureNextAction above) — keep in sync if that changes.
+  async updateMyCard(body: UpdateMyCardBody): Promise<CreatorProfileDetail> {
+    const creator = FIXTURE_CREATORS.find((c) => c.id === FIXTURE_SELF_CREATOR_ID);
+    if (!creator) throw new ApiError(404, "No fixture creator profile");
+    if (
+      body.headline === undefined &&
+      body.postCostCents === undefined &&
+      body.bundle5PriceCents === undefined
+    ) {
+      throw new ApiError(400, "Provide at least one field to update.");
+    }
+    if (body.headline !== undefined) {
+      const trimmed = body.headline.trim();
+      if (trimmed.length < 1 || trimmed.length > 160) {
+        throw new ApiError(400, "headline must be between 1 and 160 characters");
+      }
+    }
+    for (const value of [body.postCostCents, body.bundle5PriceCents]) {
+      if (value === undefined) continue;
+      if (!Number.isInteger(value) || value < MIN_PRICE_CENTS || value > MAX_PRICE_CENTS) {
+        throw new ApiError(
+          400,
+          `Price must be an integer between ${MIN_PRICE_CENTS} and ${MAX_PRICE_CENTS} cents.`,
+        );
+      }
+    }
+    const postCostCents = body.postCostCents ?? creator.postCostCents;
+    const bundle5PriceCents = body.bundle5PriceCents ?? creator.bundle5PriceCents;
+    if (bundle5PriceCents < postCostCents || bundle5PriceCents > postCostCents * 5) {
+      throw new ApiError(
+        400,
+        "Bundle-of-5 price must be at least the single-post price and at most 5x it.",
+      );
+    }
+    if (body.headline !== undefined) creator.headline = body.headline.trim();
+    creator.postCostCents = postCostCents;
+    creator.bundle5PriceCents = bundle5PriceCents;
+    return fixturesClient.getCreator(creator.id);
   },
 
   async getActiveCampaign(): Promise<CampaignSummary> {

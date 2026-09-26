@@ -343,7 +343,8 @@ apps/
                            updateBookingStatus, submitDraft / markPublished /
                            approveDraft / requestChanges / markPaid (W1, the
                            five lifecycle actions — see docs/DECISIONS.md
-                           "Session: web, round 2"), listAttribution (5.4,
+                           "Session: web, round 2"), updateMyCard (W4, thin
+                           PATCH /creators/me wrapper), listAttribution (5.4,
                            brand-only). http.ts maps every ListCreatorsParams
                            field onto the query string (creatorsQuery()) —
                            already covered every filter FilterPanel (W3) now
@@ -370,9 +371,15 @@ apps/
                            fixtureNextAction/fixtureNetCents that mirror
                            apps/api/src/bookings/next-action.ts and money.ts by
                            hand — keep the two in sync if A1's copy changes.
-                           postedWithinDays is the one W3 filter fixtures.ts
-                           can't mirror: FIXTURE_CREATORS carries no per-post
-                           publish date (posts are only synthesized on demand
+                           updateMyCard (W4) mirrors creators.service.ts's
+                           validation by hand against a fixed stand-in
+                           creator (FIXTURE_SELF_CREATOR_ID) — same "no real
+                           creator-mode fixture session" limitation as
+                           listBookingsReceived above, unreachable from the
+                           UI today. postedWithinDays is the one W3 filter
+                           fixtures.ts can't mirror: FIXTURE_CREATORS
+                           carries no per-post publish date (posts are only
+                           synthesized on demand
                            in getCreator()), so that filter is a no-op in
                            fixtures mode — verified against the real API
                            instead.
@@ -455,6 +462,25 @@ apps/
                            CreatorsListPage (brand) or CreatorHomePage
                            (creator — their own profile only now, "this is how
                            brands see you", from GET /creators/:id).
+                           CreatorHomePage (W4, 2026-09-26): "Edit card"
+                           swaps the header + metrics block for an in-place
+                           form (headline, single post price, bundle of five
+                           price, both in EUR) — no modal, Audience snapshot/
+                           Recent posts below stay mounted. Each price field
+                           shows its own live CPM via the shared cpmCents
+                           formula (bundle divides by five first, same
+                           per-post convention BookingRail uses). Client-side
+                           validation mirrors PATCH /creators/me's DTO/
+                           service rules exactly (MIN_PRICE_CENTS/
+                           MAX_PRICE_CENTS constants, "keep in sync with the
+                           DTO" comment) and disables Save while invalid; a
+                           genuine API rejection still surfaces via
+                           ApiError.message. Save calls api.updateMyCard and
+                           replaces detail with the response directly, no
+                           refetch. Also added a headline line and a
+                           "Bundle of 5" metric tile to the display view —
+                           neither rendered before this slice even though
+                           both were already on CreatorProfileDetail.
                            Collaborations lives at one URL, `/app/
                            collaborations`, role-branched by App.tsx's new
                            CollaborationsIndex (same pattern as AppIndex): a

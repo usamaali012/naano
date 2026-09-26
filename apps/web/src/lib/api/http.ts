@@ -16,6 +16,7 @@ import type {
   PageParams,
   Paginated,
   UpdateBookingStatusBody,
+  UpdateMyCardBody,
 } from "@naano/shared";
 import type { ApiClient } from "./client";
 import { ApiError } from "./errors";
@@ -131,6 +132,13 @@ export const httpClient: ApiClient = {
   },
   getCreator(id: string): Promise<CreatorProfileDetail> {
     return getJson<CreatorProfileDetail>(`/creators/${encodeURIComponent(id)}`);
+  },
+  updateMyCard(body: UpdateMyCardBody): Promise<CreatorProfileDetail> {
+    return request<CreatorProfileDetail>("/creators/me", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
   },
   getActiveCampaign(): Promise<CampaignSummary> {
     return getJson<CampaignSummary>("/campaigns/active");
