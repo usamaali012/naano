@@ -504,6 +504,21 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   verification log (actionable-first ordering holds across all pages for both
   demo accounts, actionable count matches `action-count`, existing
   `campaignId`/`status` filters still work).
+- [x] **A7 Results overview** — done 2026-09-26.
+  Scope: `GET /analytics/overview` (COMPANY-only), `ResultsOverview` —
+  30-day zero-filled `clicksByDay`, `totalClicks30d`/`totalClicksAllTime`,
+  zero-filled `bookingsByStatus` in lifecycle order, `paidCents`,
+  `committedCents`. Clicks-per-day via a raw `DATE_TRUNC` query, not a
+  `findMany` over every `ClickEvent`.
+  Files: `apps/api/src/analytics/{analytics.service.ts,
+  analytics.controller.ts,analytics.module.ts}`,
+  `packages/shared/src/api.ts` (new `ClicksDay`/`StatusCount`/
+  `ResultsOverview`).
+  Notes: see docs/DECISIONS.md's "Session: API, round 2" for the full
+  verification log (30 entries oldest-to-newest, `bookingsByStatus` sums to
+  `GET /bookings/sent`'s total, `totalClicksAllTime` matches the summed
+  `GET /analytics/attribution` rows, a real `GET /r/:slug` hit moves today's
+  count and both click totals by one, 403 as a creator).
 
 ### 7-WEB
 

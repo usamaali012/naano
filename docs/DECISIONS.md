@@ -1404,6 +1404,45 @@ needs to not lose an hour to.
     GET /bookings/sent?status=LIVE            16 rows — filter still scopes correctly with the new ordering
     ```
   - `npx tsc --noEmit` on `apps/api` — clean, no errors.
+- 2026-09-26 — A7, real aggregates for the Results dashboard. `apps/api/**`
+  and `packages/shared` only. New `ClicksDay`/`StatusCount`/`ResultsOverview`
+  in `packages/shared/src/api.ts`, new `GET /analytics/overview`
+  (COMPANY-only) in the existing `analytics` module.
+  - **One `booking.findMany`** (select `status`, `agreedPriceCents`,
+    `trackedLink.id`) scoped to `campaign: { companyId }` — same
+    small-catalogue justification `attribution` already uses (bounded by
+    how many bookings one brand has ever made) — drives `bookingsByStatus`
+    (zero-filled over a local `STATUS_ORDER` constant: INVITED, ACCEPTED,
+    DRAFT_READY, SCHEDULED, LIVE, PAID, DECLINED — the lifecycle order
+    asked for, not the enum's declaration order), `paidCents` (PAID only),
+    `committedCents` (a local `COMMITTED_STATUSES` set — ACCEPTED through
+    PAID — same set `campaigns.service.ts`'s A2 `COMMITTED_STATUSES` already
+    uses, kept local rather than shared across modules for one set literal,
+    same call `campaigns.service.ts` itself made), and the `TrackedLink` ids
+    that feed the two click aggregates below.
+  - **`totalClicksAllTime`** is one `clickEvent.count` over those tracked-link
+    ids — no date filter, so it's exactly the same set `attribution` sums
+    per creator, just totalled instead of grouped.
+  - **`clicksByDay`** is a raw query (`Prisma.$queryRaw` + `Prisma.sql`/
+    `Prisma.join` for the `IN` list) — `DATE_TRUNC('day', "createdAt")` +
+    `COUNT(*)::int`, `GROUP BY day`, filtered to the last 30 days — per the
+    ask, not a `findMany` that loads every `ClickEvent` into memory. Zero-fill
+    happens in code: `emptyClicksDays()` builds all 30 UTC day buckets first
+    (oldest first, today included, mirroring `bookings.service.ts`'s
+    `emptyMonths()` pattern for the earnings chart), the raw rows are folded
+    into it by day key, and `totalClicks30d` is just the sum of the
+    zero-filled array rather than a second query.
+  - **Verified against the running local API (`localhost:3000`)**, real
+    token from `POST /auth/login` (Ledgerly = brand):
+    ```
+    GET /analytics/overview                200  30 entries in clicksByDay, oldest 2026-08-28 .. newest (today) 2026-09-26
+    bookingsByStatus sum (4+1+3+5+15+44+4=76) == GET /bookings/sent total (76)
+    totalClicksAllTime (1443) == sum of totalClicks across GET /analytics/attribution?pageSize=100 (1443, 38 rows, one page)
+    GET /r/KK9DshtnBcbc (a real tracked link, Fintech Trust Campaign)  -> today's clicksByDay entry 0 -> 1, totalClicksAllTime 1443 -> 1444, totalClicks30d 658 -> 659
+    GET /analytics/overview as the demo creator                       403 "Forbidden resource"
+    ```
+  - `npm run build:shared` clean; `npx tsc --noEmit` on `apps/api` — clean,
+    no errors.
 
 ## Session: web, round 2
 

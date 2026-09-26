@@ -261,6 +261,36 @@ export interface AttributionResponse extends Paginated<AttributionRow> {
   hasAnyClicks: boolean;
 }
 
+/** One day of the Results dashboard's clicks chart. */
+export interface ClicksDay {
+  /** YYYY-MM-DD, UTC. */
+  date: string;
+  clicks: number;
+}
+
+/** One status of the Results dashboard's booking breakdown. */
+export interface StatusCount {
+  status: BookingStatus;
+  count: number;
+}
+
+/**
+ * GET /analytics/overview (COMPANY-only) — real aggregates for the Results
+ * dashboard, scoped to the signed-in company's own campaigns.
+ */
+export interface ResultsOverview {
+  /** Last 30 days including today, zero-filled, oldest first. */
+  clicksByDay: ClicksDay[];
+  totalClicks30d: number;
+  totalClicksAllTime: number;
+  /** Every BookingStatus, zero-filled, in lifecycle order. */
+  bookingsByStatus: StatusCount[];
+  /** Sum of agreedPriceCents on PAID bookings. */
+  paidCents: number;
+  /** Sum of agreedPriceCents, ACCEPTED through PAID. */
+  committedCents: number;
+}
+
 // --- Creator side ------------------------------------------------------------
 //
 // These types are the contract between the API session and the web session.

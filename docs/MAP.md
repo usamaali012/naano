@@ -266,6 +266,18 @@ apps/
                            ClickEvent.isLead investigation that killed a
                            planned "qualified clicks" column in favour of
                            lastClickAt.
+                           GET /analytics/overview (COMPANY-only, A7, round
+                           2): the Results dashboard's aggregates —
+                           30-day zero-filled clicksByDay (raw DATE_TRUNC
+                           query, not a findMany over every ClickEvent),
+                           totalClicks30d/totalClicksAllTime, bookingsByStatus
+                           zero-filled in lifecycle order, paidCents,
+                           committedCents (same ACCEPTED-through-PAID set
+                           campaigns.service.ts's A2 committedCents uses).
+                           One booking.findMany scoped to the signed-in
+                           company's campaigns drives the status/money
+                           figures and collects the TrackedLink ids the two
+                           click aggregates query against.
   web/                    React + Vite
     Dockerfile               Session B. Build context is the repo root. Takes
                            VITE_API_URL / VITE_API_MODE as Docker build ARGs
