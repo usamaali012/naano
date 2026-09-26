@@ -605,6 +605,31 @@ two parallel sessions against one shared contract in `packages/shared/src/api.ts
   verification log, including a real `ResizeObserver` bug caught along the
   way (`entry.contentRect` is content-box, not border-box — under-reported
   the top bar's height and never self-corrected).
+  Addendum, 2026-09-26: W6's cap had no floor — a heavily filtered list (one
+  or two rows) shrank the panel to match, leaving the booking rail cramped.
+  `panelHeight` now takes `Math.max` against `Math.min(panelAvailableHeight,
+  560)`, so the panel never drops below 560px (or the viewport's own height
+  below that, on a very short screen). File: `CreatorsListPage.tsx`.
+
+- [x] **W7 Entry page redesign** — done 2026-09-26.
+  Scope: replace the entry page's left-column-of-text-plus-two-cards layout
+  (read as the old naano clone with a new palette) with a page that looks
+  designed: logo + one-line headline/subline, two large equal-weight role
+  panels (Brand/Ledgerly, Creator) each a whole clickable surface with its
+  own bullets and CTA, a "How a booking moves" five-step strip (Invite,
+  Accept, Draft, Publish, Paid), and a live "Creators in the marketplace"
+  strip of 5 real creators from `GET /creators` (hides silently on failure).
+  Sign-in behaviour and loading/error states unchanged.
+  Files: `apps/web/src/routes/EntryPage.tsx`,
+  `apps/web/src/components/entry/RolePanel.tsx` (new),
+  `apps/web/src/components/entry/BookingStepsStrip.tsx` (new),
+  `apps/web/src/components/entry/LiveCreatorsStrip.tsx` (new).
+  Notes: see docs/DECISIONS.md's "Session: web, round 2" for the anti-slop
+  pass (no middle-dot-joined meta strings — `LiveCreatorsStrip` uses a comma
+  instead — and the numbered 1–5 steps kept since it's a genuine sequence,
+  the one case DESIGN.md's anti-slop rule allows them) and the end-to-end
+  verification (both sign-ins, live strip against the real API, 1440px and
+  390px screenshots).
 
 ---
 

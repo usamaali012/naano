@@ -2027,3 +2027,61 @@ needs to not lose an hour to.
     column). Same six pre-existing `randomuser.me` `ERR_FAILED` lines as
     every prior run in this session — not a regression.
   - `npx tsc --noEmit -p apps/web/tsconfig.json` — clean, no errors.
+
+- 2026-09-26 — **W6 addendum: panel floor.** The cap alone (whichever is
+  shorter — viewport-below-top-bar or the list column) had no lower bound,
+  so a heavily filtered list (one or two rows) shrank the panel to match,
+  making the booking rail unusably cramped. Added a 560px floor:
+  `panelHeight` is now `Math.max(Math.min(panelAvailableHeight, 560),
+  <the existing capped value>)` — never shorter than 560px unless the
+  viewport itself has less than 560px to give (a very short screen still
+  wins, so the panel never overflows). File: `CreatorsListPage.tsx`.
+
+- 2026-09-26 — **W7, entry page redesign.** The brief: the page read as the
+  old naano clone with a new colour, not a product someone designed — a left
+  column of text, two plain cards, and a flat colour block with one sentence.
+  Rebuilt as `EntryPage.tsx` plus three new files under
+  `components/entry/` (`RolePanel.tsx`, `BookingStepsStrip.tsx`,
+  `LiveCreatorsStrip.tsx`), token-only, Fraunces headings / IBM Plex Sans UI
+  per `index.css`'s existing type layer (already wired for both faces before
+  this session — DESIGN.md's own "one family" line is stale against that;
+  not fixed here, out of this slice's scope).
+  - **RolePanel**: the whole panel is a real `<button>` (native disabled/
+    focus behaviour, and the existing `enter()`/`pending`/`failed` sign-in
+    logic is untouched) — a nested `<button>` for the CTA isn't valid HTML,
+    so the CTA is a `<span>` sharing the same classes as `ui/Button`'s
+    primary variant. Bullets use `list-disc` + `marker:text-primary` rather
+    than a hand-built dot (no arbitrary pixel sizing needed).
+  - **BookingStepsStrip**: five real steps (Invite/Accept/Draft/Publish/
+    Paid) — the one place DESIGN.md's anti-slop rule allows numbered
+    markers, since it's a genuine sequence. Connected visually with a
+    hairline divider between columns (row on `sm:` and up, stacked with a
+    top divider below it) rather than an arrow or chevron between steps —
+    "arrow appended to button text" is barred but this isn't a button, and
+    an arrow between steps read closer to the barred pattern than a plain
+    line does, so line it is.
+  - **LiveCreatorsStrip**: real `GET /creators?page=1&pageSize=5`
+    (unauthenticated — the route has no guard, confirmed against
+    `creators.controller.ts`), rendered via the existing `ui/Avatar`
+    (photo-over-initials) + `verticalLabel`/`formatCompactNumber` from
+    `lib/format.ts`. `creators` state starts `null` (nothing rendered while
+    in flight) and both the empty-result and error paths resolve it to `[]`,
+    which renders `null` — the strip hides silently rather than showing an
+    error on a page whose only job is getting someone signed in, per the ask.
+    Caught one anti-slop rule that would have been an easy miss: "no meta
+    strings joined with middle dots" (the same rule that killed the old
+    modal's "AI · Marketing · LinkedIn creator" role line, per the
+    "Session: web (own-product redesign)" heading above) — grepped the repo
+    for `·` first (zero hits, confirming the rule already holds everywhere
+    else) and joined vertical + follower count with a comma instead:
+    "Fintech, 58K followers".
+  - **Verified in the browser** against the real API (`web` dev server +
+    local API on `:3000`): both sign-ins walked end to end (brand into the
+    marketplace, creator onto their own profile), the live strip rendered 5
+    real creators (`GET /creators?page=1&pageSize=5` → 200, names/verticals/
+    follower counts matched the response), the two role panels sat side by
+    side at 1440px width (confirmed via `getBoundingClientRect` — the
+    browser pane's screenshot only captures ~800px at a time, so layout was
+    checked by measurement, not by eye, at that width) and stacked to one
+    column at 390px with the steps strip and live strip both re-flowing
+    cleanly. `npx tsc -b apps/web/tsconfig.json` — clean, no errors.
